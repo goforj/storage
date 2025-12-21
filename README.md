@@ -121,15 +121,6 @@ func main() {
 ```
 
 ## Drivers
-- `local`: local filesystem rooted at `Remote`.
-- `s3`: AWS S3 (and compatibles) via AWS SDK v2.
-- `gcs`: Google Cloud Storage via cloud.google.com/go/storage.
-- `sftp`: via ssh + pkg/sftp.
-- `ftp`: via jlaffaye/ftp.
-- `dropbox`: via Dropbox SDK.
-- `rclone`: all rclone backends (imports `backend/all`); config is process-global. Inline config stays in memory; no temp files.
-
-## Drivers
 
 | **Driver** | Description                                             | Notes                                   |
 |-----------:|---------------------------------------------------------|-----------------------------------------|
