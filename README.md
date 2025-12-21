@@ -1,6 +1,24 @@
-# GoForj Filesystem
+<p align="center">
+  <img src="./docs/images/logo.png?v=2" width="400" alt="str logo">
+</p>
 
-Rclone-backed filesystem abstraction with a minimal, stable API. Supports all rclone backends (via `backend/all`), typed disk names, and three config sources: file path, inline config data (kept in memory), and rclone’s environment-variable remotes.
+<p align="center">
+    A fluent, Laravel-inspired string toolkit for Go, focused on rune-safe helpers,
+    expressive transformations, and predictable behavior beyond the standard library.
+</p>
+
+<p align="center">
+    <a href="https://pkg.go.dev/github.com/goforj/filesystem"><img src="https://pkg.go.dev/badge/github.com/goforj/filesystem.svg" alt="Go Reference"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+    <a href="https://github.com/goforj/filesystem/actions"><img src="https://github.com/goforj/filesystem/actions/workflows/test.yml/badge.svg" alt="Go Test"></a>
+    <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.18+-blue?logo=go" alt="Go version"></a>
+    <img src="https://img.shields.io/github/v/tag/goforj/filesystem?label=version&sort=semver" alt="Latest tag">
+    <a href="https://codecov.io/gh/goforj/filesystem" ><img src="https://codecov.io/github/goforj/filesystem/graph/badge.svg?token=9KT46ZORP3"/></a>
+<!-- test-count:embed:start -->
+    <img src="https://img.shields.io/badge/tests-154-brightgreen" alt="Tests">
+<!-- test-count:embed:end -->
+    <a href="https://goreportcard.com/report/github.com/goforj/filesystem"><img src="https://goreportcard.com/badge/github.com/goforj/filesystem" alt="Go Report Card"></a>
+</p>
 
 ## Install
 

@@ -12,12 +12,9 @@ import (
 type Filesystem interface {
 	Get(ctx context.Context, p string) ([]byte, error)
 	Put(ctx context.Context, p string, contents []byte) error
-
 	Delete(ctx context.Context, p string) error
 	Exists(ctx context.Context, p string) (bool, error)
-
 	List(ctx context.Context, p string) ([]Entry, error)
-
 	URL(ctx context.Context, p string) (string, error)
 }
 
@@ -56,6 +53,40 @@ type DiskConfig struct {
 	// rclone-specific (only used by rclone driver)
 	Remote string
 	Prefix string
+
+	// s3 (native)
+	S3Bucket          string
+	S3Endpoint        string
+	S3Region          string
+	S3AccessKeyID     string
+	S3SecretAccessKey string
+	S3UsePathStyle    bool
+	S3UnsignedPayload bool
+
+	// sftp (native)
+	SFTPHost                  string
+	SFTPPort                  int
+	SFTPUser                  string
+	SFTPPassword              string
+	SFTPKeyPath               string
+	SFTPKnownHostsPath        string
+	SFTPInsecureIgnoreHostKey bool
+
+	// ftp (native)
+	FTPHost               string
+	FTPPort               int
+	FTPUser               string
+	FTPPassword           string
+	FTPTLS                bool
+	FTPInsecureSkipVerify bool
+
+	// dropbox (native)
+	DropboxToken string
+
+	// gcs (native)
+	GCSBucket          string
+	GCSCredentialsJSON string
+	GCSEndpoint        string
 }
 
 // NormalizePath cleans a user path and rejects attempts to escape the disk root.

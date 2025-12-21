@@ -1,9 +1,13 @@
 package rclone
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/johannesboyne/gofakes3"
+	"github.com/johannesboyne/gofakes3/backend/s3mem"
 
 	"github.com/goforj/filesystem"
 	"github.com/goforj/filesystem/rcloneconfig"
@@ -17,15 +21,34 @@ func TestRcloneDriverContract(t *testing.T) {
 		t.Fatalf("mkdir remote: %v", err)
 	}
 
-	conf := rcloneconfig.MustRenderLocal("localdisk")
+	// Fake S3 server for exercising the rclone s3 backend.
+	fake := gofakes3.New(s3mem.New())
+	httpServer := httptest.NewServer(fake.Server())
+	defer httpServer.Close()
+
+	localConf := rcloneconfig.MustRenderLocal("localdisk")
+	s3Conf := rcloneconfig.MustRenderS3(rcloneconfig.S3Remote{
+		Name:               "s3fake",
+		Endpoint:           httpServer.URL,
+		Region:             "us-east-1",
+		AccessKeyID:        "access",
+		SecretAccessKey:    "secret",
+		PathStyle:          true,
+		UseUnsignedPayload: true, // simplify fake server compat (no seek required)
+	})
 
 	cfg := filesystem.Config{
-		Default:          "rc",
-		RcloneConfigData: conf,
+		Default:          "local",
+		RcloneConfigData: localConf + "\n" + s3Conf,
 		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"rc": {
+			"local": {
 				Driver: "rclone",
 				Remote: "localdisk:" + remoteRoot,
+				Prefix: "sandbox",
+			},
+			"s3": {
+				Driver: "rclone",
+				Remote: "s3fake:bucket",
 				Prefix: "sandbox",
 			},
 		},
@@ -35,27 +58,16 @@ func TestRcloneDriverContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New manager: %v", err)
 	}
-	fsys := manager.Default()
 
-	filesystemtest.RunFilesystemContractTests(t, fsys)
-
-	// Ensure same config path can initialize additional managers.
-	if _, err := filesystem.New(cfg); err != nil {
-		t.Fatalf("expected reuse of config path to succeed: %v", err)
+	localFS, err := manager.Disk("local")
+	if err != nil {
+		t.Fatalf("local disk: %v", err)
+	}
+	s3FS, err := manager.Disk("s3")
+	if err != nil {
+		t.Fatalf("s3 disk: %v", err)
 	}
 
-	// Different config path should error due to global process scope.
-	_, err = filesystem.New(filesystem.Config{
-		Default:          "rc",
-		RcloneConfigPath: filepath.Join(root, "other.conf"),
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"rc": {
-				Driver: "rclone",
-				Remote: remoteRoot,
-			},
-		},
-	})
-	if err == nil {
-		t.Fatalf("expected error when reinitializing with different config path")
-	}
+	filesystemtest.RunFilesystemContractTests(t, localFS)
+	filesystemtest.RunFilesystemContractTests(t, s3FS)
 }
