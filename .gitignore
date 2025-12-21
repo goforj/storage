@@ -2,3 +2,6 @@
 AGENTS.md
 SPEC.md
 tmp/
+
+# ignore symlinked driver sub-folder repos
+filesystem*

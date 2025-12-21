@@ -7,8 +7,7 @@ import (
 	"os"
 
 	"github.com/goforj/filesystem"
-	_ "github.com/goforj/filesystem/driver/local"
-	_ "github.com/goforj/filesystem-rclone/driver/rclone"
+	_ "github.com/goforj/filesystem-rclone"
 )
 
 const inlineConfig = `

@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/github/v/tag/goforj/filesystem?label=version&sort=semver" alt="Latest tag">
     <a href="https://codecov.io/gh/goforj/filesystem" ><img src="https://codecov.io/github/goforj/filesystem/graph/badge.svg?token=BPR5IIC5F9"/></a>
 <!-- test-count:embed:start -->
-    <img src="https://img.shields.io/badge/tests-80-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-59-brightgreen" alt="Tests">
 <!-- test-count:embed:end -->
     <a href="https://goreportcard.com/report/github.com/goforj/filesystem"><img src="https://goreportcard.com/badge/github.com/goforj/filesystem" alt="Go Report Card"></a>
 </p>
@@ -64,7 +64,7 @@ import (
     "log"
 
     "github.com/goforj/filesystem"
-    _ "github.com/goforj/filesystem-rclone/driver/rclone"
+    _ "github.com/goforj/filesystem-rclone"
     _ "github.com/goforj/filesystem/driver/s3"
     _ "github.com/goforj/filesystem/driver/local"
 )
@@ -130,7 +130,7 @@ func main() {
 | **sftp**   | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
 | **ftp**    | FTP via [jlaffaye/ftp](https://github.com/jlaffaye/ftp) | TLS optional; URL unsupported           |
 | **dropbox**| Dropbox via official SDK                                | Uses temporary links for URL            |
-| **rclone** | All rclone backends (imports `backend/all`) via add-on `github.com/goforj/filesystem-rclone` | Config is process-scoped                |
+| **rclone** | All rclone backends (imports `backend/all`) via add-on `github.com/goforj/filesystem-rclone` (blank import) | Config is process-scoped                |
 
 ### Rclone Backends (add-on)
 
@@ -333,7 +333,7 @@ _ = fs.Put(ctx, "file.txt", []byte("hello"))
 
 ### Rclone (any backend)
 ```go
-_ "github.com/goforj/filesystem-rclone/driver/rclone"
+_ "github.com/goforj/filesystem-rclone"
 
 const inline = `
 [myremote]
@@ -372,7 +372,7 @@ export RCLONE_CONFIG_ENVREMOTE_ENDPOINT=http://localhost:4566
 ```
 
 ```go
-_ "github.com/goforj/filesystem-rclone/driver/rclone"
+_ "github.com/goforj/filesystem-rclone"
 
 cfg := filesystem.Config{
     Default: "rclone",
