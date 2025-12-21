@@ -222,26 +222,25 @@ func (d *Driver) ModTime(ctx context.Context, p string) (time.Time, error) {
 }
 
 func initRclone(cfg filesystem.Config) error {
-	initOnce.Do(func() {
-		if cfg.RcloneConfigPath != "" && cfg.RcloneConfigData != "" {
-			initErr = fmt.Errorf("filesystem: only one of RcloneConfigPath or RcloneConfigData may be set")
-			return
+	if cfg.RcloneConfigData != "" {
+		if cfg.RcloneConfigPath != "" {
+			return fmt.Errorf("filesystem: only one of RcloneConfigPath or RcloneConfigData may be set")
 		}
+		storage, err := newMemoryStorage(cfg.RcloneConfigData)
+		if err != nil {
+			return err
+		}
+		initConfigPath = "inline-rclone.conf"
+		initConfigData = cfg.RcloneConfigData
+		if err := config.SetConfigPath(initConfigPath); err != nil {
+			return err
+		}
+		config.SetData(storage)
+		return nil
+	}
 
-		if cfg.RcloneConfigData != "" {
-			storage, err := newMemoryStorage(cfg.RcloneConfigData)
-			if err != nil {
-				initErr = err
-				return
-			}
-			initConfigPath = "inline-rclone.conf"
-			initConfigData = cfg.RcloneConfigData
-			if err := config.SetConfigPath(initConfigPath); err != nil {
-				initErr = err
-				return
-			}
-			config.SetData(storage)
-		} else {
+	initOnce.Do(func() {
+		if cfg.RcloneConfigPath != "" {
 			initConfigPath = cfg.RcloneConfigPath
 			if err := config.SetConfigPath(initConfigPath); err != nil {
 				initErr = err
@@ -254,11 +253,7 @@ func initRclone(cfg filesystem.Config) error {
 	if initErr != nil {
 		return initErr
 	}
-	if cfg.RcloneConfigData != "" {
-		if initConfigData != cfg.RcloneConfigData {
-			return fmt.Errorf("filesystem: rclone already initialized with different inline config")
-		}
-	} else if cfg.RcloneConfigPath != "" && initConfigPath != cfg.RcloneConfigPath {
+	if cfg.RcloneConfigPath != "" && initConfigPath != cfg.RcloneConfigPath {
 		return fmt.Errorf("filesystem: rclone already initialized with config path %q", initConfigPath)
 	}
 	return nil

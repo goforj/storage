@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -58,6 +59,10 @@ func newClient(ctx context.Context, cfg filesystem.DiskConfig) (*storage.Client,
 	}
 	if cfg.GCSEndpoint != "" {
 		opts = append(opts, option.WithEndpoint(cfg.GCSEndpoint))
+		if cfg.GCSCredentialsJSON == "" {
+			opts = append(opts, option.WithoutAuthentication())
+		}
+		_ = os.Setenv("STORAGE_EMULATOR_HOST", strings.TrimPrefix(cfg.GCSEndpoint, "http://"))
 	}
 	return storage.NewClient(ctx, opts...)
 }

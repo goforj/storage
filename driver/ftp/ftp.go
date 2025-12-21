@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -120,10 +121,23 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return wrapError(d.withConn(func(c *ftp.ServerConn) error {
 		dir := path.Dir(fp)
 		if dir != "" && dir != "." {
-			_ = c.MakeDir(dir)
+			_ = ensureDirs(c, dir)
 		}
 		return c.Stor(fp, bytes.NewReader(contents))
 	}))
+}
+
+func ensureDirs(c *ftp.ServerConn, dir string) error {
+	parts := strings.Split(dir, "/")
+	var cur string
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		cur = path.Join(cur, p)
+		_ = c.MakeDir(cur)
+	}
+	return nil
 }
 
 func (d *Driver) Delete(ctx context.Context, p string) error {
@@ -152,10 +166,11 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 		return err
 	})
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		wrapped := wrapError(err)
+		if errors.Is(wrapped, filesystem.ErrNotFound) {
 			return false, nil
 		}
-		return false, wrapError(err)
+		return false, wrapped
 	}
 	return true, nil
 }
@@ -219,7 +234,7 @@ func wrapError(err error) error {
 		return nil
 	}
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") {
+	if strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") || strings.Contains(msg, "can't check for file existence") || strings.Contains(msg, "550") {
 		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
 	}
 	return err

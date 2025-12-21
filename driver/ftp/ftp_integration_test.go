@@ -1,4 +1,4 @@
-//go:build !integration
+//go:build integration
 
 package ftpdriver
 
@@ -16,6 +16,56 @@ import (
 	filesystemtest "github.com/goforj/filesystem/testutil"
 )
 
+func TestFTPIntegration(t *testing.T) {
+	filesystemtest.RequireIntegration(t)
+
+	root := t.TempDir()
+	port, ok := pickPort(t)
+	if !ok {
+		t.Skip("unable to bind a local port for embedded FTP")
+	}
+	host := "127.0.0.1"
+	user := "ftpuser"
+	pass := "ftppass"
+
+	factory := &memFactory{root: root}
+	opts := &server.ServerOpts{
+		Factory:  factory,
+		Port:     port,
+		Hostname: host,
+		Auth:     &server.SimpleAuth{Name: user, Password: pass},
+	}
+	s := server.NewServer(opts)
+	go func() { _ = s.ListenAndServe() }()
+	t.Cleanup(func() { _ = s.Shutdown() })
+	time.Sleep(200 * time.Millisecond)
+
+	cfg := filesystem.Config{
+		Default: "ftp",
+		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+			"ftp": {
+				Driver:      "ftp",
+				FTPHost:     host,
+				FTPPort:     port,
+				FTPUser:     user,
+				FTPPassword: pass,
+				Prefix:      "integration",
+			},
+		},
+	}
+
+	mgr, err := filesystem.New(cfg)
+	if err != nil {
+		t.Fatalf("FTP integration manager init failed: %v", err)
+	}
+	fs, err := mgr.Disk("ftp")
+	if err != nil {
+		t.Fatalf("disk: %v", err)
+	}
+	filesystemtest.RunFilesystemContractTests(t, fs)
+}
+
+// minimal in-memory driver for goftp/server
 type memFactory struct {
 	root string
 }
@@ -98,7 +148,7 @@ func (d *memDriver) PutFile(p string, r io.Reader, _ bool) (int64, error) {
 }
 
 func (d *memDriver) abs(p string) string {
-	if p == "" || p == "." {
+	if p == "" || p == "." || p == "/" {
 		return d.root
 	}
 	return filepath.Join(d.root, p)
@@ -111,59 +161,12 @@ type fileInfo struct {
 func (f fileInfo) Owner() string { return "user" }
 func (f fileInfo) Group() string { return "group" }
 
-func TestFTPWithEmbeddedServer(t *testing.T) {
-	root := t.TempDir()
-
-	factory := &memFactory{root: root}
-	opts := &server.ServerOpts{
-		Factory:  factory,
-		Port:     pickPort(),
-		Hostname: "127.0.0.1",
-		Auth:     &server.SimpleAuth{Name: "anonymous", Password: "anonymous"},
-	}
-	s := server.NewServer(opts)
-
-	go func() {
-		_ = s.ListenAndServe()
-	}()
-	t.Cleanup(func() {
-		_ = s.Shutdown()
-	})
-
-	cfg := filesystem.Config{
-		Default: "ftp",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"ftp": {
-				Driver:      "ftp",
-				FTPHost:     "127.0.0.1",
-				FTPPort:     opts.Port,
-				FTPUser:     "anonymous",
-				FTPPassword: "anonymous",
-				Prefix:      "",
-			},
-		},
-	}
-
-	// small delay to ensure server is listening
-	time.Sleep(200 * time.Millisecond)
-
-	mgr, err := filesystem.New(cfg)
-	if err != nil {
-		t.Fatalf("New manager: %v", err)
-	}
-	fs, err := mgr.Disk("ftp")
-	if err != nil {
-		t.Fatalf("disk: %v", err)
-	}
-
-	filesystemtest.RunFilesystemContractTests(t, fs)
-}
-
-func pickPort() int {
+func pickPort(t *testing.T) (int, bool) {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 2222
+		return 0, false
 	}
 	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	return l.Addr().(*net.TCPAddr).Port, true
 }

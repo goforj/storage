@@ -393,10 +393,15 @@ _ = fs.Put(ctx, "file.txt", []byte("hello"))
 - **Env:** `RCLONE_CONFIG_<REMOTE>_<KEY>` env vars are honored and take precedence (e.g., `RCLONE_CONFIG_MYREMOTE_TYPE=s3`).
 
 ## Testing
-- Embedded FTP and SFTP servers for hermetic tests.
-- gofakes3 for native S3 tests.
-- Localstack rclone S3 test opt-in via `RUN_LOCALSTACK_S3=1`.
-- `go test ./...` runs contract + unit tests; example build test skips if `examples/` is absent.
+- Unit + contract suite: `go test ./...` (example build test skips if `examples/` is absent).
+- Integration suite (docker-compose): `docker-compose up -d` then `RUN_INTEGRATION=1 go test -tags integration ./...`
+  - Defaults match compose services:
+    - S3/MinIO: `INTEGRATION_S3_ENDPOINT=http://localhost:9000`, access `fsuser`, secret `fspass123`, bucket `fs-integration`
+    - GCS (fake-gcs-server): `INTEGRATION_GCS_ENDPOINT=http://localhost:4443`, bucket `gcs-integration`
+    - SFTP: `127.0.0.1:2222` user `fsuser`, pass `pass`
+    - FTP: `127.0.0.1:2121` user `fsuser`, pass `fspass` (PASV 30000-30009)
+    - Rclone integration uses the same MinIO endpoint via inline config
+- Localstack rclone S3 test remains opt-in via `RUN_LOCALSTACK_S3=1`.
 
 ## Notes
 - Prefixes are normalized and guard against traversal.

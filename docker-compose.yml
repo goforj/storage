@@ -1,0 +1,80 @@
+# for integration testing
+# s3 - minio
+# gcs - fake-gcs-server
+# sftp - emberstack/sftp
+# ftp - local custom image
+
+services:
+  minio:
+    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: fsuser
+      MINIO_ROOT_PASSWORD: fspass123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fakegcs:
+    image: fsouza/fake-gcs-server:1.47.2
+    command:
+      - "-scheme"
+      - "http"
+      - "-host"
+      - "0.0.0.0"
+      - "-port"
+      - "4443"
+      - "-backend"
+      - "memory"
+      - "-external-url"
+      - "http://localhost:4443"
+    ports:
+      - "4443:4443"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4443/storage/v1/b?project=fake"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sftp:
+    image: lscr.io/linuxserver/openssh-server:latest
+    ports:
+      - "2222:2222"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: UTC
+      USER_NAME: fsuser
+      USER_PASSWORD: fspass
+      PASSWORD_ACCESS: "true"
+      SUDO_ACCESS: "false"
+      LOG_STDOUT: "true"
+
+  ftp:
+    image: filesystem-ftp:latest
+    build:
+      context: ./containers/ftp
+    restart: unless-stopped
+    environment:
+      FTP_USER_UID: 1000
+      FTP_USER_GID: 1000
+      FTP_USER_NAME: ftpuser
+      FTP_USER_PASS: ftppass
+      FTP_USER_HOME: '/home/ftpuser/'
+      FTP_MAX_CLIENTS: 25
+      FTP_PASSIVE_PORTS: '30000:30049'
+      PUBLICHOST: 127.0.0.1
+      TZ: ${TZ:-US/Central}
+    ports:
+      - 0.0.0.0:2121:21
+      - 0.0.0.0:30000-30049:30000-30049
+    volumes:
+      - ftp-data:/home/ftpuser
+
+volumes:
+  ftp-data:

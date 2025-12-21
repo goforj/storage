@@ -59,7 +59,7 @@ func run() error {
 
 	out, err := replaceAPISection(string(data), api)
 	if err != nil {
-		fmt.Println("Error:", err)
+		fmt.Println("Warning:", err)
 	}
 
 	out, err = updateTestsSection(out, testsCount)
@@ -405,7 +405,7 @@ func replaceAPISection(readme, api string) (string, error) {
 	end := strings.Index(readme, apiEnd)
 
 	if start == -1 || end == -1 || end < start {
-		return "", fmt.Errorf("API anchors not found or malformed")
+		return readme, fmt.Errorf("API anchors not found or malformed")
 	}
 
 	var out bytes.Buffer
