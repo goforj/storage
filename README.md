@@ -113,9 +113,16 @@ func main() {
         log.Fatal(err)
     }
     fs, _ := mgr.Disk("s3")
-    ctx := context.Background()
-    _ = fs.Put(ctx, "folder/file.txt", []byte("hello"))
-    data, _ := fs.Get(ctx, "folder/file.txt")
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := fs.Put(ctx, "folder/file.txt", []byte("hello")); err != nil {
+        log.Fatal(err)
+    }
+    data, err := fs.Get(ctx, "folder/file.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
     _ = data
 }
 ```
@@ -213,7 +220,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("local")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -238,7 +246,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("s3")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "folder/file.txt", []byte("hello"))
 ```
 
@@ -259,7 +268,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("gcs")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -283,7 +293,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("sftp")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -307,7 +318,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("ftp")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -327,7 +339,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("dropbox")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -354,7 +367,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("rclone")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
@@ -383,7 +397,8 @@ cfg := filesystem.Config{
 }
 mgr, _ := filesystem.New(cfg)
 fs, _ := mgr.Disk("rclone")
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
