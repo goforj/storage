@@ -299,10 +299,6 @@ github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9L
 github.com/go-viper/mapstructure/v2 v2.4.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=
 github.com/goccy/go-json v0.10.5/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
-github.com/goforj/filesystem v0.0.1 h1:qUI8r7cRTod7Hq7VC8e2EFZ4zSb3CotcNQKJdPy99Kg=
-github.com/goforj/filesystem v0.0.1/go.mod h1:ASqCL+Y4JcMT5/whTGCgu/Cr1t1bnh39iCG+gO7CY+4=
-github.com/goforj/filesystem-rclone v0.0.1 h1:k3H4wk8ac9TRZyJ4C80LojWNyhhMTJCY+BHAcl9Uj4I=
-github.com/goforj/filesystem-rclone v0.0.1/go.mod h1:a1VXaYktk4EE7PIvMtIfJ52jWsEiCwG55Y8zE4c7klg=
 github.com/gofrs/flock v0.13.0 h1:95JolYOvGMqeH31+FC7D2+uULf6mG61mEZ/A8dRYMzw=
 github.com/gofrs/flock v0.13.0/go.mod h1:jxeyy9R1auM5S6JYDBhDt+E2TCo7DkratH4Pgi8P+Z0=
 github.com/goftp/server v0.0.0-20200708154336-f64f7c2d8a42 h1:JdOp2qR5PF4O75tzHeqrwnDDv8oHDptWyTbyYS4fD8E=

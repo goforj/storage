@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -44,11 +43,13 @@ func main() {
 		log.Fatalf("disk: %v", err)
 	}
 
-	ctx := context.Background()
-	if err := fs.Put(ctx, "folder/file.txt", []byte("hello rclone local")); err != nil {
+	// Use helper wrapper for non-context convenience calls.
+	h := filesystem.WithHelpers(fs)
+
+	if err := h.Put("folder/file.txt", []byte("hello rclone local")); err != nil {
 		log.Fatalf("put: %v", err)
 	}
-	data, err := fs.Get(ctx, "folder/file.txt")
+	data, err := h.Get("folder/file.txt")
 	if err != nil {
 		log.Fatalf("get: %v", err)
 	}

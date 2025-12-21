@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/github/v/tag/goforj/filesystem?label=version&sort=semver" alt="Latest tag">
     <a href="https://codecov.io/gh/goforj/filesystem" ><img src="https://codecov.io/github/goforj/filesystem/graph/badge.svg?token=BPR5IIC5F9"/></a>
 <!-- test-count:embed:start -->
-    <img src="https://img.shields.io/badge/tests-58-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-57-brightgreen" alt="Tests">
 <!-- test-count:embed:end -->
     <a href="https://goreportcard.com/report/github.com/goforj/filesystem"><img src="https://goreportcard.com/badge/github.com/goforj/filesystem" alt="Go Report Card"></a>
 </p>
@@ -39,16 +39,6 @@ type Filesystem interface {
     List(ctx context.Context, p string) ([]Entry, error)
     URL(ctx context.Context, p string) (string, error)
 }
-
-// helpers 
-// All call with context.Background()
-// it is recommended to use the context-aware versions above to control timeouts/cancellations.
-Get(p string) ([]byte, error)
-Put(p string, b []byte) error
-Delete(p string) error
-Exists(p string) (bool, error)
-List(p string) ([]Entry, error)
-URL(p string) (string, error)
 ```
 
 - Native SDK drivers for control and performance.
