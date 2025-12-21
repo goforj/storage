@@ -59,7 +59,7 @@ func run() error {
 
 	out, err := replaceAPISection(string(data), api)
 	if err != nil {
-		return err
+		fmt.Println("Error:", err)
 	}
 
 	out, err = updateTestsSection(out, testsCount)
