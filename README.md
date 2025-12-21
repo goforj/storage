@@ -31,12 +31,14 @@
 A tiny, stable API over multiple storage backends:
 
 ```go
-Get(ctx, path) ([]byte, error)
-Put(ctx, path, []byte) error
-Delete(ctx, path) error
-Exists(ctx, path) (bool, error)
-List(ctx, path) ([]Entry, error)
-URL(ctx, path) (string, error)
+type Filesystem interface {
+    Get(ctx context.Context, p string) ([]byte, error)
+    Put(ctx context.Context, p string, contents []byte) error
+    Delete(ctx context.Context, p string) error
+    Exists(ctx context.Context, p string) (bool, error)
+    List(ctx context.Context, p string) ([]Entry, error)
+    URL(ctx context.Context, p string) (string, error)
+}
 ```
 
 - Native SDK drivers for control and performance.
