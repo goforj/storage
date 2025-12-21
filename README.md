@@ -127,6 +127,21 @@ func main() {
 - `dropbox`: via Dropbox SDK.
 - `rclone`: all rclone backends (imports `backend/all`); config is process-global. Inline config stays in memory; no temp files.
 
+## Drivers
+
+| Driver   | Description                                             | Notes                                   |
+|----------|---------------------------------------------------------|-----------------------------------------|
+| local    | Local filesystem rooted at `Remote`                     | Prefix-scoped, traversal-safe           |
+| s3       | AWS S3 (+ compatibles) via AWS SDK v2                   | Path-style optional; presigned URLs     |
+| gcs      | Google Cloud Storage via cloud.google.com/go/storage    | Signed URLs; minimal metadata in `Put`  |
+| sftp     | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
+| ftp      | FTP via jlaffaye/ftp                                    | TLS optional; URL unsupported           |
+| dropbox  | Dropbox via official SDK                                | Uses temporary links for URL            |
+| rclone   | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
+
+### Rclone backends (compiled in)
+Alias, Amazon Cloud Drive, Azure Blob, Backblaze B2, Box, Cache, Chunker, Combine, Compress, Crypt, Drive, Dropbox, Fichier, Filefabric, FTP, Google Cloud Storage, Google Photos, Hasher, HDFS, HiDrive, HTTP, Internet Archive, Jottacloud, Koofr, Local, Mailru, Mega, Memory, NetStorage, OneDrive, OpenDrive, Oracle Object Storage, Pcloud, PremiumizeMe, Putio, QingStor, S3, Seafile, SFTP, Sharefile, Sia, SMB, Storj, Sugarsync, Swift, Union, Uptobox, WebDAV, Yandex, Zoho.
+
 ## Rclone Config Sources
 - **Inline (in-memory):** set `RcloneConfigData`; first init wins process-wide.
 - **Path:** set `RcloneConfigPath`; do not combine with inline.
