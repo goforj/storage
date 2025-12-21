@@ -23,6 +23,11 @@ type Driver struct {
 }
 
 // New constructs a local driver rooted at cfg.Remote with an optional prefix.
+// @group Drivers
+//
+// Example: local driver
+//
+//	fs, _ := local.New(context.Background(), filesystem.DiskConfig{Remote: "/tmp", Prefix: "sandbox"}, filesystem.Config{})
 func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.Remote == "" {
 		return nil, fmt.Errorf("filesystem: local driver requires remote path")

@@ -90,6 +90,7 @@ type DiskConfig struct {
 }
 
 // NormalizePath cleans a user path and rejects attempts to escape the disk root.
+// @group Paths
 func NormalizePath(p string) (string, error) {
 	cleaned := path.Clean(strings.TrimSpace(p))
 	cleaned = strings.TrimPrefix(cleaned, "/")
@@ -103,6 +104,7 @@ func NormalizePath(p string) (string, error) {
 }
 
 // JoinPrefix combines a disk prefix with a path using slash separators.
+// @group Paths
 func JoinPrefix(prefix, p string) string {
 	if prefix == "" {
 		return p

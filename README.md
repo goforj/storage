@@ -3,9 +3,15 @@
 </p>
 
 <p align="center">
-    A fluent, Laravel-inspired string toolkit for Go, focused on rune-safe helpers,
-    expressive transformations, and predictable behavior beyond the standard library.
+    A small, opinionated filesystem abstraction for Go —
+    unified APIs across S3, GCS, SFTP, FTP, Dropbox, local filesystems,
+    and every rclone backend, without leaking driver complexity.
 </p>
+
+<p align="center">
+    Testable. Explicit. Minimal surface area. No magic globals.
+</p>
+
 
 <p align="center">
     <a href="https://pkg.go.dev/github.com/goforj/filesystem"><img src="https://pkg.go.dev/badge/github.com/goforj/filesystem.svg" alt="Go Reference"></a>
@@ -22,7 +28,15 @@
 
 ## What is this?
 
-An opinionated, testable filesystem abstraction for Go. It supports native drivers (S3, GCS, SFTP, FTP, Dropbox, local) plus an rclone-backed driver for maximum backend coverage while keeping the API tiny:
+> Think “Laravel filesystem”, but Go-native, explicit, testable, and without magic.
+
+An opinionated filesystem abstraction for Go that gives you a **single, tiny API**
+over many storage backends — without forcing you into a leaky lowest-common-denominator.
+
+You declare disks explicitly, choose drivers deliberately, and interact through
+a minimal set of operations that map cleanly to real storage systems.
+
+The core API is intentionally small and stable:
 
 ```go
 Get(ctx, path) ([]byte, error)
@@ -33,8 +47,11 @@ List(ctx, path) ([]Entry, error)
 URL(ctx, path) (string, error)
 ```
 
-Errors are wrapped with sentinels you can classify via `errors.Is`:
-`ErrNotFound`, `ErrForbidden`, `ErrUnsupported`.
+Unlike generic virtual filesystems, this package optimizes for:
+- **Explicit configuration** over implicit globals
+- **Testability** (embedded servers, hermetic drivers)
+- **Predictable errors** using sentinels (`errors.Is`)
+- **Maximum backend coverage** via rclone, without shelling out
 
 ## Install
 
@@ -141,10 +158,11 @@ func main() {
 
 | Group | Functions |
 |------:|-----------|
-| **Other** | [Default](#default) [Disk](#disk) [JoinPrefix](#joinprefix) [New](#new) [NormalizePath](#normalizepath) [RegisterDriver](#registerdriver) |
+| **Manager** | [Default](#default) [Disk](#disk) [New](#new) [RegisterDriver](#registerdriver) |
+| **Paths** | [JoinPrefix](#joinprefix) [NormalizePath](#normalizepath) |
 
 
-## Other
+## Manager
 
 ### <a id="default"></a>Default
 
@@ -154,19 +172,21 @@ Default returns the default disk or panics if misconfigured.
 
 Disk returns a named disk or an error if it does not exist.
 
-### <a id="joinprefix"></a>JoinPrefix
-
-JoinPrefix combines a disk prefix with a path using slash separators.
-
 ### <a id="new"></a>New
 
 New constructs a Manager and eagerly initializes all disks.
 
-### <a id="normalizepath"></a>NormalizePath
-
-NormalizePath cleans a user path and rejects attempts to escape the disk root.
-
 ### <a id="registerdriver"></a>RegisterDriver
 
 RegisterDriver makes a driver available to the Manager. It panics on duplicate registrations.
+
+## Paths
+
+### <a id="joinprefix"></a>JoinPrefix
+
+JoinPrefix combines a disk prefix with a path using slash separators.
+
+### <a id="normalizepath"></a>NormalizePath
+
+NormalizePath cleans a user path and rejects attempts to escape the disk root.
 <!-- api:embed:end -->

@@ -19,6 +19,7 @@ type S3Remote struct {
 }
 
 // RenderS3 returns ini-formatted rclone config content for a single S3 remote.
+// @group Config
 func RenderS3(opts S3Remote) (string, error) {
 	if opts.Name == "" {
 		return "", fmt.Errorf("rcloneconfig: remote name is required")
@@ -59,6 +60,7 @@ func RenderS3(opts S3Remote) (string, error) {
 }
 
 // MustRenderS3 panics on error.
+// @group Config
 func MustRenderS3(opts S3Remote) string {
 	s, err := RenderS3(opts)
 	if err != nil {

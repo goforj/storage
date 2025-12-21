@@ -41,6 +41,11 @@ var (
 )
 
 // New constructs an rclone-backed filesystem. All disks share a single config path.
+// @group Drivers
+//
+// Example: rclone driver
+//
+//	fs, _ := rclone.New(context.Background(), filesystem.DiskConfig{Remote: "myremote:bucket"}, filesystem.Config{RcloneConfigData: "[myremote]\ntype = local\n"})
 func New(ctx context.Context, cfg filesystem.DiskConfig, global filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.Remote == "" {
 		return nil, fmt.Errorf("filesystem: rclone driver requires remote")

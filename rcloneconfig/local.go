@@ -11,6 +11,7 @@ type LocalRemote struct {
 }
 
 // RenderLocal returns ini-formatted rclone config for a local backend.
+// @group Config
 func RenderLocal(remote LocalRemote) (string, error) {
 	if remote.Name == "" {
 		return "", fmt.Errorf("rcloneconfig: remote name is required")
@@ -22,6 +23,7 @@ func RenderLocal(remote LocalRemote) (string, error) {
 }
 
 // MustRenderLocal panics on error.
+// @group Config
 func MustRenderLocal(name string) string {
 	s, err := RenderLocal(LocalRemote{Name: name})
 	if err != nil {

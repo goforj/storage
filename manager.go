@@ -12,6 +12,7 @@ type Manager struct {
 }
 
 // New constructs a Manager and eagerly initializes all disks.
+// @group Manager
 func New(cfg Config) (*Manager, error) {
 	if cfg.Default == "" {
 		return nil, fmt.Errorf("filesystem: default disk is required")
@@ -41,6 +42,7 @@ func New(cfg Config) (*Manager, error) {
 }
 
 // Default returns the default disk or panics if misconfigured.
+// @group Manager
 func (m *Manager) Default() Filesystem {
 	d, ok := m.disks[m.defaultDisk]
 	if !ok {
@@ -50,6 +52,7 @@ func (m *Manager) Default() Filesystem {
 }
 
 // Disk returns a named disk or an error if it does not exist.
+// @group Manager
 func (m *Manager) Disk(name DiskName) (Filesystem, error) {
 	d, ok := m.disks[name]
 	if !ok {

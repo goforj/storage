@@ -15,6 +15,7 @@ var (
 )
 
 // RegisterDriver makes a driver available to the Manager. It panics on duplicate registrations.
+// @group Manager
 func RegisterDriver(name string, factory DriverFactory) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
