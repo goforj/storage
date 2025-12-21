@@ -15,7 +15,7 @@ func TestS3IntegrationWithMinio(t *testing.T) {
 
 	endpoint, region, access, secret, bucket := filesystemtest.S3Settings()
 	if err := filesystemtest.EnsureS3Bucket(context.Background(), endpoint, region, access, secret, bucket); err != nil {
-		t.Skipf("skipping S3 integration (ensure bucket failed): %v", err)
+		t.Fatalf("ensure bucket failed: %v", err)
 	}
 
 	cfg := filesystem.Config{
@@ -45,7 +45,7 @@ func TestS3IntegrationWithMinio(t *testing.T) {
 
 	ctx := context.Background()
 	if err := fs.Put(ctx, "folder/file.txt", []byte("hello")); err != nil {
-		t.Skipf("skipping S3 integration (put failed): %v", err)
+		t.Fatalf("put failed: %v", err)
 	}
 	data, err := fs.Get(ctx, "folder/file.txt")
 	if err != nil {

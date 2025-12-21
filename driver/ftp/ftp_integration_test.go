@@ -165,7 +165,7 @@ func pickPort(t *testing.T) (int, bool) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, false
+		t.Fatalf("failed to pick port: %v", err)
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port, true

@@ -20,27 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  fakegcs:
-    image: fsouza/fake-gcs-server:1.47.2
-    command:
-      - "-scheme"
-      - "http"
-      - "-host"
-      - "0.0.0.0"
-      - "-port"
-      - "4443"
-      - "-backend"
-      - "memory"
-      - "-external-url"
-      - "http://localhost:4443"
-    ports:
-      - "4443:4443"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4443/storage/v1/b?project=fake"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   sftp:
     image: lscr.io/linuxserver/openssh-server:latest
     ports:
@@ -54,27 +33,3 @@ services:
       PASSWORD_ACCESS: "true"
       SUDO_ACCESS: "false"
       LOG_STDOUT: "true"
-
-  ftp:
-    image: filesystem-ftp:latest
-    build:
-      context: ./containers/ftp
-    restart: unless-stopped
-    environment:
-      FTP_USER_UID: 1000
-      FTP_USER_GID: 1000
-      FTP_USER_NAME: ftpuser
-      FTP_USER_PASS: ftppass
-      FTP_USER_HOME: '/home/ftpuser/'
-      FTP_MAX_CLIENTS: 25
-      FTP_PASSIVE_PORTS: '30000:30049'
-      PUBLICHOST: 127.0.0.1
-      TZ: ${TZ:-US/Central}
-    ports:
-      - 0.0.0.0:2121:21
-      - 0.0.0.0:30000-30049:30000-30049
-    volumes:
-      - ftp-data:/home/ftpuser
-
-volumes:
-  ftp-data:

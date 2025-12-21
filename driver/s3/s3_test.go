@@ -22,7 +22,7 @@ func TestS3DriverWithFakeS3(t *testing.T) {
 	fake := gofakes3.New(s3mem.New())
 	server := fakeServer(t, fake)
 	if server == nil {
-		t.Skip("unable to start fake s3 server")
+		t.Fatalf("unable to start fake s3 server")
 	}
 
 	cfg := filesystem.Config{
@@ -54,7 +54,7 @@ func fakeServer(t *testing.T, fake *gofakes3.GoFakeS3) *httptest.Server {
 	t.Helper()
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		return nil
+		t.Fatalf("failed to listen for fake s3: %v", err)
 	}
 	ts := httptest.NewUnstartedServer(fake.Server())
 	ts.Listener = ln
@@ -72,11 +72,11 @@ func ensureBucket(t *testing.T, endpoint, bucket string) {
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("access", "secret", "")),
 	)
 	if err != nil {
-		t.Skipf("skipping fake s3 bucket setup: %v", err)
+		t.Fatalf("fake s3 bucket setup failed: %v", err)
 	}
 	awsS3 := s3.NewFromConfig(awsCfg, func(o *s3.Options) { o.UsePathStyle = true })
 	_, err = awsS3.CreateBucket(context.Background(), &s3.CreateBucketInput{Bucket: aws.String(bucket)})
 	if err != nil {
-		t.Skipf("skipping fake s3 bucket setup: %v", err)
+		t.Fatalf("fake s3 bucket creation failed: %v", err)
 	}
 }

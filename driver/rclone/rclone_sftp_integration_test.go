@@ -5,7 +5,6 @@ package rclone
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/goforj/filesystem"
@@ -47,9 +46,6 @@ func TestRcloneSFTPIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	if err := fs.Put(ctx, "folder/file.txt", []byte("hello")); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "permission denied") {
-			t.Skipf("skipping sftp integration (permission denied): %v", err)
-		}
 		t.Fatalf("put: %v", err)
 	}
 	data, err := fs.Get(ctx, "folder/file.txt")
