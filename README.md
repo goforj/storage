@@ -132,7 +132,10 @@ func main() {
 | dropbox    | Dropbox via official SDK                                | Uses temporary links for URL            |
 | rclone     | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
 
-### Rclone backends (compiled in)
+### Rclone Backends
+
+See [rclone docs](https://rclone.org/overview/) for full details. Supported backends include:
+
 | **Backend** | Notes |
 |------------:|-------|
 | amazonclouddrive | Amazon Cloud Drive |
