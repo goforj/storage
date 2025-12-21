@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-    An opinionated, testable filesystem abstraction for Go - native drivers where you want control, rclone where you want breadth.
+    An opinionated, testable filesystem abstraction for Go - native drivers where you want control, optional rclone (via add-on) where you want breadth.
 </p>
 
 <p align="center">
@@ -54,7 +54,7 @@ go get github.com/goforj/filesystem
 
 ## Config & Usage
 
-Use typed disk names and declare drivers explicitly. Rclone can be configured inline (in-memory) or via a path; env-defined remotes work too.
+Use typed disk names and declare drivers explicitly. Rclone now lives in the add-on module (`github.com/goforj/filesystem-rclone`) and can be configured inline (in-memory) or via a path; env-defined remotes work too.
 
 ```go
 package main
@@ -64,7 +64,7 @@ import (
     "log"
 
     "github.com/goforj/filesystem"
-    _ "github.com/goforj/filesystem/driver/rclone"
+    _ "github.com/goforj/filesystem-rclone/driver/rclone"
     _ "github.com/goforj/filesystem/driver/s3"
     _ "github.com/goforj/filesystem/driver/local"
 )
@@ -130,9 +130,9 @@ func main() {
 | **sftp**   | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
 | **ftp**    | FTP via [jlaffaye/ftp](https://github.com/jlaffaye/ftp) | TLS optional; URL unsupported           |
 | **dropbox**| Dropbox via official SDK                                | Uses temporary links for URL            |
-| **rclone** | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
+| **rclone** | All rclone backends (imports `backend/all`) via add-on `github.com/goforj/filesystem-rclone` | Config is process-scoped                |
 
-### Rclone Backends
+### Rclone Backends (add-on)
 
 See [rclone docs](https://rclone.org/overview/) for full details. Supported backends include:
 
@@ -333,7 +333,7 @@ _ = fs.Put(ctx, "file.txt", []byte("hello"))
 
 ### Rclone (any backend)
 ```go
-_ "github.com/goforj/filesystem/driver/rclone"
+_ "github.com/goforj/filesystem-rclone/driver/rclone"
 
 const inline = `
 [myremote]
@@ -372,7 +372,7 @@ export RCLONE_CONFIG_ENVREMOTE_ENDPOINT=http://localhost:4566
 ```
 
 ```go
-_ "github.com/goforj/filesystem/driver/rclone"
+_ "github.com/goforj/filesystem-rclone/driver/rclone"
 
 cfg := filesystem.Config{
     Default: "rclone",
@@ -400,7 +400,6 @@ _ = fs.Put(ctx, "file.txt", []byte("hello"))
     - GCS (fake-gcs-server): `INTEGRATION_GCS_ENDPOINT=http://localhost:4443`, bucket `gcs-integration`
     - SFTP: `127.0.0.1:2222` user `fsuser`, pass `pass`
     - FTP: `127.0.0.1:2121` user `fsuser`, pass `fspass` (PASV 30000-30009)
-    - Rclone integration uses the same MinIO endpoint via inline config
 - Localstack rclone S3 test remains opt-in via `RUN_LOCALSTACK_S3=1`.
 
 ## Notes
