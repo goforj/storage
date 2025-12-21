@@ -1,15 +1,13 @@
 <p align="center">
-  <img src="./docs/images/logo.png?v=2" width="400" alt="str logo">
+  <img src="./docs/images/logo.png?v=2" width="400" alt="filesystem logo">
 </p>
 
 <p align="center">
-    A small, opinionated filesystem abstraction for Go —
-    unified APIs across S3, GCS, SFTP, FTP, Dropbox, local filesystems,
-    and every rclone backend, without leaking driver complexity.
+    An opinionated, testable filesystem abstraction for Go — native drivers where you want control, rclone where you want breadth.
 </p>
 
 <p align="center">
-    Testable. Explicit. Minimal surface area. No magic globals.
+    Testable. Explicit. Minimal surface area.
 </p>
 
 
@@ -28,15 +26,9 @@
 
 ## What is this?
 
-> Think “Laravel filesystem”, but Go-native, explicit, testable, and without magic.
+> Think “Laravel filesystem”, but Go-native, explicit, and testable.
 
-An opinionated filesystem abstraction for Go that gives you a **single, tiny API**
-over many storage backends — without forcing you into a leaky lowest-common-denominator.
-
-You declare disks explicitly, choose drivers deliberately, and interact through
-a minimal set of operations that map cleanly to real storage systems.
-
-The core API is intentionally small and stable:
+A tiny, stable API over multiple storage backends:
 
 ```go
 Get(ctx, path) ([]byte, error)
@@ -47,11 +39,10 @@ List(ctx, path) ([]Entry, error)
 URL(ctx, path) (string, error)
 ```
 
-Unlike generic virtual filesystems, this package optimizes for:
-- **Explicit configuration** over implicit globals
-- **Testability** (embedded servers, hermetic drivers)
-- **Predictable errors** using sentinels (`errors.Is`)
-- **Maximum backend coverage** via rclone, without shelling out
+- Native SDK drivers for control and performance.
+- Rclone driver for breadth and hardened auth flows.
+- Predictable errors via `errors.Is` (`ErrNotFound`, `ErrForbidden`, `ErrUnsupported`).
+- Prefix handling is normalized and traversal-safe.
 
 ## Install
 
