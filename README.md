@@ -358,6 +358,35 @@ ctx := context.Background()
 _ = fs.Put(ctx, "file.txt", []byte("hello"))
 ```
 
+### Rclone (env-only remote)
+Environment variables can define a remote without inline or path config. Rclone reads `RCLONE_CONFIG_<REMOTE>_<KEY>` where `<REMOTE>` is uppercased and `<KEY>` matches the backend option. Common S3 keys: `TYPE`, `PROVIDER`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, `FORCE_PATH_STYLE`. Consult the rclone backend docs for additional keys.
+
+```bash
+export RCLONE_CONFIG_ENVREMOTE_TYPE=s3
+export RCLONE_CONFIG_ENVREMOTE_PROVIDER=AWS
+export RCLONE_CONFIG_ENVREMOTE_ACCESS_KEY_ID=ACCESS
+export RCLONE_CONFIG_ENVREMOTE_SECRET_ACCESS_KEY=SECRET
+export RCLONE_CONFIG_ENVREMOTE_REGION=us-east-1
+export RCLONE_CONFIG_ENVREMOTE_FORCE_PATH_STYLE=true
+export RCLONE_CONFIG_ENVREMOTE_ENDPOINT=http://localhost:4566
+```
+
+```go
+_ "github.com/goforj/filesystem/driver/rclone"
+
+cfg := filesystem.Config{
+    Default: "rclone",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "rclone": {Driver: "rclone", Remote: "envremote:bucket", Prefix: "sandbox"},
+    },
+    // RcloneConfigData/Path omitted; env values define the remote
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("rclone")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
 ## Rclone Config Sources
 - **Inline (in-memory):** set `RcloneConfigData`; first init wins process-wide.
 - **Path:** set `RcloneConfigPath`; do not combine with inline.
