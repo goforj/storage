@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-    An opinionated, testable filesystem abstraction for Go — native drivers where you want control, rclone where you want breadth.
+    An opinionated, testable filesystem abstraction for Go - native drivers where you want control, rclone where you want breadth.
 </p>
 
 <p align="center">
@@ -123,79 +123,240 @@ func main() {
 ## Drivers
 
 | **Driver** | Description                                             | Notes                                   |
-|-----------:|---------------------------------------------------------|-----------------------------------------|
-| local      | Local filesystem rooted at `Remote`                     | Prefix-scoped, traversal-safe           |
-| s3         | AWS S3 (+ compatibles) via AWS SDK v2                   | Path-style optional; presigned URLs     |
-| gcs        | Google Cloud Storage via cloud.google.com/go/storage    | Signed URLs; minimal metadata in `Put`  |
-| sftp       | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
-| ftp        | FTP via jlaffaye/ftp                                    | TLS optional; URL unsupported           |
-| dropbox    | Dropbox via official SDK                                | Uses temporary links for URL            |
-| rclone     | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
+|:----------:|---------------------------------------------------------|-----------------------------------------|
+| **local**  | Local filesystem rooted at `Remote`                     | Prefix-scoped, traversal-safe           |
+| **s3**     | AWS S3 (+ compatibles) via AWS SDK v2                   | Path-style optional; presigned URLs     |
+| **gcs**    | Google Cloud Storage via cloud.google.com/go/storage    | Signed URLs; minimal metadata in `Put`  |
+| **sftp**   | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
+| **ftp**    | FTP via [jlaffaye/ftp](https://github.com/jlaffaye/ftp) | TLS optional; URL unsupported           |
+| **dropbox**| Dropbox via official SDK                                | Uses temporary links for URL            |
+| **rclone** | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
 
 ### Rclone Backends
 
 See [rclone docs](https://rclone.org/overview/) for full details. Supported backends include:
 
 | **Backend** | Notes |
-|------------:|-------|
-| amazonclouddrive | Amazon Cloud Drive |
-| azureblob | Microsoft Azure Blob |
-| azurefiles | Microsoft Azure Files |
-| b2 | Backblaze B2 |
-| box | Box |
-| cache | Cache a remote |
-| chunker | Transparently chunk/split large files |
-| combine | Combine several remotes into one |
-| compress | Compress a remote |
-| crypt | Encrypt/decrypt a remote |
-| drive | Google Drive |
-| dropbox | Dropbox |
-| fichier | 1Fichier |
-| filefabric | Enterprise File Fabric |
-| filescom | Files.com |
-| ftp | FTP |
-| gcs | Google Cloud Storage (not Drive) |
-| gphotos | Google Photos |
-| gofile | Gofile |
-| hasher | Better checksums for other remotes |
-| hdfs | Hadoop distributed file system |
-| hidrive | HiDrive |
-| http | HTTP |
-| imagekit | ImageKit.io |
-| internetarchive | Internet Archive |
-| jottacloud | Jottacloud |
-| koofr | Koofr and compatibles |
-| linkbox | Linkbox |
-| local | Local disk |
-| mailru | Mail.ru Cloud |
-| mega | Mega |
-| memory | In-memory object storage |
-| netstorage | Akamai NetStorage |
-| oos | Oracle Object Storage |
-| onedrive | Microsoft OneDrive |
-| opendrive | OpenDrive |
-| pcloud | Pcloud |
-| pikpak | PikPak |
-| pixeldrain | Pixeldrain |
-| premiumizeme | premiumize.me |
-| protondrive | Proton Drive |
-| putio | Put.io |
-| qingstor | QingCloud Object Storage |
-| quatrix | Quatrix by Maytech |
-| s3 | Amazon S3-compatible providers |
-| seafile | Seafile |
-| sftp | SSH/SFTP |
-| sia | Sia Decentralized Cloud |
-| smb | SMB / CIFS |
-| storj / tardigrade | Storj Decentralized Cloud Storage |
-| sugarsync | Sugarsync |
-| swift | OpenStack Swift |
-| ulozto | Uloz.to |
-| union | Union of multiple remotes |
-| uptobox | Uptobox |
-| webdav | WebDAV |
-| yandex | Yandex Disk |
-| zoho | Zoho |
+|:-----------:|-------|
+| **amazonclouddrive** | Amazon Cloud Drive |
+| **azureblob** | Microsoft Azure Blob |
+| **azurefiles** | Microsoft Azure Files |
+| **b2** | Backblaze B2 |
+| **box** | Box |
+| **cache** | Cache a remote |
+| **chunker** | Transparently chunk/split large files |
+| **combine** | Combine several remotes into one |
+| **compress** | Compress a remote |
+| **crypt** | Encrypt/decrypt a remote |
+| **drive** | Google Drive |
+| **dropbox** | Dropbox |
+| **fichier** | 1Fichier |
+| **filefabric** | Enterprise File Fabric |
+| **filescom** | Files.com |
+| **ftp** | FTP |
+| **gcs** | Google Cloud Storage (not Drive) |
+| **gphotos** | Google Photos |
+| **gofile** | Gofile |
+| **hasher** | Better checksums for other remotes |
+| **hdfs** | Hadoop distributed file system |
+| **hidrive** | HiDrive |
+| **http** | HTTP |
+| **imagekit** | ImageKit.io |
+| **internetarchive** | Internet Archive |
+| **jottacloud** | Jottacloud |
+| **koofr** | Koofr and compatibles |
+| **linkbox** | Linkbox |
+| **local** | Local disk |
+| **mailru** | Mail.ru Cloud |
+| **mega** | Mega |
+| **memory** | In-memory object storage |
+| **netstorage** | Akamai NetStorage |
+| **oos** | Oracle Object Storage |
+| **onedrive** | Microsoft OneDrive |
+| **opendrive** | OpenDrive |
+| **pcloud** | Pcloud |
+| **pikpak** | PikPak |
+| **pixeldrain** | Pixeldrain |
+| **premiumizeme** | premiumize.me |
+| **protondrive** | Proton Drive |
+| **putio** | Put.io |
+| **qingstor** | QingCloud Object Storage |
+| **quatrix** | Quatrix by Maytech |
+| **s3** | Amazon S3-compatible providers |
+| **seafile** | Seafile |
+| **sftp** | SSH/SFTP |
+| **sia** | Sia Decentralized Cloud |
+| **smb** | SMB / CIFS |
+| **storj / tardigrade** | Storj Decentralized Cloud Storage |
+| **sugarsync** | Sugarsync |
+| **swift** | OpenStack Swift |
+| **ulozto** | Uloz.to |
+| **union** | Union of multiple remotes |
+| **uptobox** | Uptobox |
+| **webdav** | WebDAV |
+| **yandex** | Yandex Disk |
+| **zoho** | Zoho |
+
+## Driver usage examples
+
+Minimal snippets for each driver (replace credentials/hosts as needed):
+
+### Local
+```go
+_ "github.com/goforj/filesystem/driver/local"
+
+cfg := filesystem.Config{
+    Default: "local",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "local": {Driver: "local", Remote: "/tmp/storage", Prefix: "sandbox"},
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("local")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
+### S3 (native)
+```go
+_ "github.com/goforj/filesystem/driver/s3"
+
+cfg := filesystem.Config{
+    Default: "s3",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "s3": {
+            Driver:            "s3",
+            S3Bucket:          "bucket",
+            S3Region:          "us-east-1",
+            S3Endpoint:        "http://localhost:4566",
+            S3AccessKeyID:     "ACCESS",
+            S3SecretAccessKey: "SECRET",
+            S3UsePathStyle:    true,
+            Prefix:            "sandbox",
+        },
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("s3")
+ctx := context.Background()
+_ = fs.Put(ctx, "folder/file.txt", []byte("hello"))
+```
+
+### GCS (native)
+```go
+_ "github.com/goforj/filesystem/driver/gcs"
+
+cfg := filesystem.Config{
+    Default: "gcs",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "gcs": {
+            Driver:             "gcs",
+            GCSBucket:          "bucket",
+            GCSCredentialsJSON: os.Getenv("GCS_CREDS_JSON"),
+            Prefix:             "sandbox",
+        },
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("gcs")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
+### SFTP (native)
+```go
+_ "github.com/goforj/filesystem/driver/sftp"
+
+cfg := filesystem.Config{
+    Default: "sftp",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "sftp": {
+            Driver:                   "sftp",
+            SFTPHost:                 "sftp.example.com",
+            SFTPPort:                 22,
+            SFTPUser:                 "user",
+            SFTPPassword:             "pass",
+            Prefix:                   "sandbox",
+            SFTPInsecureIgnoreHostKey: true, // or provide known_hosts
+        },
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("sftp")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
+### FTP (native)
+```go
+_ "github.com/goforj/filesystem/driver/ftp"
+
+cfg := filesystem.Config{
+    Default: "ftp",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "ftp": {
+            Driver:      "ftp",
+            FTPHost:     "127.0.0.1",
+            FTPPort:     21,
+            FTPUser:     "anonymous",
+            FTPPassword: "anonymous",
+            Prefix:      "sandbox",
+            FTPTLS:      false,
+        },
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("ftp")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
+### Dropbox (native)
+```go
+_ "github.com/goforj/filesystem/driver/dropbox"
+
+cfg := filesystem.Config{
+    Default: "dropbox",
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "dropbox": {
+            Driver:       "dropbox",
+            DropboxToken: "TOKEN",
+            Prefix:       "sandbox",
+        },
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("dropbox")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
+
+### Rclone (any backend)
+```go
+_ "github.com/goforj/filesystem/driver/rclone"
+
+const inline = `
+[myremote]
+type = s3
+provider = AWS
+access_key_id = ACCESS
+secret_access_key = SECRET
+region = us-east-1
+force_path_style = true
+endpoint = http://localhost:4566
+`
+cfg := filesystem.Config{
+    Default:          "rclone",
+    RcloneConfigData: inline, // or RcloneConfigPath, or env-only remotes
+    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
+        "rclone": {Driver: "rclone", Remote: "myremote:bucket", Prefix: "sandbox"},
+    },
+}
+mgr, _ := filesystem.New(cfg)
+fs, _ := mgr.Disk("rclone")
+ctx := context.Background()
+_ = fs.Put(ctx, "file.txt", []byte("hello"))
+```
 
 ## Rclone Config Sources
 - **Inline (in-memory):** set `RcloneConfigData`; first init wins process-wide.
