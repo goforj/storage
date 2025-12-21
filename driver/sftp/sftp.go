@@ -25,6 +25,12 @@ type Driver struct {
 	prefix string
 }
 
+// New constructs an SFTP-backed filesystem using ssh and pkg/sftp.
+// @group Drivers
+//
+// Example: sftp driver
+//
+//	fs, _ := sftpdriver.New(context.Background(), filesystem.DiskConfig{Driver: "sftp", SFTPHost: "localhost", SFTPUser: "user", SFTPPassword: "pass"}, filesystem.Config{})
 func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.SFTPHost == "" {
 		return nil, fmt.Errorf("filesystem: sftp driver requires SFTPHost")

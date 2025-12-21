@@ -42,6 +42,12 @@ type s3PresignAPI interface {
 	PresignGetObject(context.Context, *s3.GetObjectInput, ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
+// New constructs an s3-backed filesystem using AWS SDK v2.
+// @group Drivers
+//
+// Example: s3 driver
+//
+//	fs, _ := s3driver.New(context.Background(), filesystem.DiskConfig{Driver: "s3", S3Bucket: "bucket", S3Region: "us-east-1"}, filesystem.Config{})
 func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.S3Bucket == "" {
 		return nil, fmt.Errorf("filesystem: s3 driver requires S3Bucket")

@@ -32,6 +32,12 @@ type dropboxClient interface {
 	GetTemporaryLink(*files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error)
 }
 
+// New constructs a Dropbox-backed filesystem using the official SDK.
+// @group Drivers
+//
+// Example: dropbox driver
+//
+//	fs, _ := dropboxdriver.New(context.Background(), filesystem.DiskConfig{Driver: "dropbox", DropboxToken: "token"}, filesystem.Config{})
 func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.DropboxToken == "" {
 		return nil, fmt.Errorf("filesystem: dropbox driver requires DropboxToken")

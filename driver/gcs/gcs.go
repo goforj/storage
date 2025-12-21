@@ -25,6 +25,12 @@ type Driver struct {
 	prefix string
 }
 
+// New constructs a GCS-backed filesystem using cloud.google.com/go/storage.
+// @group Drivers
+//
+// Example: gcs driver
+//
+//	fs, _ := gcsdriver.New(context.Background(), filesystem.DiskConfig{Driver: "gcs", GCSBucket: "bucket"}, filesystem.Config{})
 func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.GCSBucket == "" {
 		return nil, fmt.Errorf("filesystem: gcs driver requires GCSBucket")

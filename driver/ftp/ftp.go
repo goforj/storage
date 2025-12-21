@@ -28,6 +28,12 @@ type Driver struct {
 	insecure bool
 }
 
+// New constructs an FTP-backed filesystem using jlaffaye/ftp.
+// @group Drivers
+//
+// Example: ftp driver
+//
+//	fs, _ := ftpdriver.New(context.Background(), filesystem.DiskConfig{Driver: "ftp", FTPHost: "127.0.0.1", FTPUser: "anonymous"}, filesystem.Config{})
 func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
 	if cfg.FTPHost == "" {
 		return nil, fmt.Errorf("filesystem: ftp requires FTPHost")
