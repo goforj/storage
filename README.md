@@ -133,7 +133,66 @@ func main() {
 | rclone     | All rclone backends (imports `backend/all`)             | Config is process-scoped                |
 
 ### Rclone backends (compiled in)
-Alias, Amazon Cloud Drive, Azure Blob, Backblaze B2, Box, Cache, Chunker, Combine, Compress, Crypt, Drive, Dropbox, Fichier, Filefabric, FTP, Google Cloud Storage, Google Photos, Hasher, HDFS, HiDrive, HTTP, Internet Archive, Jottacloud, Koofr, Local, Mailru, Mega, Memory, NetStorage, OneDrive, OpenDrive, Oracle Object Storage, Pcloud, PremiumizeMe, Putio, QingStor, S3, Seafile, SFTP, Sharefile, Sia, SMB, Storj, Sugarsync, Swift, Union, Uptobox, WebDAV, Yandex, Zoho.
+| **Backend** | Notes |
+|------------:|-------|
+| amazonclouddrive | Amazon Cloud Drive |
+| azureblob | Microsoft Azure Blob |
+| azurefiles | Microsoft Azure Files |
+| b2 | Backblaze B2 |
+| box | Box |
+| cache | Cache a remote |
+| chunker | Transparently chunk/split large files |
+| combine | Combine several remotes into one |
+| compress | Compress a remote |
+| crypt | Encrypt/decrypt a remote |
+| drive | Google Drive |
+| dropbox | Dropbox |
+| fichier | 1Fichier |
+| filefabric | Enterprise File Fabric |
+| filescom | Files.com |
+| ftp | FTP |
+| gcs | Google Cloud Storage (not Drive) |
+| gphotos | Google Photos |
+| gofile | Gofile |
+| hasher | Better checksums for other remotes |
+| hdfs | Hadoop distributed file system |
+| hidrive | HiDrive |
+| http | HTTP |
+| imagekit | ImageKit.io |
+| internetarchive | Internet Archive |
+| jottacloud | Jottacloud |
+| koofr | Koofr and compatibles |
+| linkbox | Linkbox |
+| local | Local disk |
+| mailru | Mail.ru Cloud |
+| mega | Mega |
+| memory | In-memory object storage |
+| netstorage | Akamai NetStorage |
+| oos | Oracle Object Storage |
+| onedrive | Microsoft OneDrive |
+| opendrive | OpenDrive |
+| pcloud | Pcloud |
+| pikpak | PikPak |
+| pixeldrain | Pixeldrain |
+| premiumizeme | premiumize.me |
+| protondrive | Proton Drive |
+| putio | Put.io |
+| qingstor | QingCloud Object Storage |
+| quatrix | Quatrix by Maytech |
+| s3 | Amazon S3-compatible providers |
+| seafile | Seafile |
+| sftp | SSH/SFTP |
+| sia | Sia Decentralized Cloud |
+| smb | SMB / CIFS |
+| storj / tardigrade | Storj Decentralized Cloud Storage |
+| sugarsync | Sugarsync |
+| swift | OpenStack Swift |
+| ulozto | Uloz.to |
+| union | Union of multiple remotes |
+| uptobox | Uptobox |
+| webdav | WebDAV |
+| yandex | Yandex Disk |
+| zoho | Zoho |
 
 ## Rclone Config Sources
 - **Inline (in-memory):** set `RcloneConfigData`; first init wins process-wide.
