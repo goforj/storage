@@ -123,7 +123,7 @@ func main() {
 ## Drivers
 
 | **Driver** | Description                                             | Notes                                   |
-|:----------:|---------------------------------------------------------|-----------------------------------------|
+|------:|---------------------------------------------------------|-----------------------------------------|
 | **local**  | Local filesystem rooted at `Remote`                     | Prefix-scoped, traversal-safe           |
 | **s3**     | AWS S3 (+ compatibles) via AWS SDK v2                   | Path-style optional; presigned URLs     |
 | **gcs**    | Google Cloud Storage via cloud.google.com/go/storage    | Signed URLs; minimal metadata in `Put`  |
@@ -137,7 +137,7 @@ func main() {
 See [rclone docs](https://rclone.org/overview/) for full details. Supported backends include:
 
 | **Backend** | Notes |
-|:-----------:|-------|
+|-----------:|-------|
 | **amazonclouddrive** | Amazon Cloud Drive |
 | **azureblob** | Microsoft Azure Blob |
 | **azurefiles** | Microsoft Azure Files |
@@ -402,4 +402,3 @@ _ = fs.Put(ctx, "file.txt", []byte("hello"))
 - Prefixes are normalized and guard against traversal.
 - Public URLs may be unsupported depending on driver; check for `ErrUnsupported`.
 - Rclone config is process-scoped; inline avoids temp files, path uses the given file.
-
