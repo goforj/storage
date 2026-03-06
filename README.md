@@ -71,13 +71,14 @@ Choose the construction style that fits your application:
 - Use `storage.Build(...)` when you want one backend through the shared `storage` API.
 - Use `storage.New(...)` when you want multiple named disks managed from config.
 
+All storage operations also expose `*Context` equivalents for deadlines and cancellation. The default methods use `context.Background()`.
+
 ### Manager and named disks
 
 ```go
 package main
 
 import (
-    "context"
     "log"
 
     "github.com/goforj/storage"
@@ -116,12 +117,12 @@ func main() {
     }
 
     // Put a file into the disk.
-    if err := disk.Put(context.Background(), "hello.txt", []byte("hello")); err != nil {
+    if err := disk.Put("hello.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
 
     // Read the file back.
-    data, err := disk.Get(context.Background(), "hello.txt")
+    data, err := disk.Get("hello.txt")
     if err != nil {
         log.Fatal(err)
     }
@@ -136,7 +137,6 @@ func main() {
 package main
 
 import (
-    "context"
     "log"
 
     "github.com/goforj/storage"
@@ -145,7 +145,7 @@ import (
 
 func main() {
     // Build a single storage disk from typed config.
-    disk, err := storage.Build(context.Background(), localstorage.Config{
+    disk, err := storage.Build(localstorage.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
     })
@@ -154,12 +154,12 @@ func main() {
     }
 
     // Put a file.
-    if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
+    if err := disk.Put("build.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
 
     // List files at the disk root.
-    entries, err := disk.List(context.Background(), "")
+    entries, err := disk.List("")
     if err != nil {
         log.Fatal(err)
     }
@@ -174,7 +174,6 @@ func main() {
 package main
 
 import (
-    "context"
     "fmt"
     "log"
 
@@ -183,7 +182,7 @@ import (
 )
 
 func main() {
-    disk, err := storage.Build(context.Background(), localstorage.Config{
+    disk, err := storage.Build(localstorage.Config{
         Remote: "/tmp/storage",
     })
     if err != nil {
@@ -191,12 +190,12 @@ func main() {
     }
 
     // Put a file.
-    if err := disk.Put(context.Background(), "docs/readme.txt", []byte("hello")); err != nil {
+    if err := disk.Put("docs/readme.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
 
     // Check whether the file exists.
-    ok, err := disk.Exists(context.Background(), "docs/readme.txt")
+    ok, err := disk.Exists("docs/readme.txt")
     if err != nil {
         log.Fatal(err)
     }
@@ -204,7 +203,7 @@ func main() {
     // Output: true
 
     // Read the file back.
-    data, err := disk.Get(context.Background(), "docs/readme.txt")
+    data, err := disk.Get("docs/readme.txt")
     if err != nil {
         log.Fatal(err)
     }
@@ -212,7 +211,7 @@ func main() {
     // Output: hello
 
     // List the parent directory.
-    entries, err := disk.List(context.Background(), "docs")
+    entries, err := disk.List("docs")
     if err != nil {
         log.Fatal(err)
     }
@@ -220,7 +219,7 @@ func main() {
     // Output: docs/readme.txt
 
     // Delete the file.
-    if err := disk.Delete(context.Background(), "docs/readme.txt"); err != nil {
+    if err := disk.Delete("docs/readme.txt"); err != nil {
         log.Fatal(err)
     }
 }
@@ -232,7 +231,6 @@ func main() {
 package main
 
 import (
-    "context"
     "errors"
     "fmt"
     "log"
@@ -242,14 +240,14 @@ import (
 )
 
 func main() {
-    disk, err := storage.Build(context.Background(), localstorage.Config{
+    disk, err := storage.Build(localstorage.Config{
         Remote: "/tmp/storage",
     })
     if err != nil {
         log.Fatal(err)
     }
 
-    url, err := disk.URL(context.Background(), "docs/readme.txt")
+    url, err := disk.URL("docs/readme.txt")
     switch {
     case err == nil:
         fmt.Println(url)
@@ -268,7 +266,6 @@ func main() {
 package main
 
 import (
-    "context"
     "log"
 
     "github.com/goforj/storage/driver/localstorage"
@@ -276,7 +273,7 @@ import (
 
 func main() {
     // Construct a driver directly.
-    disk, err := localstorage.New(context.Background(), localstorage.Config{
+    disk, err := localstorage.New(localstorage.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
     })
@@ -285,12 +282,12 @@ func main() {
     }
 
     // Put a file.
-    if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
+    if err := disk.Put("build.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
 
     // Read the file back.
-    data, err := disk.Get(context.Background(), "build.txt")
+    data, err := disk.Get("build.txt")
     if err != nil {
         log.Fatal(err)
     }
@@ -307,7 +304,6 @@ Use `rclonestorage` when you want to access rclone-backed remotes through the `s
 package main
 
 import (
-    "context"
     "log"
 
     "github.com/goforj/storage/driver/rclonestorage"
@@ -320,7 +316,7 @@ type = local
 
 func main() {
     // Build an rclone-backed disk from inline rclone config.
-    disk, err := rclonestorage.New(context.Background(), rclonestorage.Config{
+    disk, err := rclonestorage.New(rclonestorage.Config{
         Remote:           "localdisk:/tmp/storage",
         Prefix:           "sandbox",
         RcloneConfigData: rcloneConfig,
@@ -330,12 +326,12 @@ func main() {
     }
 
     // Put a file through rclone.
-    if err := disk.Put(context.Background(), "rclone.txt", []byte("hello")); err != nil {
+    if err := disk.Put("rclone.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
 
     // List files from the disk root.
-    entries, err := disk.List(context.Background(), "")
+    entries, err := disk.List("")
     if err != nil {
         log.Fatal(err)
     }
@@ -360,6 +356,7 @@ The API section below is autogenerated; do not edit between the markers.
 |------:|-----------|
 | **Config** | [rclonestorage.LocalRemote](#rclonestorage-localremote) [rclonestorage.MustRenderLocal](#rclonestorage-mustrenderlocal) [rclonestorage.MustRenderS3](#rclonestorage-mustrenders3) [rclonestorage.RenderLocal](#rclonestorage-renderlocal) [rclonestorage.RenderS3](#rclonestorage-renders3) [rclonestorage.S3Remote](#rclonestorage-s3remote) |
 | **Construction** | [Build](#build) [DriverConfig](#driverconfig) [DriverFactory](#driverfactory) [ResolvedConfig](#resolvedconfig) |
+| **Context** | [BuildContext](#buildcontext) [ContextStorage](#contextstorage) [ContextStorage.DeleteContext](#contextstorage-deletecontext) [ContextStorage.ExistsContext](#contextstorage-existscontext) [ContextStorage.GetContext](#contextstorage-getcontext) [ContextStorage.ListContext](#contextstorage-listcontext) [ContextStorage.PutContext](#contextstorage-putcontext) [ContextStorage.URLContext](#contextstorage-urlcontext) [ContextStorage.WalkContext](#contextstorage-walkcontext) |
 | **Core** | [DiskName](#diskname) [Entry](#entry) [Storage](#storage) [Storage.Delete](#storage-delete) [Storage.Exists](#storage-exists) [Storage.Get](#storage-get) [Storage.List](#storage-list) [Storage.Put](#storage-put) [Storage.URL](#storage-url) [Storage.Walk](#storage-walk) |
 | **Driver Config** | [dropboxstorage.Config](#dropboxstorage-config) [ftpstorage.Config](#ftpstorage-config) [gcsstorage.Config](#gcsstorage-config) [localstorage.Config](#localstorage-config) [rclonestorage.Config](#rclonestorage-config) [s3storage.Config](#s3storage-config) [sftpstorage.Config](#sftpstorage-config) |
 | **Driver Constructors** | [dropboxstorage.New](#dropboxstorage-new) [ftpstorage.New](#ftpstorage-new) [gcsstorage.New](#gcsstorage-new) [localstorage.New](#localstorage-new) [rclonestorage.New](#rclonestorage-new) [s3storage.New](#s3storage-new) [sftpstorage.New](#sftpstorage-new) |
@@ -500,7 +497,7 @@ Build constructs a single storage backend from a typed driver config without
 a Manager.
 
 ```go
-fs, _ := storage.Build(context.Background(), localstorage.Config{
+fs, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-example",
 	Prefix: "assets",
 })
@@ -542,6 +539,61 @@ factory := storage.DriverFactory(func(ctx context.Context, cfg storage.ResolvedC
 
 _, _ = factory(context.Background(), storage.ResolvedConfig{Driver: "memory"})
 ```
+
+## Context
+
+### <a id="buildcontext"></a>BuildContext
+
+BuildContext constructs a single storage backend from a typed driver config
+using the caller-provided context.
+
+### <a id="contextstorage"></a>ContextStorage
+
+ContextStorage exposes context-aware storage operations for cancellation and deadlines.
+Use Storage for the common path and type-assert to ContextStorage when you need caller-provided context.
+
+### <a id="contextstorage-deletecontext"></a>ContextStorage.DeleteContext
+
+DeleteContext removes the object at path using the caller-provided context.
+
+### <a id="contextstorage-existscontext"></a>ContextStorage.ExistsContext
+
+ExistsContext reports whether an object exists at path using the caller-provided context.
+
+### <a id="contextstorage-getcontext"></a>ContextStorage.GetContext
+
+GetContext reads the object at path using the caller-provided context.
+
+```go
+disk, _ := storage.Build(localstorage.Config{
+	Remote: "/tmp/storage-get-context",
+})
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+
+ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+defer cancel()
+
+cs := disk.(storage.ContextStorage)
+data, _ := cs.GetContext(ctx, "docs/readme.txt")
+fmt.Println(string(data))
+// Output: hello
+```
+
+### <a id="contextstorage-listcontext"></a>ContextStorage.ListContext
+
+ListContext returns the immediate children under path using the caller-provided context.
+
+### <a id="contextstorage-putcontext"></a>ContextStorage.PutContext
+
+PutContext writes an object at path using the caller-provided context.
+
+### <a id="contextstorage-urlcontext"></a>ContextStorage.URLContext
+
+URLContext returns a usable access URL using the caller-provided context.
+
+### <a id="contextstorage-walkcontext"></a>ContextStorage.WalkContext
+
+WalkContext visits entries recursively using the caller-provided context.
 
 ## Core
 
@@ -587,7 +639,7 @@ Semantics:
 
 ```go
 var disk storage.Storage
-disk, _ = storage.Build(context.Background(), localstorage.Config{
+disk, _ = storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-interface",
 })
 ```
@@ -597,13 +649,13 @@ disk, _ = storage.Build(context.Background(), localstorage.Config{
 Delete removes the object at path.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-delete",
 })
-_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
-_ = disk.Delete(context.Background(), "docs/readme.txt")
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+_ = disk.Delete("docs/readme.txt")
 
-ok, _ := disk.Exists(context.Background(), "docs/readme.txt")
+ok, _ := disk.Exists("docs/readme.txt")
 fmt.Println(ok)
 // Output: false
 ```
@@ -613,12 +665,12 @@ fmt.Println(ok)
 Exists reports whether an object exists at path.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-exists",
 })
-_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+_ = disk.Put("docs/readme.txt", []byte("hello"))
 
-ok, _ := disk.Exists(context.Background(), "docs/readme.txt")
+ok, _ := disk.Exists("docs/readme.txt")
 fmt.Println(ok)
 // Output: true
 ```
@@ -628,12 +680,12 @@ fmt.Println(ok)
 Get reads the object at path.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-get",
 })
-_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+_ = disk.Put("docs/readme.txt", []byte("hello"))
 
-data, _ := disk.Get(context.Background(), "docs/readme.txt")
+data, _ := disk.Get("docs/readme.txt")
 fmt.Println(string(data))
 // Output: hello
 ```
@@ -643,12 +695,12 @@ fmt.Println(string(data))
 List returns the immediate children under path.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-list",
 })
-_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+_ = disk.Put("docs/readme.txt", []byte("hello"))
 
-entries, _ := disk.List(context.Background(), "docs")
+entries, _ := disk.List("docs")
 fmt.Println(entries[0].Path)
 // Output: docs/readme.txt
 ```
@@ -658,10 +710,10 @@ fmt.Println(entries[0].Path)
 Put writes an object at path, overwriting any existing object.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-put",
 })
-_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+_ = disk.Put("docs/readme.txt", []byte("hello"))
 fmt.Println("stored")
 // Output: stored
 ```
@@ -673,22 +725,22 @@ URL returns a usable access URL when the driver supports it.
 _Example: request an object url_
 
 ```go
-disk, _ := storage.Build(context.Background(), s3storage.Config{
+disk, _ := storage.Build(s3storage.Config{
 	Bucket: "uploads",
 	Region: "us-east-1",
 })
 
-url, _ := disk.URL(context.Background(), "docs/readme.txt")
+url, _ := disk.URL("docs/readme.txt")
 ```
 
 _Example: handle unsupported url generation_
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-url",
 })
 
-_, err := disk.URL(context.Background(), "docs/readme.txt")
+_, err := disk.URL("docs/readme.txt")
 fmt.Println(errors.Is(err, storage.ErrUnsupported))
 // Output: true
 ```
@@ -698,11 +750,11 @@ fmt.Println(errors.Is(err, storage.ErrUnsupported))
 Walk visits entries recursively when the backend supports it.
 
 ```go
-disk, _ := storage.Build(context.Background(), localstorage.Config{
+disk, _ := storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-walk",
 })
 
-err := disk.Walk(context.Background(), "", func(entry storage.Entry) error {
+err := disk.Walk("", func(entry storage.Entry) error {
 	fmt.Println(entry.Path)
 	return nil
 })
@@ -894,7 +946,7 @@ cfg := sftpstorage.Config{
 New constructs Dropbox-backed storage using the official SDK.
 
 ```go
-fs, _ := dropboxstorage.New(context.Background(), dropboxstorage.Config{
+fs, _ := dropboxstorage.New(dropboxstorage.Config{
 	Token: "token",
 })
 ```
@@ -904,7 +956,7 @@ fs, _ := dropboxstorage.New(context.Background(), dropboxstorage.Config{
 New constructs FTP-backed storage using jlaffaye/ftp.
 
 ```go
-fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{
+fs, _ := ftpstorage.New(ftpstorage.Config{
 	Host:     "127.0.0.1",
 	User:     "demo",
 	Password: "secret",
@@ -916,7 +968,7 @@ fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{
 New constructs GCS-backed storage using cloud.google.com/go/storage.
 
 ```go
-fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{
+fs, _ := gcsstorage.New(gcsstorage.Config{
 	Bucket: "uploads",
 })
 ```
@@ -926,7 +978,7 @@ fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{
 New constructs local storage rooted at cfg.Remote with an optional prefix.
 
 ```go
-fs, _ := localstorage.New(context.Background(), localstorage.Config{
+fs, _ := localstorage.New(localstorage.Config{
 	Remote: "/tmp/storage-local",
 	Prefix: "sandbox",
 })
@@ -937,7 +989,7 @@ fs, _ := localstorage.New(context.Background(), localstorage.Config{
 New constructs an rclone-backed storage. All disks share a single config path.
 
 ```go
-fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{
+fs, _ := rclonestorage.New(rclonestorage.Config{
 	Remote: "local:",
 	Prefix: "sandbox",
 })
@@ -948,7 +1000,7 @@ fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{
 New constructs S3-backed storage using AWS SDK v2.
 
 ```go
-fs, _ := s3storage.New(context.Background(), s3storage.Config{
+fs, _ := s3storage.New(s3storage.Config{
 	Bucket: "uploads",
 	Region: "us-east-1",
 })
@@ -959,7 +1011,7 @@ fs, _ := s3storage.New(context.Background(), s3storage.Config{
 New constructs SFTP-backed storage using ssh and pkg/sftp.
 
 ```go
-fs, _ := sftpstorage.New(context.Background(), sftpstorage.Config{
+fs, _ := sftpstorage.New(sftpstorage.Config{
 	Host:     "127.0.0.1",
 	User:     "demo",
 	Password: "secret",

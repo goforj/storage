@@ -23,7 +23,7 @@ import (
 // Example: use the storage interface
 //
 //	var disk storage.Storage
-//	disk, _ = storage.Build(context.Background(), localstorage.Config{
+//	disk, _ = storage.Build(localstorage.Config{
 //		Remote: "/tmp/storage-interface",
 //	})
 //	_ = disk
@@ -32,109 +32,144 @@ type Storage interface {
 	//
 	// Example: read an object
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-get",
 	//	})
-	//	_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
-	//	data, _ := disk.Get(context.Background(), "docs/readme.txt")
+	//	data, _ := disk.Get("docs/readme.txt")
 	//	fmt.Println(string(data))
 	//	// Output: hello
-	Get(ctx context.Context, p string) ([]byte, error)
+	Get(p string) ([]byte, error)
 
 	// Put writes an object at path, overwriting any existing object.
 	//
 	// Example: write an object
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-put",
 	//	})
-	//	_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//	fmt.Println("stored")
 	//	// Output: stored
-	Put(ctx context.Context, p string, contents []byte) error
+	Put(p string, contents []byte) error
 
 	// Delete removes the object at path.
 	//
 	// Example: delete an object
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-delete",
 	//	})
-	//	_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
-	//	_ = disk.Delete(context.Background(), "docs/readme.txt")
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//	_ = disk.Delete("docs/readme.txt")
 	//
-	//	ok, _ := disk.Exists(context.Background(), "docs/readme.txt")
+	//	ok, _ := disk.Exists("docs/readme.txt")
 	//	fmt.Println(ok)
 	//	// Output: false
-	Delete(ctx context.Context, p string) error
+	Delete(p string) error
 
 	// Exists reports whether an object exists at path.
 	//
 	// Example: check for an object
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-exists",
 	//	})
-	//	_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
-	//	ok, _ := disk.Exists(context.Background(), "docs/readme.txt")
+	//	ok, _ := disk.Exists("docs/readme.txt")
 	//	fmt.Println(ok)
 	//	// Output: true
-	Exists(ctx context.Context, p string) (bool, error)
+	Exists(p string) (bool, error)
 
 	// List returns the immediate children under path.
 	//
 	// Example: list a directory
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-list",
 	//	})
-	//	_ = disk.Put(context.Background(), "docs/readme.txt", []byte("hello"))
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
-	//	entries, _ := disk.List(context.Background(), "docs")
+	//	entries, _ := disk.List("docs")
 	//	fmt.Println(entries[0].Path)
 	//	// Output: docs/readme.txt
-	List(ctx context.Context, p string) ([]Entry, error)
+	List(p string) ([]Entry, error)
 
 	// Walk visits entries recursively when the backend supports it.
 	//
 	// Example: walk a backend when supported
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-walk",
 	//	})
 	//
-	//	err := disk.Walk(context.Background(), "", func(entry storage.Entry) error {
+	//	err := disk.Walk("", func(entry storage.Entry) error {
 	//		fmt.Println(entry.Path)
 	//		return nil
 	//	})
 	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
 	//	// Output: true
-	Walk(ctx context.Context, p string, fn func(Entry) error) error
+	Walk(p string, fn func(Entry) error) error
 
 	// URL returns a usable access URL when the driver supports it.
 	//
 	// Example: request an object url
 	//
-	//	disk, _ := storage.Build(context.Background(), s3storage.Config{
+	//	disk, _ := storage.Build(s3storage.Config{
 	//		Bucket: "uploads",
 	//		Region: "us-east-1",
 	//	})
 	//
-	//	url, _ := disk.URL(context.Background(), "docs/readme.txt")
+	//	url, _ := disk.URL("docs/readme.txt")
 	//	_ = url // signed object URL
 	//
 	// Example: handle unsupported url generation
 	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//	disk, _ := storage.Build(localstorage.Config{
 	//		Remote: "/tmp/storage-url",
 	//	})
 	//
-	//	_, err := disk.URL(context.Background(), "docs/readme.txt")
+	//	_, err := disk.URL("docs/readme.txt")
 	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
 	//	// Output: true
-	URL(ctx context.Context, p string) (string, error)
+	URL(p string) (string, error)
+}
+
+// ContextStorage exposes context-aware storage operations for cancellation and deadlines.
+// Use Storage for the common path and type-assert to ContextStorage when you need caller-provided context.
+// @group Context
+type ContextStorage interface {
+	// GetContext reads the object at path using the caller-provided context.
+	//
+	// Example: read an object with a timeout
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Remote: "/tmp/storage-get-context",
+	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//
+	//	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	//	defer cancel()
+	//
+	//	cs := disk.(storage.ContextStorage)
+	//	data, _ := cs.GetContext(ctx, "docs/readme.txt")
+	//	fmt.Println(string(data))
+	//	// Output: hello
+	GetContext(ctx context.Context, p string) ([]byte, error)
+	// PutContext writes an object at path using the caller-provided context.
+	PutContext(ctx context.Context, p string, contents []byte) error
+	// DeleteContext removes the object at path using the caller-provided context.
+	DeleteContext(ctx context.Context, p string) error
+	// ExistsContext reports whether an object exists at path using the caller-provided context.
+	ExistsContext(ctx context.Context, p string) (bool, error)
+	// ListContext returns the immediate children under path using the caller-provided context.
+	ListContext(ctx context.Context, p string) ([]Entry, error)
+	// WalkContext visits entries recursively using the caller-provided context.
+	WalkContext(ctx context.Context, p string, fn func(Entry) error) error
+	// URLContext returns a usable access URL using the caller-provided context.
+	URLContext(ctx context.Context, p string) (string, error)
 }
 
 // Entry represents an item returned by List.

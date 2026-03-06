@@ -41,7 +41,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 			name: "local",
 			new: func(t *testing.T) (storage.Storage, func()) {
 				t.Helper()
-				store, err := storage.Build(context.Background(), localstorage.Config{Remote: t.TempDir(), Prefix: "itest"})
+				store, err := storage.Build(localstorage.Config{Remote: t.TempDir(), Prefix: "itest"})
 				if err != nil {
 					t.Fatalf("build local storage: %v", err)
 				}
@@ -67,7 +67,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 					t.Fatalf("start fake gcs server: %v", err)
 				}
 				server.CreateBucketWithOpts(fakestorage.CreateBucketOpts{Name: "storage-itest"})
-				store, err := storage.Build(context.Background(), gcsstorage.Config{
+				store, err := storage.Build(gcsstorage.Config{
 					Bucket:   "storage-itest",
 					Endpoint: server.URL(),
 					Prefix:   "itest",
@@ -93,7 +93,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				if err != nil {
 					t.Fatalf("render rclone local config: %v", err)
 				}
-				store, err := rclonestorage.New(context.Background(), rclonestorage.Config{
+				store, err := rclonestorage.New(rclonestorage.Config{
 					Remote:           "localdisk:" + root,
 					Prefix:           "itest",
 					RcloneConfigData: conf,
@@ -115,7 +115,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				root := t.TempDir()
 				port := pickPort(t)
 				srv := startEmbeddedFTPServer(t, host, port, root)
-				store, err := storage.Build(context.Background(), ftpstorage.Config{
+				store, err := storage.Build(ftpstorage.Config{
 					Host:     host,
 					Port:     port,
 					User:     "ftpuser",
@@ -144,7 +144,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 					shutdownContainer(t, container)
 					t.Fatalf("create minio bucket: %v", err)
 				}
-				store, err := storage.Build(ctx, s3storage.Config{
+				store, err := storage.Build(s3storage.Config{
 					Bucket:          "storage-itest",
 					Region:          "us-east-1",
 					Endpoint:        endpoint,
@@ -171,7 +171,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				t.Helper()
 				ctx := context.Background()
 				container, host, port := startSFTPContainer(t, ctx)
-				store, err := storage.Build(ctx, sftpstorage.Config{
+				store, err := storage.Build(sftpstorage.Config{
 					Host:                  host,
 					Port:                  port,
 					User:                  "storage",
@@ -209,7 +209,7 @@ func verifyWalk(t *testing.T, store storage.Storage) {
 	t.Helper()
 
 	var walked []string
-	err := store.Walk(context.Background(), "", func(entry storage.Entry) error {
+	err := store.Walk("", func(entry storage.Entry) error {
 		walked = append(walked, entry.Path)
 		return nil
 	})

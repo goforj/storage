@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/localstorage"
 )
@@ -21,7 +20,7 @@ func main() {
 
 	// Example: use the storage interface
 	var disk storage.Storage
-	disk, _ = storage.Build(context.Background(), localstorage.Config{
+	disk, _ = storage.Build(localstorage.Config{
 		Remote: "/tmp/storage-interface",
 	})
 	_ = disk

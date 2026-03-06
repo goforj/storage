@@ -85,13 +85,17 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: ftp storage
 //
-//	fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{
+//	fs, _ := ftpstorage.New(ftpstorage.Config{
 //		Host:     "127.0.0.1",
 //		User:     "demo",
 //		Password: "secret",
 //	})
 //	_ = fs
-func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storage.Storage, error) {
+	return NewContext(context.Background(), cfg)
+}
+
+func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
@@ -146,7 +150,11 @@ func (d *driver) withConn(fn func(*ftp.ServerConn) error) error {
 	return fn(conn)
 }
 
-func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(p string) ([]byte, error) {
+	return d.GetContext(context.Background(), p)
+}
+
+func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -170,7 +178,11 @@ func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(p string, contents []byte) error {
+	return d.PutContext(context.Background(), p, contents)
+}
+
+func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -200,7 +212,11 @@ func ensureDirs(c *ftp.ServerConn, dir string) error {
 	return nil
 }
 
-func (d *driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(p string) error {
+	return d.DeleteContext(context.Background(), p)
+}
+
+func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -213,7 +229,11 @@ func (d *driver) Delete(ctx context.Context, p string) error {
 	}))
 }
 
-func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(p string) (bool, error) {
+	return d.ExistsContext(context.Background(), p)
+}
+
+func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -235,7 +255,11 @@ func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storage.Entry, error) {
+	return d.ListContext(context.Background(), p)
+}
+
+func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -268,7 +292,11 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+	return d.WalkContext(context.Background(), p, fn)
+}
+
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -291,7 +319,11 @@ func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) erro
 	}))
 }
 
-func (d *driver) URL(_ context.Context, _ string) (string, error) {
+func (d *driver) URL(p string) (string, error) {
+	return d.URLContext(context.Background(), p)
+}
+
+func (d *driver) URLContext(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for ftp", storage.ErrUnsupported)
 }
 

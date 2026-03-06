@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/localstorage"
 )
@@ -13,7 +12,7 @@ func main() {
 	// a Manager.
 
 	// Example: build a single disk
-	fs, _ := storage.Build(context.Background(), localstorage.Config{
+	fs, _ := storage.Build(localstorage.Config{
 		Remote: "/tmp/storage-example",
 		Prefix: "assets",
 	})

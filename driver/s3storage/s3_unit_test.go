@@ -70,7 +70,6 @@ func (f fakePresign) PresignGetObject(ctx context.Context, in *s3.GetObjectInput
 }
 
 func TestS3StorageOperations(t *testing.T) {
-	ctx := context.Background()
 	client := &fakeS3{headOK: true, getBody: "data"}
 	d := &driver{
 		client:  client,
@@ -79,17 +78,17 @@ func TestS3StorageOperations(t *testing.T) {
 		prefix:  "pre",
 	}
 
-	if _, err := d.Get(ctx, "file.txt"); err != nil {
+	if _, err := d.Get("file.txt"); err != nil {
 		t.Fatalf("Get err: %v", err)
 	}
-	if err := d.Put(ctx, "file.txt", []byte("x")); err != nil {
+	if err := d.Put("file.txt", []byte("x")); err != nil {
 		t.Fatalf("Put err: %v", err)
 	}
-	exists, err := d.Exists(ctx, "file.txt")
+	exists, err := d.Exists("file.txt")
 	if err != nil || !exists {
 		t.Fatalf("Exists err: %v exists %v", err, exists)
 	}
-	if _, err := d.URL(ctx, "file.txt"); err != nil {
+	if _, err := d.URL("file.txt"); err != nil {
 		t.Fatalf("URL err: %v", err)
 	}
 
@@ -98,7 +97,7 @@ func TestS3StorageOperations(t *testing.T) {
 		CommonPrefixes: []types.CommonPrefix{{Prefix: aws.String("pre/dir/")}},
 		Contents:       []types.Object{{Key: aws.String("pre/dir/file.txt"), Size: aws.Int64(5)}},
 	}
-	entries, err := d.List(ctx, "")
+	entries, err := d.List("")
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("List err %v entries %v", err, entries)
 	}

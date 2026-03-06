@@ -2,16 +2,13 @@
 
 package main
 
-import (
-	"context"
-	"github.com/goforj/storage/driver/s3storage"
-)
+import "github.com/goforj/storage/driver/s3storage"
 
 func main() {
 	// New constructs S3-backed storage using AWS SDK v2.
 
 	// Example: s3 storage
-	fs, _ := s3storage.New(context.Background(), s3storage.Config{
+	fs, _ := s3storage.New(s3storage.Config{
 		Bucket: "uploads",
 		Region: "us-east-1",
 	})

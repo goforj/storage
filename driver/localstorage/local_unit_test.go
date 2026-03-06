@@ -1,7 +1,6 @@
 package localstorage
 
 import (
-	"context"
 	"errors"
 	"os"
 	"testing"
@@ -41,7 +40,7 @@ func TestResolvePathAndTraversal(t *testing.T) {
 
 func TestLocalURLUnsupported(t *testing.T) {
 	d := &driver{}
-	if _, err := d.URL(context.Background(), "x"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := d.URL("x"); !errors.Is(err, storage.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }

@@ -1,7 +1,6 @@
 package localstorage
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,12 +46,11 @@ func TestLocalPrefixIsolation(t *testing.T) {
 	}
 	fsys := manager.Default()
 
-	ctx := context.Background()
-	if err := fsys.Put(ctx, "inside/file.txt", []byte("inside")); err != nil {
+	if err := fsys.Put("inside/file.txt", []byte("inside")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 
-	entries, err := fsys.List(ctx, "")
+	entries, err := fsys.List("")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

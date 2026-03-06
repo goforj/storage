@@ -8,12 +8,19 @@ import "context"
 //
 // Example: build a single disk
 //
-//	fs, _ := storage.Build(context.Background(), localstorage.Config{
+//	fs, _ := storage.Build(localstorage.Config{
 //		Remote: "/tmp/storage-example",
 //		Prefix: "assets",
 //	})
 //	_ = fs
-func Build(ctx context.Context, cfg DriverConfig) (Storage, error) {
+func Build(cfg DriverConfig) (Storage, error) {
+	return BuildContext(context.Background(), cfg)
+}
+
+// BuildContext constructs a single storage backend from a typed driver config
+// using the caller-provided context.
+// @group Context
+func BuildContext(ctx context.Context, cfg DriverConfig) (Storage, error) {
 	name, resolved, err := resolveDriverConfig(cfg)
 	if err != nil {
 		return nil, err

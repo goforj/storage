@@ -2,16 +2,13 @@
 
 package main
 
-import (
-	"context"
-	"github.com/goforj/storage/driver/gcsstorage"
-)
+import "github.com/goforj/storage/driver/gcsstorage"
 
 func main() {
 	// New constructs GCS-backed storage using cloud.google.com/go/storage.
 
 	// Example: gcs storage
-	fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{
+	fs, _ := gcsstorage.New(gcsstorage.Config{
 		Bucket: "uploads",
 	})
 	_ = fs

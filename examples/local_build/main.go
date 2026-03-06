@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -16,7 +15,7 @@ func main() {
 	}
 	defer os.RemoveAll(root)
 
-	disk, err := localstorage.New(context.Background(), localstorage.Config{
+	disk, err := localstorage.New(localstorage.Config{
 		Remote: root,
 		Prefix: "scratch",
 	})
@@ -24,11 +23,11 @@ func main() {
 		log.Fatalf("build disk: %v", err)
 	}
 
-	if err := disk.Put(context.Background(), "hello.txt", []byte("hello from Build")); err != nil {
+	if err := disk.Put("hello.txt", []byte("hello from Build")); err != nil {
 		log.Fatalf("put: %v", err)
 	}
 
-	data, err := disk.Get(context.Background(), "hello.txt")
+	data, err := disk.Get("hello.txt")
 	if err != nil {
 		log.Fatalf("get: %v", err)
 	}

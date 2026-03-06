@@ -13,17 +13,16 @@ import (
 // RunStorageContractTests executes the shared contract against any Storage implementation.
 func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	t.Helper()
-	ctx := context.Background()
 
 	t.Run("put-get-exists-delete", func(t *testing.T) {
 		path := "dir1/file.txt"
 		payload := []byte("hello world")
 
-		if err := fsys.Put(ctx, path, payload); err != nil {
+		if err := fsys.Put(path, payload); err != nil {
 			t.Fatalf("Put: %v", err)
 		}
 
-		exists, err := fsys.Exists(ctx, path)
+		exists, err := fsys.Exists(path)
 		if err != nil {
 			t.Fatalf("Exists: %v", err)
 		}
@@ -31,7 +30,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			t.Fatalf("Exists: expected true")
 		}
 
-		got, err := fsys.Get(ctx, path)
+		got, err := fsys.Get(path)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
@@ -39,11 +38,11 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			t.Fatalf("Get: expected %q got %q", payload, got)
 		}
 
-		if err := fsys.Delete(ctx, path); err != nil {
+		if err := fsys.Delete(path); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
 
-		exists, err = fsys.Exists(ctx, path)
+		exists, err = fsys.Exists(path)
 		if err != nil {
 			t.Fatalf("Exists after delete: %v", err)
 		}
@@ -59,12 +58,12 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			"folder2/fileC.txt",
 		}
 		for _, f := range files {
-			if err := fsys.Put(ctx, f, []byte(f)); err != nil {
+			if err := fsys.Put(f, []byte(f)); err != nil {
 				t.Fatalf("Put %q: %v", f, err)
 			}
 		}
 
-		rootEntries, err := fsys.List(ctx, "")
+		rootEntries, err := fsys.List("")
 		if err != nil {
 			t.Fatalf("List root: %v", err)
 		}
@@ -76,7 +75,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			}
 		}
 
-		subEntries, err := fsys.List(ctx, "folder1")
+		subEntries, err := fsys.List("folder1")
 		if err != nil {
 			t.Fatalf("List folder1: %v", err)
 		}
@@ -97,13 +96,13 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			"folder2/fileC.txt",
 		}
 		for _, f := range files {
-			if err := fsys.Put(ctx, f, []byte(f)); err != nil {
+			if err := fsys.Put(f, []byte(f)); err != nil {
 				t.Fatalf("Put %q: %v", f, err)
 			}
 		}
 
 		var walked []string
-		if err := fsys.Walk(ctx, "", func(entry storage.Entry) error {
+		if err := fsys.Walk("", func(entry storage.Entry) error {
 			walked = append(walked, entry.Path)
 			return nil
 		}); err != nil {
@@ -121,10 +120,10 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 
 	t.Run("url-behavior", func(t *testing.T) {
 		path := "url/file.txt"
-		if err := fsys.Put(ctx, path, []byte("url")); err != nil {
+		if err := fsys.Put(path, []byte("url")); err != nil {
 			t.Fatalf("Put: %v", err)
 		}
-		url, err := fsys.URL(ctx, path)
+		url, err := fsys.URL(path)
 		if err != nil {
 			if !errors.Is(err, storage.ErrUnsupported) {
 				t.Fatalf("URL unexpected error: %v", err)
@@ -137,21 +136,25 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 
 	t.Run("error-classification", func(t *testing.T) {
-		_, err := fsys.Get(ctx, "missing/file.txt")
+		_, err := fsys.Get("missing/file.txt")
 		if err == nil || !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound wrapping, got: %v", err)
 		}
 
-		err = fsys.Put(ctx, "../escape.txt", []byte("nope"))
+		err = fsys.Put("../escape.txt", []byte("nope"))
 		if err == nil || !errors.Is(err, storage.ErrForbidden) {
 			t.Fatalf("expected ErrForbidden for path traversal, got: %v", err)
 		}
 	})
 
 	t.Run("context-handling", func(t *testing.T) {
-		canceled, cancel := context.WithCancel(ctx)
+		csys, ok := fsys.(storage.ContextStorage)
+		if !ok {
+			t.Skip("ContextStorage not supported; skipping")
+		}
+		canceled, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := fsys.Put(canceled, "ctx/file.txt", []byte("x")); err == nil {
+		if err := csys.PutContext(canceled, "ctx/file.txt", []byte("x")); err == nil {
 			t.Fatalf("expected context cancellation")
 		}
 	})
@@ -166,10 +169,10 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 
 		now := time.Now().UTC()
 		path := "modtime/file.txt"
-		if err := fsys.Put(ctx, path, []byte("modtime")); err != nil {
+		if err := fsys.Put(path, []byte("modtime")); err != nil {
 			t.Fatalf("Put: %v", err)
 		}
-		ts, err := mt.ModTime(ctx, path)
+		ts, err := mt.ModTime(context.Background(), path)
 		if err != nil {
 			t.Fatalf("ModTime: %v", err)
 		}

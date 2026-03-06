@@ -1,7 +1,6 @@
 package dropboxstorage
 
 import (
-	"context"
 	"errors"
 	"io"
 	"strings"
@@ -104,27 +103,27 @@ func TestDropboxStorageOperations(t *testing.T) {
 	}
 	d := &driver{client: client, prefix: "pre"}
 
-	if _, err := d.Get(context.Background(), "file.txt"); err != nil {
+	if _, err := d.Get("file.txt"); err != nil {
 		t.Fatalf("Get err: %v", err)
 	}
-	if err := d.Put(context.Background(), "file.txt", []byte("abc")); err != nil {
+	if err := d.Put("file.txt", []byte("abc")); err != nil {
 		t.Fatalf("Put err: %v", err)
 	}
-	exists, err := d.Exists(context.Background(), "file.txt")
+	exists, err := d.Exists("file.txt")
 	if err != nil || !exists {
 		t.Fatalf("Exists err %v exists %v", err, exists)
 	}
-	entries, err := d.List(context.Background(), "")
+	entries, err := d.List("")
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("List err %v entries %v", err, entries)
 	}
-	if _, err := d.URL(context.Background(), "file.txt"); err != nil {
+	if _, err := d.URL("file.txt"); err != nil {
 		t.Fatalf("URL err: %v", err)
 	}
 
 	// deletion and not found
 	client.delErr = errNotFound{}
-	if err := d.Delete(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.Delete("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected wrapped not found, got %v", err)
 	}
 }
