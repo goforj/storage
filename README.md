@@ -40,24 +40,6 @@ What it is not:
 - a POSIX filesystem abstraction
 - a kitchen-sink package that forces every driver dependency into the root module
 
-## Modules
-
-The repository is organized as one product with multiple Go modules:
-
-- `github.com/goforj/storage`
-- `github.com/goforj/storage/storagetest`
-- `github.com/goforj/storage/integration`
-- `github.com/goforj/storage/driver/local`
-- `github.com/goforj/storage/driver/s3`
-- `github.com/goforj/storage/driver/gcs`
-- `github.com/goforj/storage/driver/sftp`
-- `github.com/goforj/storage/driver/ftp`
-- `github.com/goforj/storage/driver/dropbox`
-- `github.com/goforj/storage/driver/rclone`
-- `github.com/goforj/storage/examples`
-
-This keeps the root module thin while letting consumers opt into only the drivers they use.
-
 ## Install
 
 Root module:
@@ -71,6 +53,10 @@ Then add the driver modules you need, for example:
 ```bash
 go get github.com/goforj/storage/driver/local
 go get github.com/goforj/storage/driver/s3
+go get github.com/goforj/storage/driver/gcs
+go get github.com/goforj/storage/driver/sftp
+go get github.com/goforj/storage/driver/ftp
+go get github.com/goforj/storage/driver/dropbox
 go get github.com/goforj/storage/driver/rclone
 ```
 
