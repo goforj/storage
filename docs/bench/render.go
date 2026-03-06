@@ -745,6 +745,7 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 	if maxVal == 0 {
 		maxVal = 1
 	}
+	splitScale, lowerMax := outlierSplitScale(rows, value, maxVal)
 
 	const (
 		minWidth  = 1820
@@ -759,19 +760,43 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 		labelY    = 820
 		legendY   = 900
 	)
-	chartHeight := height - topPad - bottomPad
 	groupWidth := len(ops)*(barWidth+barGap) + groupGap
 	width := max(minWidth, leftPad+rightPad+len(drivers)*groupWidth+40)
+	upperTop := topPad
+	upperHeight := 0
+	upperBottom := topPad
+	lowerTop := topPad
+	if splitScale {
+		upperHeight = 170
+		upperBottom = upperTop + upperHeight
+		lowerTop = upperBottom + 54
+	}
+	lowerHeight := height - lowerTop - bottomPad
 
 	var svg bytes.Buffer
 	svg.WriteString(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">`+"\n", width, height, width, height))
 	svg.WriteString(`<rect width="100%" height="100%" fill="#0b1020"/>` + "\n")
 	svg.WriteString(fmt.Sprintf(`<text x="%d" y="52" text-anchor="middle" fill="#f8fafc" font-size="36" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", width/2, title))
-	svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>`+"\n", width/2))
+	if splitScale {
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Outliers are separated into the upper strip so the lower panel stays readable.</text>`+"\n", width/2))
+	} else {
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>`+"\n", width/2))
+	}
+
+	if splitScale {
+		for i := 0; i <= 2; i++ {
+			y := upperTop + int(float64(upperHeight)*float64(i)/2.0)
+			v := maxVal - (maxVal-lowerMax)*(float64(i)/2.0)
+			svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#334155" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
+			svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#cbd5e1" font-size="18" text-anchor="end" font-family="Arial, sans-serif">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
+		}
+		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#64748b" stroke-width="2" stroke-dasharray="8 8"/>`+"\n", leftPad, upperBottom+26, width-rightPad, upperBottom+26))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" fill="#94a3b8" font-size="16" font-family="Arial, sans-serif">axis break</text>`+"\n", width/2, upperBottom+20))
+	}
 
 	for i := 0; i <= 4; i++ {
-		y := topPad + int(float64(chartHeight)*float64(i)/4.0)
-		v := maxVal * (1 - float64(i)/4.0)
+		y := lowerTop + int(float64(lowerHeight)*float64(i)/4.0)
+		v := lowerMax * (1 - float64(i)/4.0)
 		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#334155" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
 		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
 	}
@@ -784,10 +809,21 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 				continue
 			}
 			v := value(row)
-			h := int((v / maxVal) * float64(chartHeight))
+			lowerValue := min(v, lowerMax)
+			h := int((lowerValue / lowerMax) * float64(lowerHeight))
 			x := groupX + j*(barWidth+barGap)
-			y := topPad + chartHeight - h
+			y := lowerTop + lowerHeight - h
 			svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="6" fill="%s"/>`+"\n", x, y, barWidth, h, colors[op]))
+			if splitScale && v > lowerMax {
+				upperValue := v - lowerMax
+				upperRange := maxVal - lowerMax
+				upperBarH := upperHeight
+				if upperRange > 0 {
+					upperBarH = max(10, int((upperValue/upperRange)*float64(upperHeight)))
+				}
+				upperY := upperBottom - upperBarH
+				svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="6" fill="%s"/>`+"\n", x, upperY, barWidth, upperBarH, colors[op]))
+			}
 		}
 		labelX := groupX + (len(ops)*(barWidth+barGap))/2 - 8
 		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", labelX, labelY, driver))
@@ -803,6 +839,33 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 
 	svg.WriteString(`</svg>` + "\n")
 	return svg.String()
+}
+
+func outlierSplitScale(rows map[string][]benchRow, value func(benchRow) float64, maxVal float64) (bool, float64) {
+	var vals []float64
+	for _, list := range rows {
+		for _, row := range list {
+			v := value(row)
+			if v > 0 {
+				vals = append(vals, v)
+			}
+		}
+	}
+	if len(vals) < 4 {
+		return false, maxVal
+	}
+	sort.Float64s(vals)
+	q1 := vals[len(vals)/4]
+	q3 := vals[(len(vals)*3)/4]
+	iqr := q3 - q1
+	if iqr <= 0 {
+		return false, maxVal
+	}
+	cutoff := q3 + 1.5*iqr
+	if cutoff <= 0 || maxVal <= cutoff*1.35 {
+		return false, maxVal
+	}
+	return true, cutoff
 }
 
 func formatChartValue(v float64) string {
