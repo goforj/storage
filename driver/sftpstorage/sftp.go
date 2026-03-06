@@ -281,6 +281,24 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fp, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	info, err := d.client.Stat(fp)
+	if err != nil {
+		return wrapError(err)
+	}
+	if !info.IsDir() {
+		return fn(storage.Entry{Path: d.stripPrefix(fp), Size: info.Size(), IsDir: false})
+	}
+	return d.walkDir(ctx, fp, fn)
+}
+
 func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for sftp", storage.ErrUnsupported)
 }
@@ -300,6 +318,32 @@ func (d *driver) stripPrefix(p string) string {
 	trimmed := strings.TrimPrefix(p, d.prefix)
 	trimmed = strings.TrimPrefix(trimmed, "/")
 	return trimmed
+}
+
+func (d *driver) walkDir(ctx context.Context, dir string, fn func(storage.Entry) error) error {
+	infos, err := d.client.ReadDir(dir)
+	if err != nil {
+		return wrapError(err)
+	}
+	for _, info := range infos {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		rel := d.stripPrefix(path.Join(dir, info.Name()))
+		entry := storage.Entry{Path: rel, Size: info.Size(), IsDir: info.IsDir()}
+		if entry.IsDir {
+			entry.Size = 0
+		}
+		if err := fn(entry); err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if err := d.walkDir(ctx, path.Join(dir, info.Name()), fn); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func wrapError(err error) error {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"time"
 
@@ -295,6 +296,79 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	prefix, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	fileExists := false
+	if prefix != "" {
+		if _, err := d.client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(d.bucket),
+			Key:    aws.String(prefix),
+		}); err == nil {
+			fileExists = true
+		} else if !isNotFound(err) {
+			return wrapError(err)
+		}
+		prefix += "/"
+	}
+
+	seenDirs := map[string]struct{}{}
+	var token *string
+	for {
+		out, err := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(d.bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return wrapError(err)
+		}
+		for _, obj := range out.Contents {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			key := aws.ToString(obj.Key)
+			if strings.HasSuffix(key, "/") {
+				continue
+			}
+			rel := d.stripPrefix(key)
+			if rel == "" {
+				continue
+			}
+			for _, dir := range recursiveParentDirs(rel) {
+				if _, ok := seenDirs[dir]; ok {
+					continue
+				}
+				seenDirs[dir] = struct{}{}
+				if err := fn(storage.Entry{Path: dir, IsDir: true}); err != nil {
+					return err
+				}
+			}
+			if err := fn(storage.Entry{
+				Path:  rel,
+				Size:  aws.ToInt64(obj.Size),
+				IsDir: false,
+			}); err != nil {
+				return err
+			}
+		}
+		if aws.ToBool(out.IsTruncated) && out.NextContinuationToken != nil {
+			token = out.NextContinuationToken
+			continue
+		}
+		break
+	}
+	if fileExists {
+		return fn(storage.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
+	}
+	return nil
+}
+
 func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -328,6 +402,19 @@ func (d *driver) stripPrefix(k string) string {
 	trimmed := strings.TrimPrefix(k, d.prefix)
 	trimmed = strings.TrimPrefix(trimmed, "/")
 	return trimmed
+}
+
+func recursiveParentDirs(p string) []string {
+	dir := path.Dir(p)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	parts := strings.Split(dir, "/")
+	out := make([]string, 0, len(parts))
+	for i := range parts {
+		out = append(out, strings.Join(parts[:i+1], "/"))
+	}
+	return out
 }
 
 func wrapError(err error) error {

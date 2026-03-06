@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -243,6 +244,67 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	prefix, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	fileExists := false
+	if prefix != "" {
+		if _, err := d.client.Bucket(d.bucket).Object(prefix).Attrs(ctx); err == nil {
+			fileExists = true
+		} else if !isNotFound(err) {
+			return wrapError(err)
+		}
+		prefix += "/"
+	}
+
+	seenDirs := map[string]struct{}{}
+	it := d.client.Bucket(d.bucket).Objects(ctx, &gcsapi.Query{Prefix: prefix})
+	for {
+		obj, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return wrapError(err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if obj.Name == "" || strings.HasSuffix(obj.Name, "/") {
+			continue
+		}
+		rel := d.stripPrefix(obj.Name)
+		if rel == "" {
+			continue
+		}
+		for _, dir := range recursiveParentDirs(rel) {
+			if _, ok := seenDirs[dir]; ok {
+				continue
+			}
+			seenDirs[dir] = struct{}{}
+			if err := fn(storage.Entry{Path: dir, IsDir: true}); err != nil {
+				return err
+			}
+		}
+		if err := fn(storage.Entry{
+			Path:  rel,
+			Size:  obj.Size,
+			IsDir: false,
+		}); err != nil {
+			return err
+		}
+	}
+	if fileExists {
+		return fn(storage.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
+	}
+	return nil
+}
+
 func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -279,6 +341,19 @@ func (d *driver) stripPrefix(k string) string {
 	trimmed := strings.TrimPrefix(k, d.prefix)
 	trimmed = strings.TrimPrefix(trimmed, "/")
 	return trimmed
+}
+
+func recursiveParentDirs(p string) []string {
+	dir := path.Dir(p)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	parts := strings.Split(dir, "/")
+	out := make([]string, 0, len(parts))
+	for i := range parts {
+		out = append(out, strings.Join(parts[:i+1], "/"))
+	}
+	return out
 }
 
 func wrapError(err error) error {

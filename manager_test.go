@@ -21,7 +21,10 @@ func (stubFS) Put(context.Context, string, []byte) error     { return nil }
 func (stubFS) Delete(context.Context, string) error          { return nil }
 func (stubFS) Exists(context.Context, string) (bool, error)  { return true, nil }
 func (stubFS) List(context.Context, string) ([]Entry, error) { return nil, nil }
-func (stubFS) URL(context.Context, string) (string, error)   { return "", nil }
+func (stubFS) Walk(context.Context, string, func(Entry) error) error {
+	return ErrUnsupported
+}
+func (stubFS) URL(context.Context, string) (string, error) { return "", nil }
 
 func TestManagerNewErrors(t *testing.T) {
 	if _, err := New(Config{}); err == nil {

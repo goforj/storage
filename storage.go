@@ -14,6 +14,7 @@ import (
 //   - Put overwrites an existing object at the same path.
 //   - List is one-level and non-recursive.
 //   - List with an empty path lists from the disk root or prefix root.
+//   - Walk is recursive and may return ErrUnsupported on drivers that do not implement it.
 //   - URL returns a usable access URL when the driver supports it.
 //   - Unsupported operations should return ErrUnsupported.
 //
@@ -96,6 +97,22 @@ type Storage interface {
 	//	// Output: docs/readme.txt
 	List(ctx context.Context, p string) ([]Entry, error)
 
+	// Walk visits entries recursively when the backend supports it.
+	//
+	// Example: walk a backend when supported
+	//
+	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
+	//		Remote: "/tmp/storage-walk",
+	//	})
+	//
+	//	err := disk.Walk(context.Background(), "", func(entry storage.Entry) error {
+	//		fmt.Println(entry.Path)
+	//		return nil
+	//	})
+	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
+	//	// Output: true
+	Walk(ctx context.Context, p string, fn func(Entry) error) error
+
 	// URL returns a usable access URL when the driver supports it.
 	//
 	// Example: request an object url
@@ -118,44 +135,6 @@ type Storage interface {
 	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
 	//	// Output: true
 	URL(ctx context.Context, p string) (string, error)
-}
-
-// Walker is an optional capability for recursive traversal.
-//
-// Walk is not part of the core Storage interface because recursion has very
-// different cost and behavior across backends.
-// @group Core
-//
-// Example: check for walk support
-//
-//	disk, _ := storage.Build(context.Background(), localstorage.Config{
-//		Remote: "/tmp/storage-walk",
-//	})
-//
-//	_, ok := disk.(storage.Walker)
-//	fmt.Println(ok)
-//	// Output: false
-type Walker interface {
-	// Walk visits entries recursively when the backend supports it.
-	//
-	// Example: guard and call walk when supported
-	//
-	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
-	//		Remote: "/tmp/storage-walk",
-	//	})
-	//
-	//	walker, ok := disk.(storage.Walker)
-	//	if !ok {
-	//		fmt.Println("walk unsupported")
-	//		return
-	//	}
-	//
-	//	_ = walker.Walk(context.Background(), "", func(entry storage.Entry) error {
-	//		fmt.Println(entry.Path)
-	//		return nil
-	//	})
-	//	// Output: walk unsupported
-	Walk(ctx context.Context, p string, fn func(Entry) error) error
 }
 
 // Entry represents an item returned by List.

@@ -195,6 +195,56 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return result, nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	target, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return wrapLocalError(err)
+	}
+	if !info.IsDir() {
+		rel, err := d.userRelative(target)
+		if err != nil {
+			return err
+		}
+		return fn(storage.Entry{Path: rel, Size: info.Size(), IsDir: false})
+	}
+
+	return filepath.WalkDir(target, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return wrapLocalError(walkErr)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if current == target {
+			return nil
+		}
+		rel, err := d.userRelative(current)
+		if err != nil {
+			return err
+		}
+		size := int64(0)
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return wrapLocalError(err)
+			}
+			size = info.Size()
+		}
+		return fn(storage.Entry{
+			Path:  rel,
+			Size:  size,
+			IsDir: entry.IsDir(),
+		})
+	})
+}
+
 func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for local driver", storage.ErrUnsupported)
 }

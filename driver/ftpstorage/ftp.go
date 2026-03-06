@@ -268,6 +268,29 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fp, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	return wrapError(d.withConn(func(c *ftp.ServerConn) error {
+		if err := d.walkDir(ctx, c, fp, fn); err == nil {
+			return nil
+		} else if wrapped := wrapError(err); !errors.Is(wrapped, storage.ErrNotFound) {
+			return err
+		}
+
+		size, err := c.FileSize(fp)
+		if err != nil {
+			return err
+		}
+		return fn(storage.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: false})
+	}))
+}
+
 func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for ftp", storage.ErrUnsupported)
 }
@@ -287,6 +310,39 @@ func (d *driver) stripPrefix(p string) string {
 	trimmed := strings.TrimPrefix(p, d.prefix)
 	trimmed = strings.TrimPrefix(trimmed, "/")
 	return trimmed
+}
+
+func (d *driver) walkDir(ctx context.Context, c *ftp.ServerConn, dir string, fn func(storage.Entry) error) error {
+	entries, err := c.List(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		full := e.Name
+		if dir != "" && dir != "." && dir != "/" {
+			full = path.Join(dir, e.Name)
+		}
+		entry := storage.Entry{
+			Path:  d.stripPrefix(full),
+			Size:  int64(e.Size),
+			IsDir: e.Type == ftp.EntryTypeFolder,
+		}
+		if entry.IsDir {
+			entry.Size = 0
+		}
+		if err := fn(entry); err != nil {
+			return err
+		}
+		if entry.IsDir {
+			if err := d.walkDir(ctx, c, full, fn); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func wrapError(err error) error {

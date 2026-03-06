@@ -90,13 +90,6 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 
 	t.Run("walk", func(t *testing.T) {
-		walker, ok := fsys.(interface {
-			Walk(context.Context, string, func(storage.Entry) error) error
-		})
-		if !ok {
-			t.Skip("Walk not supported; skipping")
-		}
-
 		// Seed a small tree that exercises both nested objects and prefixes.
 		files := []string{
 			"folder1/fileA.txt",
@@ -110,10 +103,13 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 
 		var walked []string
-		if err := walker.Walk(ctx, "", func(entry storage.Entry) error {
+		if err := fsys.Walk(ctx, "", func(entry storage.Entry) error {
 			walked = append(walked, entry.Path)
 			return nil
 		}); err != nil {
+			if errors.Is(err, storage.ErrUnsupported) {
+				t.Skip("Walk not supported; skipping")
+			}
 			t.Fatalf("Walk: %v", err)
 		}
 		for _, expect := range files {

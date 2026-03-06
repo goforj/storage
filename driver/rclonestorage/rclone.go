@@ -17,6 +17,7 @@ import (
 	"github.com/rclone/rclone/fs/hash"
 	"github.com/rclone/rclone/fs/object"
 	"github.com/rclone/rclone/fs/operations"
+	"github.com/rclone/rclone/fs/walk"
 
 	// Backends (all)
 	_ "github.com/rclone/rclone/backend/all"
@@ -239,6 +240,37 @@ func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 		})
 	}
 	return result, nil
+}
+
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	remote, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	return walk.ListR(ctx, d.fs, remote, true, -1, walk.ListAll, func(entries fs.DirEntries) error {
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			rel := d.stripPrefix(entry.Remote())
+			if rel == "" || rel == d.stripPrefix(remote) {
+				continue
+			}
+			isDir := false
+			size := entry.Size()
+			if _, ok := entry.(fs.Directory); ok {
+				isDir = true
+				size = 0
+			}
+			if err := fn(storage.Entry{Path: rel, Size: size, IsDir: isDir}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (d *driver) URL(ctx context.Context, p string) (string, error) {

@@ -225,6 +225,16 @@ func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 	return nil
 }
 
+func (d *driver) Walk(ctx context.Context, p string, fn func(storage.Entry) error) error {
+	full, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	arg := files.NewListFolderArg(full)
+	arg.Recursive = true
+	return d.walkPage(ctx, arg, fn)
+}
+
 func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
@@ -259,6 +269,45 @@ func (d *driver) stripPrefix(p string) string {
 	trimmed := strings.TrimPrefix(lower, strings.ToLower(d.prefix))
 	trimmed = strings.TrimPrefix(trimmed, "/")
 	return trimmed
+}
+
+func (d *driver) walkPage(ctx context.Context, arg *files.ListFolderArg, fn func(storage.Entry) error) error {
+	res, err := d.client.ListFolder(arg)
+	if err != nil {
+		return wrapError(err)
+	}
+	if err := d.emitWalkEntries(ctx, res.Entries, fn); err != nil {
+		return err
+	}
+	for res.HasMore {
+		res, err = d.client.ListFolderContinue(files.NewListFolderContinueArg(res.Cursor))
+		if err != nil {
+			return wrapError(err)
+		}
+		if err := d.emitWalkEntries(ctx, res.Entries, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *driver) emitWalkEntries(ctx context.Context, entries []files.IsMetadata, fn func(storage.Entry) error) error {
+	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		switch m := e.(type) {
+		case *files.FileMetadata:
+			if err := fn(storage.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}); err != nil {
+				return err
+			}
+		case *files.FolderMetadata:
+			if err := fn(storage.Entry{Path: d.stripPrefix(m.PathLower), IsDir: true}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func wrapError(err error) error {

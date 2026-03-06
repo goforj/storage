@@ -4,6 +4,7 @@ package all
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -199,26 +200,23 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 			store, cleanup := fx.new(t)
 			t.Cleanup(cleanup)
 			storagetest.RunStorageContractTests(t, store)
-			if walker, ok := store.(interface {
-				Walk(context.Context, string, func(storage.Entry) error) error
-			}); ok {
-				verifyWalk(t, walker)
-			}
+			verifyWalk(t, store)
 		})
 	}
 }
 
-func verifyWalk(t *testing.T, walker interface {
-	Walk(context.Context, string, func(storage.Entry) error) error
-}) {
+func verifyWalk(t *testing.T, store storage.Storage) {
 	t.Helper()
 
 	var walked []string
-	err := walker.Walk(context.Background(), "", func(entry storage.Entry) error {
+	err := store.Walk(context.Background(), "", func(entry storage.Entry) error {
 		walked = append(walked, entry.Path)
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrUnsupported) {
+			t.Skip("Walk not supported; skipping")
+		}
 		t.Fatalf("Walk: %v", err)
 	}
 	if len(walked) == 0 {
