@@ -66,26 +66,31 @@ func RenderBenchmarks() {
 	root := findRoot()
 	ctx := context.Background()
 	rowsPath := filepath.Join(root, "docs", "bench", benchRows)
+	fmt.Println("benchrender: starting")
 
 	var rows map[string][]benchRow
 	if os.Getenv("BENCH_RENDER_ONLY") == "1" {
+		fmt.Println("benchrender: render-only mode from snapshot")
 		loaded, err := loadBenchmarkRows(rowsPath)
 		if err != nil {
 			panic(fmt.Errorf("render-only mode requires %s: %w", rowsPath, err))
 		}
 		rows = loaded
 	} else {
+		fmt.Println("benchrender: collecting benchmark rows")
 		rows = runBenchmarks(ctx)
 		if err := saveBenchmarkRows(rowsPath, rows); err != nil {
 			panic(err)
 		}
 	}
 
+	fmt.Println("benchrender: writing charts")
 	if err := writeDashboard(root, rows); err != nil {
 		panic(err)
 	}
 
 	readmePath := filepath.Join(root, "README.md")
+	fmt.Println("benchrender: updating README")
 	data, err := os.ReadFile(readmePath)
 	if err != nil {
 		panic(err)
@@ -156,35 +161,37 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		return store, func() { server.Stop() }, nil
 	})
 
-	add("ftp", func(ctx context.Context) (storage.Storage, func(), error) {
-		host := "127.0.0.1"
-		root, err := os.MkdirTemp("", "storage-bench-ftp-*")
-		if err != nil {
-			return nil, nil, err
-		}
-		port := pickPort()
-		srv, err := startEmbeddedFTPServer(host, port, root)
-		if err != nil {
-			_ = os.RemoveAll(root)
-			return nil, nil, err
-		}
-		store, err := storage.Build(ftpstorage.Config{
-			Host:     host,
-			Port:     port,
-			User:     "ftpuser",
-			Password: "ftppass",
-			Prefix:   "bench",
+	if include("ftp") {
+		add("ftp", func(ctx context.Context) (storage.Storage, func(), error) {
+			host := "127.0.0.1"
+			root, err := os.MkdirTemp("", "storage-bench-ftp-*")
+			if err != nil {
+				return nil, nil, err
+			}
+			port := pickPort()
+			srv, err := startEmbeddedFTPServer(host, port, root)
+			if err != nil {
+				_ = os.RemoveAll(root)
+				return nil, nil, err
+			}
+			store, err := storage.Build(ftpstorage.Config{
+				Host:     host,
+				Port:     port,
+				User:     "ftpuser",
+				Password: "ftppass",
+				Prefix:   "bench",
+			})
+			if err != nil {
+				_ = srv.Shutdown()
+				_ = os.RemoveAll(root)
+				return nil, nil, err
+			}
+			return store, func() {
+				_ = srv.Shutdown()
+				_ = os.RemoveAll(root)
+			}, nil
 		})
-		if err != nil {
-			_ = srv.Shutdown()
-			_ = os.RemoveAll(root)
-			return nil, nil, err
-		}
-		return store, func() {
-			_ = srv.Shutdown()
-			_ = os.RemoveAll(root)
-		}, nil
-	})
+	}
 
 	add("rclone_local", func(ctx context.Context) (storage.Storage, func(), error) {
 		root, err := os.MkdirTemp("", "storage-bench-rclone-*")
@@ -278,7 +285,11 @@ func benchmarkStoreOps(b *testing.B, store storage.Storage) {
 
 func runBenchmarks(ctx context.Context) map[string][]benchRow {
 	results := make(map[string][]benchRow)
-	for _, bc := range benchmarkCases(ctx) {
+	cases := benchmarkCases(ctx)
+	fmt.Printf("benchrender: selected drivers: %s\n", strings.Join(caseNames(cases), ", "))
+	for _, bc := range cases {
+		driverStart := time.Now()
+		fmt.Printf("benchrender: driver %s: setup\n", bc.name)
 		store, cleanup, err := bc.new(ctx)
 		if err != nil {
 			if bc.required {
@@ -290,8 +301,11 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 		if cleanup != nil {
 			defer cleanup()
 		}
+		fmt.Printf("benchrender: driver %s: ready\n", bc.name)
 
 		for _, op := range benchmarkOps() {
+			opStart := time.Now()
+			fmt.Printf("benchrender: driver %s: %s\n", bc.name, op.name)
 			if op.setup != nil {
 				if err := op.setup(ctx, store); err != nil {
 					fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
@@ -307,7 +321,9 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 				AllocsOp: allocs,
 				Ops:      runs,
 			})
+			fmt.Printf("benchrender: driver %s: %s done in %s\n", bc.name, op.name, time.Since(opStart).Round(time.Millisecond))
 		}
+		fmt.Printf("benchrender: driver %s: complete in %s\n", bc.name, time.Since(driverStart).Round(time.Millisecond))
 	}
 	return results
 }
@@ -533,7 +549,7 @@ func renderReadmeSection() string {
 		"```\n\n" +
 		"Notes:\n\n" +
 		"- `gcs` uses fake-gcs-server.\n" +
-		"- `ftp` uses the embedded Go FTP fixture.\n" +
+		"- `ftp` is excluded by default because the current driver opens a fresh connection per operation; include it with `BENCH_DRIVER=ftp`.\n" +
 		"- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
 		"- `rclone_local` measures rclone overhead on top of a local filesystem remote.\n\n" +
 		"### Latency (ns/op)\n\n" +
@@ -685,6 +701,14 @@ func orderedOps(rows map[string][]benchRow) []string {
 		}
 	}
 	return ops
+}
+
+func caseNames(cases []benchmarkCase) []string {
+	names := make([]string, 0, len(cases))
+	for _, bc := range cases {
+		names = append(names, bc.name)
+	}
+	return names
 }
 
 func findRoot() string {

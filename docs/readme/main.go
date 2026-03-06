@@ -84,6 +84,7 @@ func parseFuncs(root string) ([]*FuncDoc, error) {
 	}
 	for _, rel := range []string{
 		"driver/localstorage",
+		"driver/memorystorage",
 		"driver/s3storage",
 		"driver/gcsstorage",
 		"driver/sftpstorage",

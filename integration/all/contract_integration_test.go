@@ -19,6 +19,7 @@ import (
 	ftpstorage "github.com/goforj/storage/driver/ftpstorage"
 	gcsstorage "github.com/goforj/storage/driver/gcsstorage"
 	localstorage "github.com/goforj/storage/driver/localstorage"
+	memorystorage "github.com/goforj/storage/driver/memorystorage"
 	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
 	s3storage "github.com/goforj/storage/driver/s3storage"
 	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
@@ -44,6 +45,20 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				store, err := storage.Build(localstorage.Config{Remote: t.TempDir(), Prefix: "itest"})
 				if err != nil {
 					t.Fatalf("build local storage: %v", err)
+				}
+				return store, func() {}
+			},
+		})
+	}
+
+	if integrationDriverEnabled("memory") {
+		fixtures = append(fixtures, storageFactory{
+			name: "memory",
+			new: func(t *testing.T) (storage.Storage, func()) {
+				t.Helper()
+				store, err := storage.Build(memorystorage.Config{Prefix: "itest"})
+				if err != nil {
+					t.Fatalf("build memory storage: %v", err)
 				}
 				return store, func() {}
 			},

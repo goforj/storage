@@ -47,6 +47,7 @@ func run() error {
 	}
 	for _, rel := range []string{
 		"driver/localstorage",
+		"driver/memorystorage",
 		"driver/s3storage",
 		"driver/gcsstorage",
 		"driver/sftpstorage",
@@ -467,6 +468,7 @@ func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath str
 		{re: regexp.MustCompile(`\btime\.`), imp: "time"},
 		{re: regexp.MustCompile(`\bfilepath\.`), imp: "path/filepath"},
 		{re: regexp.MustCompile(`\blocalstorage\.`), imp: "github.com/goforj/storage/driver/localstorage"},
+		{re: regexp.MustCompile(`\bmemorystorage\.`), imp: "github.com/goforj/storage/driver/memorystorage"},
 		{re: regexp.MustCompile(`\bs3storage\.`), imp: "github.com/goforj/storage/driver/s3storage"},
 		{re: regexp.MustCompile(`\bgcsstorage\.`), imp: "github.com/goforj/storage/driver/gcsstorage"},
 		{re: regexp.MustCompile(`\bsftpstorage\.`), imp: "github.com/goforj/storage/driver/sftpstorage"},

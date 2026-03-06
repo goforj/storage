@@ -12,6 +12,7 @@ func selectedIntegrationDrivers() map[string]bool {
 		"ftp":          true,
 		"gcs":          true,
 		"local":        true,
+		"memory":       true,
 		"rclone_local": true,
 		"s3":           true,
 		"sftp":         true,
