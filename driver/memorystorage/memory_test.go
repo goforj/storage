@@ -1,4 +1,4 @@
-package memorystorage
+package memorystorage_test
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/goforj/storage"
+	"github.com/goforj/storage/driver/memorystorage"
 	"github.com/goforj/storage/storagetest"
 )
 
 func TestConfigResolvedConfig(t *testing.T) {
-	cfg := Config{Prefix: "sandbox"}
+	cfg := memorystorage.Config{Prefix: "sandbox"}
 	resolved := cfg.ResolvedConfig()
 	if resolved.Driver != "memory" {
 		t.Fatalf("Driver = %q", resolved.Driver)
@@ -22,19 +23,22 @@ func TestConfigResolvedConfig(t *testing.T) {
 }
 
 func TestMemoryStorageContract(t *testing.T) {
-	store, err := New(Config{Prefix: "itest"})
+	store, err := memorystorage.New(memorystorage.Config{Prefix: "itest"})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("memorystorage.New: %v", err)
 	}
 	storagetest.RunStorageContractTests(t, store)
 }
 
 func TestContextCancellation(t *testing.T) {
-	store, err := New(Config{})
+	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("memorystorage.New: %v", err)
 	}
-	d := store.(*driver)
+	d, ok := store.(storage.ContextStorage)
+	if !ok {
+		t.Fatal("store does not implement storage.ContextStorage")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -72,23 +76,22 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestDirectoryStatAndList(t *testing.T) {
-	store, err := New(Config{})
+	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("memorystorage.New: %v", err)
 	}
-	d := store.(*driver)
 
-	if err := d.Put("dir/sub/file.txt", []byte("hello")); err != nil {
+	if err := store.Put("dir/sub/file.txt", []byte("hello")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	entry, err := d.Stat("dir")
+	entry, err := store.Stat("dir")
 	if err != nil {
 		t.Fatalf("Stat dir: %v", err)
 	}
 	if !entry.IsDir || entry.Path != "dir" {
 		t.Fatalf("Stat dir entry = %+v", entry)
 	}
-	entries, err := d.List("dir")
+	entries, err := store.List("dir")
 	if err != nil {
 		t.Fatalf("List dir: %v", err)
 	}
@@ -98,15 +101,20 @@ func TestDirectoryStatAndList(t *testing.T) {
 }
 
 func TestModTime(t *testing.T) {
-	store, err := New(Config{})
+	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("memorystorage.New: %v", err)
 	}
-	d := store.(*driver)
-	if err := d.Put("file.txt", []byte("hello")); err != nil {
+	if err := store.Put("file.txt", []byte("hello")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	got, err := d.ModTime(context.Background(), "file.txt")
+	mt, ok := store.(interface {
+		ModTime(context.Context, string) (time.Time, error)
+	})
+	if !ok {
+		t.Fatal("store does not implement ModTime")
+	}
+	got, err := mt.ModTime(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("ModTime: %v", err)
 	}

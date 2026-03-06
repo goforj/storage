@@ -11,7 +11,7 @@ GOMODCACHE_DIR="${GOMODCACHE_DIR:-/tmp/storage-gomodcache}"
 INTEGRATION_TAGS="${INTEGRATION_TAGS:-integration}"
 INTEGRATION_MODULE_DIR="${INTEGRATION_MODULE_DIR:-integration}"
 INTEGRATION_MODULE_PKGS="${INTEGRATION_MODULE_PKGS:-./all}"
-INTEGRATION_MODULE_COVERPKG="${INTEGRATION_MODULE_COVERPKG:-github.com/goforj/storage,github.com/goforj/storage/storagetest,github.com/goforj/storage/integration/...,github.com/goforj/storage/driver/localstorage,github.com/goforj/storage/driver/s3storage,github.com/goforj/storage/driver/gcsstorage,github.com/goforj/storage/driver/sftpstorage,github.com/goforj/storage/driver/ftpstorage,github.com/goforj/storage/driver/rclonestorage}"
+INTEGRATION_MODULE_COVERPKG="${INTEGRATION_MODULE_COVERPKG:-github.com/goforj/storage,github.com/goforj/storage/storagetest,github.com/goforj/storage/integration/...,github.com/goforj/storage/driver/localstorage,github.com/goforj/storage/driver/memorystorage,github.com/goforj/storage/driver/s3storage,github.com/goforj/storage/driver/gcsstorage,github.com/goforj/storage/driver/sftpstorage,github.com/goforj/storage/driver/ftpstorage,github.com/goforj/storage/driver/rclonestorage}"
 
 ROOT_COVER_DIR="$TMP_ROOT/root"
 STORAGETEST_COVER_DIR="$TMP_ROOT/storagetest"
@@ -20,6 +20,7 @@ MERGED_DIR="$TMP_ROOT/merged"
 
 DRIVER_MODULES=(
   driver/localstorage
+  driver/memorystorage
   driver/s3storage
   driver/gcsstorage
   driver/sftpstorage
