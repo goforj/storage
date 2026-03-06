@@ -43,6 +43,14 @@ type dropboxClient interface {
 //		Token: "token",
 //	}
 //	_ = cfg
+//
+// Example: define dropbox storage config with all fields
+//
+//	cfg := dropboxstorage.Config{
+//		Token:  "token",
+//		Prefix: "uploads", // default: ""
+//	}
+//	_ = cfg
 type Config struct {
 	Token  string
 	Prefix string

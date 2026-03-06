@@ -13,4 +13,11 @@ func main() {
 		Token: "token",
 	}
 	_ = cfg
+
+	// Example: define dropbox storage config with all fields
+	cfg := dropboxstorage.Config{
+		Token:  "token",
+		Prefix: "uploads", // default: ""
+	}
+	_ = cfg
 }

@@ -14,4 +14,17 @@ func main() {
 		Region: "us-east-1",
 	}
 	_ = cfg
+
+	// Example: define s3 storage config with all fields
+	cfg := s3storage.Config{
+		Bucket:          "uploads",
+		Endpoint:        "http://localhost:9000", // default: ""
+		Region:          "us-east-1",
+		AccessKeyID:     "minioadmin", // default: ""
+		SecretAccessKey: "minioadmin", // default: ""
+		UsePathStyle:    true,         // default: false
+		UnsignedPayload: false,        // default: false
+		Prefix:          "assets",     // default: ""
+	}
+	_ = cfg
 }

@@ -411,7 +411,7 @@ func renderAPI(funcs []*FuncDoc) string {
 					buf.WriteString(fmt.Sprintf("_Example: %s_\n\n", ex.Label))
 				}
 				buf.WriteString("```go\n")
-				buf.WriteString(strings.TrimSpace(ex.Code))
+				buf.WriteString(strings.TrimSpace(trimDisplayExample(ex.Code)))
 				buf.WriteString("\n```\n\n")
 			}
 		}
@@ -474,4 +474,34 @@ func normalizeIndent(lines []string) []string {
 		}
 	}
 	return out
+}
+
+func trimDisplayExample(code string) string {
+	lines := strings.Split(code, "\n")
+
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	for len(lines) > 0 {
+		line := strings.TrimSpace(lines[len(lines)-1])
+		if discardAssignment(line) {
+			lines = lines[:len(lines)-1]
+			for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+				lines = lines[:len(lines)-1]
+			}
+			continue
+		}
+		break
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func discardAssignment(line string) bool {
+	if !strings.HasPrefix(line, "_ = ") {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "_ = "))
+	return rest != ""
 }

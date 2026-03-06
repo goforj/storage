@@ -20,4 +20,19 @@ func main() {
 	}
 	fmt.Println(remote.Name)
 	// Output: assets
+
+	// Example: define an s3 remote with all fields
+	remote := rclonestorage.S3Remote{
+		Name:               "assets",
+		Endpoint:           "http://localhost:9000", // default: ""
+		Region:             "us-east-1",
+		AccessKeyID:        "key",
+		SecretAccessKey:    "secret",
+		Provider:           "AWS",     // default: "AWS"
+		PathStyle:          false,     // default: false
+		BucketACL:          "private", // default: ""
+		UseUnsignedPayload: false,     // default: false
+	}
+	fmt.Println(remote.Name)
+	// Output: assets
 }

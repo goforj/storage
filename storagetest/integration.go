@@ -34,11 +34,11 @@ const (
 // RequireIntegration skips unless RUN_INTEGRATION=1 is set.
 func RequireIntegration(t *testing.T) {
 	if os.Getenv("RUN_INTEGRATION") == "" {
-		t.Skip("set RUN_INTEGRATION=1 to run integration tests (docker-compose up -d)")
+		t.Skip("set RUN_INTEGRATION=1 to run integration tests")
 	}
 }
 
-// S3Settings returns S3 config populated from env with compose defaults.
+// S3Settings returns S3 config populated from env with integration defaults.
 func S3Settings() (endpoint, region, access, secret, bucket string) {
 	endpoint = getenvDefault("INTEGRATION_S3_ENDPOINT", defaultS3Endpoint)
 	region = getenvDefault("INTEGRATION_S3_REGION", defaultS3Region)
@@ -73,7 +73,7 @@ func EnsureS3Bucket(ctx context.Context, endpoint, region, access, secret, bucke
 	return nil
 }
 
-// GCSSettings returns GCS config populated from env with compose defaults.
+// GCSSettings returns GCS config populated from env with integration defaults.
 func GCSSettings() (endpoint, bucket string) {
 	return getenvDefault("INTEGRATION_GCS_ENDPOINT", defaultGCSEndpoint),
 		getenvDefault("INTEGRATION_GCS_BUCKET", defaultGCSBucket)

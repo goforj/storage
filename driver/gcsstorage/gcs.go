@@ -42,6 +42,16 @@ type driver struct {
 //		Bucket: "uploads",
 //	}
 //	_ = cfg
+//
+// Example: define gcs storage config with all fields
+//
+//	cfg := gcsstorage.Config{
+//		Bucket:          "uploads",
+//		CredentialsJSON: "{...}",              // default: ""
+//		Endpoint:        "http://127.0.0.1:0", // default: ""
+//		Prefix:          "assets",             // default: ""
+//	}
+//	_ = cfg
 type Config struct {
 	Bucket          string
 	CredentialsJSON string

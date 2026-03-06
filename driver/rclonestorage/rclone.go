@@ -45,6 +45,16 @@ type driver struct {
 //		Prefix: "sandbox",
 //	}
 //	_ = cfg
+//
+// Example: define rclone storage config with all fields
+//
+//	cfg := rclonestorage.Config{
+//		Remote:           "local:",
+//		Prefix:           "sandbox",                  // default: ""
+//		RcloneConfigPath: "/path/to/rclone.conf",     // default: ""
+//		RcloneConfigData: "[local]\ntype = local\n",  // default: ""
+//	}
+//	_ = cfg
 type Config struct {
 	Remote           string
 	Prefix           string

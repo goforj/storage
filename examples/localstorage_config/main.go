@@ -14,4 +14,11 @@ func main() {
 		Prefix: "sandbox",
 	}
 	_ = cfg
+
+	// Example: define local storage config with all fields
+	cfg := localstorage.Config{
+		Remote: "/tmp/storage-local",
+		Prefix: "sandbox", // default: ""
+	}
+	_ = cfg
 }

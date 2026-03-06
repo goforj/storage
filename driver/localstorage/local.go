@@ -34,6 +34,14 @@ type driver struct {
 //		Prefix: "sandbox",
 //	}
 //	_ = cfg
+//
+// Example: define local storage config with all fields
+//
+//	cfg := localstorage.Config{
+//		Remote: "/tmp/storage-local",
+//		Prefix: "sandbox", // default: ""
+//	}
+//	_ = cfg
 type Config struct {
 	Remote string
 	Prefix string

@@ -15,4 +15,11 @@ func main() {
 	remote := rclonestorage.LocalRemote{Name: "local"}
 	fmt.Println(remote.Name)
 	// Output: local
+
+	// Example: define a local remote with all fields
+	remote := rclonestorage.LocalRemote{
+		Name: "local",
+	}
+	fmt.Println(remote.Name)
+	// Output: local
 }
