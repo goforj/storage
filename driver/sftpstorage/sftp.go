@@ -57,7 +57,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 // New constructs SFTP-backed storage using ssh and pkg/sftp.
 // @group Drivers
 //
-// Example: sftp driver
+// Example: sftp storage
 //
 //	fs, _ := sftpstorage.New(context.Background(), sftpstorage.Config{Host: "localhost", User: "user", Password: "pass"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
@@ -66,7 +66,7 @@ func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.SFTPHost == "" {
-		return nil, fmt.Errorf("storage: sftp driver requires SFTPHost")
+		return nil, fmt.Errorf("storage: sftp storage requires SFTPHost")
 	}
 	user := cfg.SFTPUser
 	if user == "" {

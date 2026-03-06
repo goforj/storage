@@ -52,7 +52,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 // New constructs Dropbox-backed storage using the official SDK.
 // @group Drivers
 //
-// Example: dropbox driver
+// Example: dropbox storage
 //
 //	fs, _ := dropboxstorage.New(context.Background(), dropboxstorage.Config{Token: "token"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
@@ -61,7 +61,7 @@ func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.DropboxToken == "" {
-		return nil, fmt.Errorf("storage: dropbox driver requires DropboxToken")
+		return nil, fmt.Errorf("storage: dropbox storage requires DropboxToken")
 	}
 	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {

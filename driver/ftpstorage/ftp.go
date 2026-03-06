@@ -59,7 +59,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 // New constructs FTP-backed storage using jlaffaye/ftp.
 // @group Drivers
 //
-// Example: ftp driver
+// Example: ftp storage
 //
 //	fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{Host: "127.0.0.1", User: "anonymous"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {

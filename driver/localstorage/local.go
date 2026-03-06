@@ -39,19 +39,19 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 	}
 }
 
-// New constructs a local driver rooted at cfg.Remote with an optional prefix.
+// New constructs local storage rooted at cfg.Remote with an optional prefix.
 // @group Drivers
 //
-// Example: local driver
+// Example: local storage
 //
-//	fs, _ := local.New(context.Background(), local.Config{Remote: "/tmp", Prefix: "sandbox"})
+//	fs, _ := localstorage.New(context.Background(), localstorage.Config{Remote: "/tmp", Prefix: "sandbox"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
 func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.Remote == "" {
-		return nil, fmt.Errorf("storage: local driver requires remote path")
+		return nil, fmt.Errorf("storage: local storage requires remote path")
 	}
 	cleanPrefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {

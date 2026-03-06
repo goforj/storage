@@ -55,7 +55,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 // New constructs GCS-backed storage using cloud.google.com/go/storage.
 // @group Drivers
 //
-// Example: gcs driver
+// Example: gcs storage
 //
 //	fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{Bucket: "bucket"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
@@ -64,7 +64,7 @@ func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.GCSBucket == "" {
-		return nil, fmt.Errorf("storage: gcs driver requires GCSBucket")
+		return nil, fmt.Errorf("storage: gcs storage requires GCSBucket")
 	}
 	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 	storagetest "github.com/goforj/storage/storagetest"
 )
 
-func TestRcloneDriverContract(t *testing.T) {
+func TestRcloneStorageContract(t *testing.T) {
 	root := t.TempDir()
 	remoteRoot := filepath.Join(root, "remote")
 	if err := os.MkdirAll(remoteRoot, 0o755); err != nil {

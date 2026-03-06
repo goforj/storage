@@ -10,7 +10,7 @@ import (
 	storagetest "github.com/goforj/storage/storagetest"
 )
 
-func TestLocalDriverContract(t *testing.T) {
+func TestLocalStorageContract(t *testing.T) {
 	root := t.TempDir()
 	cfg := storage.Config{
 		Default: "local",

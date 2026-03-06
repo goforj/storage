@@ -74,7 +74,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 // New constructs S3-backed storage using AWS SDK v2.
 // @group Drivers
 //
-// Example: s3 driver
+// Example: s3 storage
 //
 //	fs, _ := s3storage.New(context.Background(), s3storage.Config{Bucket: "bucket", Region: "us-east-1"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
@@ -83,10 +83,10 @@ func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.S3Bucket == "" {
-		return nil, fmt.Errorf("storage: s3 driver requires S3Bucket")
+		return nil, fmt.Errorf("storage: s3 storage requires S3Bucket")
 	}
 	if cfg.S3Region == "" {
-		return nil, fmt.Errorf("storage: s3 driver requires S3Region")
+		return nil, fmt.Errorf("storage: s3 storage requires S3Region")
 	}
 
 	prefix, err := storage.NormalizePath(cfg.Prefix)

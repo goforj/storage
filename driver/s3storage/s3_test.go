@@ -18,7 +18,7 @@ import (
 	storagetest "github.com/goforj/storage/storagetest"
 )
 
-func TestS3DriverWithFakeS3(t *testing.T) {
+func TestS3StorageWithFakeS3(t *testing.T) {
 	fake := gofakes3.New(s3mem.New())
 	server := fakeServer(t, fake)
 	if server == nil {

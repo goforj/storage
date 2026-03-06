@@ -66,16 +66,16 @@ var (
 // New constructs an rclone-backed storage. All disks share a single config path.
 // @group Drivers
 //
-// Example: rclone driver
+// Example: rclone storage
 //
-//	fs, _ := rclone.New(context.Background(), rclone.Config{Remote: "myremote:bucket", RcloneConfigData: "[myremote]\ntype = local\n"})
+//	fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{Remote: "myremote:bucket", RcloneConfigData: "[myremote]\ntype = local\n"})
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
 func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.Remote == "" {
-		return nil, fmt.Errorf("storage: rclone driver requires remote")
+		return nil, fmt.Errorf("storage: rclone storage requires remote")
 	}
 
 	prefix, err := storage.NormalizePath(cfg.Prefix)

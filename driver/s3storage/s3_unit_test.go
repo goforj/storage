@@ -69,7 +69,7 @@ func (f fakePresign) PresignGetObject(ctx context.Context, in *s3.GetObjectInput
 	return &v4.PresignedHTTPRequest{URL: f.url}, nil
 }
 
-func TestS3DriverOperations(t *testing.T) {
+func TestS3StorageOperations(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeS3{headOK: true, getBody: "data"}
 	d := &Driver{

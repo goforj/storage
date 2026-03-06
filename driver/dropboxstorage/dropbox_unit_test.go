@@ -92,7 +92,7 @@ func (f *fakeDropbox) GetTemporaryLink(arg *files.GetTemporaryLinkArg) (*files.G
 	return &files.GetTemporaryLinkResult{Link: f.linkURL}, nil
 }
 
-func TestDropboxDriverOperations(t *testing.T) {
+func TestDropboxStorageOperations(t *testing.T) {
 	client := &fakeDropbox{
 		getData: "hello",
 		listOut: &files.ListFolderResult{
