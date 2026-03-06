@@ -9,13 +9,15 @@ import (
 )
 
 func main() {
-	// Put writes an object at path, overwriting any existing object.
+	// Stat returns the entry at path.
 
-	// Example: write an object
+	// Example: stat an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-put",
+		Remote: "/tmp/storage-stat",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
-	fmt.Println("stored")
-	// Output: stored
+
+	entry, _ := disk.Stat("docs/readme.txt")
+	fmt.Println(entry.Path, entry.Size)
+	// Output: docs/readme.txt 5
 }

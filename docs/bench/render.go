@@ -101,7 +101,7 @@ func RenderBenchmarks() {
 	if err != nil {
 		panic(err)
 	}
-	updated, err := injectBenchSection(string(data), renderReadmeSection())
+	updated, err := injectBenchSection(string(data), renderReadmeSection(time.Now().Unix()))
 	if err != nil {
 		panic(err)
 	}
@@ -664,7 +664,10 @@ func loadBenchmarkRows(path string) (map[string][]benchRow, error) {
 	return rows, nil
 }
 
-func renderReadmeSection() string {
+func renderReadmeSection(cacheBuster int64) string {
+	chartPath := func(name string) string {
+		return fmt.Sprintf("docs/bench/%s?t=%d", name, cacheBuster)
+	}
 	return strings.TrimSpace("" +
 		"Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.\n\n" +
 		"Run the renderer with:\n\n" +
@@ -679,13 +682,13 @@ func renderReadmeSection() string {
 		"- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
 		"- `rclone_local` measures rclone overhead on top of a local filesystem remote.\n\n" +
 		"### Latency (ns/op)\n\n" +
-		"![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg)\n\n" +
+		fmt.Sprintf("![Storage benchmark latency chart](%s)\n\n", chartPath("benchmarks_ns.svg")) +
 		"### Iterations (N)\n\n" +
-		"![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg)\n\n" +
+		fmt.Sprintf("![Storage benchmark iteration chart](%s)\n\n", chartPath("benchmarks_ops.svg")) +
 		"### Allocated Bytes (B/op)\n\n" +
-		"![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg)\n\n" +
+		fmt.Sprintf("![Storage benchmark bytes chart](%s)\n\n", chartPath("benchmarks_bytes.svg")) +
 		"### Allocations (allocs/op)\n\n" +
-		"![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg)")
+		fmt.Sprintf("![Storage benchmark allocs chart](%s)", chartPath("benchmarks_allocs.svg")))
 }
 
 func injectBenchSection(readme, section string) (string, error) {
