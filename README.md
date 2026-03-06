@@ -52,21 +52,15 @@ go get github.com/goforj/storage/driver/rclonestorage
 
 ## Driver Matrix
 
-| Driver / Backend | Kind | URL | Notes |
-| ---: | --- | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | `No` | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | `Yes` | Supports signed object URLs; MinIO-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | `Conditional` | Supports signed URLs outside emulator mode; emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | `No` | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | `No` | Embedded integration fixture in the shared matrix. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | `Yes` | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | `Conditional` | Depends on the underlying rclone remote; representative local integration coverage. |
-
-Common contract across bundled drivers:
-- `Get`, `Put`, `Delete`, `Exists`, and one-level `List`
-- typed driver config and `New(...)` constructor
-- manager registration for named-disk usage
-- normalized `ErrNotFound`, `ErrForbidden`, and `ErrUnsupported` behavior
+| Driver | Kind | URL | Notes |
+| ---: | --- | :---: | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | No | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | Yes | Supports signed object URLs; MinIO-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Conditional | Supports signed URLs outside emulator mode; emulator-backed integration coverage via fake-gcs-server. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | No | Container-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | No | Embedded integration fixture in the shared matrix. |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Yes | Returns temporary links; external integration strategy still open. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Conditional | Depends on the underlying rclone remote; representative local integration coverage. |
 
 `Conditional` URL support means backend- or environment-dependent behavior, for example GCS emulator mode or the capabilities of a specific rclone remote.
 
