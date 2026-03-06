@@ -13,7 +13,7 @@
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24+-blue?logo=go" alt="Go version"></a>
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
 <!-- test-count:embed:start -->
-  <img src="https://img.shields.io/badge/unit_tests-11-brightgreen" alt="Unit tests (executed count)">
+  <img src="https://img.shields.io/badge/unit_tests-26-brightgreen" alt="Unit tests (executed count)">
   <img src="https://img.shields.io/badge/integration_tests-49-blue" alt="Integration tests (executed count)">
 <!-- test-count:embed:end -->
 </p>

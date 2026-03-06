@@ -22,6 +22,7 @@ type fakeS3 struct {
 	headErr error
 	listErr error
 	listOut *s3.ListObjectsV2Output
+	listSeq []*s3.ListObjectsV2Output
 	headOK  bool
 	getBody string
 }
@@ -50,6 +51,11 @@ func (f *fakeS3) HeadObject(ctx context.Context, in *s3.HeadObjectInput, _ ...fu
 func (f *fakeS3) ListObjectsV2(ctx context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
+	}
+	if len(f.listSeq) > 0 {
+		out := f.listSeq[0]
+		f.listSeq = f.listSeq[1:]
+		return out, nil
 	}
 	if f.listOut != nil {
 		return f.listOut, nil
@@ -103,6 +109,50 @@ func TestS3StorageOperations(t *testing.T) {
 	}
 }
 
+func TestS3Constructors(t *testing.T) {
+	t.Run("missing bucket", func(t *testing.T) {
+		_, err := New(Config{Region: "us-east-1"})
+		if err == nil {
+			t.Fatal("New returned nil error")
+		}
+	})
+
+	t.Run("missing region", func(t *testing.T) {
+		_, err := New(Config{Bucket: "bucket"})
+		if err == nil {
+			t.Fatal("New returned nil error")
+		}
+	})
+}
+
+func TestS3ContextCancellation(t *testing.T) {
+	d := &driver{bucket: "bucket", prefix: "pre"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := d.GetContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetContext error = %v", err)
+	}
+	if err := d.PutContext(ctx, "file.txt", []byte("hello")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PutContext error = %v", err)
+	}
+	if err := d.DeleteContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("DeleteContext error = %v", err)
+	}
+	if _, err := d.ExistsContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExistsContext error = %v", err)
+	}
+	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListContext error = %v", err)
+	}
+	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WalkContext error = %v", err)
+	}
+	if _, err := d.URLContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("URLContext error = %v", err)
+	}
+}
+
 func TestS3KeyAndPrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	k, err := d.key("file.txt")
@@ -127,4 +177,71 @@ func TestS3WrapError(t *testing.T) {
 	if !isNotFound(&types.NotFound{}) || !isNotFound(&types.NoSuchKey{}) {
 		t.Fatalf("isNotFound should detect known errors")
 	}
+}
+
+func TestS3WalkAndURLBranches(t *testing.T) {
+	t.Run("walk file path", func(t *testing.T) {
+		client := &fakeS3{headOK: true}
+		d := &driver{
+			client:  client,
+			presign: fakePresign{url: "http://signed"},
+			bucket:  "b",
+			prefix:  "pre",
+		}
+
+		var got []storage.Entry
+		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+			got = append(got, entry)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if len(got) != 1 || got[0].Path != "file.txt" || got[0].IsDir {
+			t.Fatalf("Walk entries = %+v", got)
+		}
+	})
+
+	t.Run("walk paginated objects and callback error", func(t *testing.T) {
+		client := &fakeS3{
+			listSeq: []*s3.ListObjectsV2Output{
+				{
+					Contents: []types.Object{{Key: aws.String("pre/folder/file-a.txt"), Size: aws.Int64(1)}},
+					IsTruncated:           aws.Bool(true),
+					NextContinuationToken: aws.String("next"),
+				},
+				{
+					Contents: []types.Object{{Key: aws.String("pre/file-b.txt"), Size: aws.Int64(2)}},
+				},
+			},
+		}
+		d := &driver{client: client, bucket: "b", prefix: "pre"}
+
+		var got []string
+		stop := errors.New("stop")
+		err := d.Walk("", func(entry storage.Entry) error {
+			got = append(got, entry.Path)
+			if entry.Path == "file-b.txt" {
+				return stop
+			}
+			return nil
+		})
+		if !errors.Is(err, stop) {
+			t.Fatalf("Walk error = %v", err)
+		}
+		if len(got) == 0 {
+			t.Fatal("Walk returned no entries")
+		}
+	})
+
+	t.Run("url presign error", func(t *testing.T) {
+		d := &driver{
+			client:  &fakeS3{},
+			presign: fakePresign{err: errors.New("boom")},
+			bucket:  "b",
+			prefix:  "pre",
+		}
+		if _, err := d.URL("file.txt"); err == nil {
+			t.Fatal("URL returned nil error")
+		}
+	})
 }

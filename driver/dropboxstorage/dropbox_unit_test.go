@@ -1,6 +1,7 @@
 package dropboxstorage
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -10,6 +11,29 @@ import (
 
 	"github.com/goforj/storage"
 )
+
+func TestDropboxConstructors(t *testing.T) {
+	if got := (Config{}).DriverName(); got != "dropbox" {
+		t.Fatalf("DriverName = %q", got)
+	}
+
+	t.Run("new missing token", func(t *testing.T) {
+		_, err := New(Config{})
+		if err == nil {
+			t.Fatal("New returned nil error")
+		}
+	})
+
+	t.Run("new context success", func(t *testing.T) {
+		got, err := NewContext(context.Background(), Config{Token: "token", Prefix: "pre"})
+		if err != nil {
+			t.Fatalf("NewContext: %v", err)
+		}
+		if got == nil {
+			t.Fatal("NewContext returned nil storage")
+		}
+	})
+}
 
 type errNotFound struct{}
 
@@ -125,5 +149,90 @@ func TestDropboxStorageOperations(t *testing.T) {
 	client.delErr = errNotFound{}
 	if err := d.Delete("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected wrapped not found, got %v", err)
+	}
+}
+
+func TestDropboxWalk(t *testing.T) {
+	client := &fakeDropbox{
+		listOut: &files.ListFolderResult{
+			Entries: []files.IsMetadata{
+				&files.FileMetadata{Metadata: files.Metadata{PathLower: "/pre/file.txt"}, Size: 3},
+			},
+			HasMore: true,
+			Cursor:  "cursor",
+		},
+		continueOut: &files.ListFolderResult{
+			Entries: []files.IsMetadata{
+				&files.FolderMetadata{Metadata: files.Metadata{PathLower: "/pre/dir"}},
+			},
+		},
+	}
+	d := &driver{client: client, prefix: "pre"}
+
+	var got []storage.Entry
+	if err := d.WalkContext(context.Background(), "", func(entry storage.Entry) error {
+		got = append(got, entry)
+		return nil
+	}); err != nil {
+		t.Fatalf("WalkContext: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("WalkContext entries = %v", got)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := d.emitWalkEntries(canceled, client.listOut.Entries, func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("emitWalkEntries canceled error = %v", err)
+	}
+}
+
+func TestDropboxListContinue(t *testing.T) {
+	client := &fakeDropbox{
+		continueOut: &files.ListFolderResult{
+			Entries: []files.IsMetadata{
+				&files.FileMetadata{Metadata: files.Metadata{PathLower: "/pre/file2.txt"}, Size: 4},
+			},
+		},
+	}
+	d := &driver{client: client, prefix: "pre"}
+
+	var entries []storage.Entry
+	if err := d.listContinue(context.Background(), files.NewListFolderContinueArg("cursor"), &entries); err != nil {
+		t.Fatalf("listContinue: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Path != "file2.txt" {
+		t.Fatalf("listContinue entries = %+v", entries)
+	}
+}
+
+func TestDropboxWrappersAndErrors(t *testing.T) {
+	client := &fakeDropbox{
+		getErr:  errors.New("boom"),
+		putErr:  errors.New("boom"),
+		delErr:  errors.New("boom"),
+		metaErr: errors.New("boom"),
+		linkErr: errors.New("boom"),
+	}
+	d := &driver{client: client, prefix: "pre"}
+
+	if err := d.Walk("", func(storage.Entry) error { return nil }); err != nil {
+		t.Fatalf("Walk wrapper: %v", err)
+	}
+
+	if _, err := d.GetContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("GetContext invalid path error = %v", err)
+	}
+	if err := d.PutContext(context.Background(), "file.txt", []byte("x")); err == nil {
+		t.Fatal("PutContext returned nil error")
+	}
+	if err := d.DeleteContext(context.Background(), "file.txt"); err == nil {
+		t.Fatal("DeleteContext returned nil error")
+	}
+	if _, err := d.ExistsContext(context.Background(), "file.txt"); err == nil {
+		t.Fatal("ExistsContext returned nil error")
+	}
+	if _, err := d.URLContext(context.Background(), "file.txt"); err == nil {
+		t.Fatal("URLContext returned nil error")
 	}
 }

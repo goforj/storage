@@ -1,11 +1,31 @@
 package ftpstorage
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/goforj/storage"
 )
+
+func TestFTPConstructors(t *testing.T) {
+	t.Run("new missing host", func(t *testing.T) {
+		_, err := New(Config{})
+		if err == nil {
+			t.Fatal("New returned nil error")
+		}
+	})
+
+	t.Run("new context applies defaults", func(t *testing.T) {
+		got, err := NewContext(context.Background(), Config{Host: "127.0.0.1", Prefix: "pre"})
+		if err != nil {
+			t.Fatalf("NewContext: %v", err)
+		}
+		if got == nil {
+			t.Fatal("NewContext returned nil storage")
+		}
+	})
+}
 
 func TestFTPPrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
@@ -20,5 +40,30 @@ func TestFTPWrapError(t *testing.T) {
 	}
 	if err := wrapError(errors.New("File not available")); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for case-insensitive match")
+	}
+}
+
+func TestFTPContextCancellation(t *testing.T) {
+	d := &driver{prefix: "pre"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := d.GetContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetContext error = %v", err)
+	}
+	if err := d.PutContext(ctx, "file.txt", []byte("hello")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PutContext error = %v", err)
+	}
+	if err := d.DeleteContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("DeleteContext error = %v", err)
+	}
+	if _, err := d.ExistsContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExistsContext error = %v", err)
+	}
+	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListContext error = %v", err)
+	}
+	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WalkContext error = %v", err)
 	}
 }
