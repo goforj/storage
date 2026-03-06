@@ -72,4 +72,4 @@ jobs:
       - name: Run integration tests
         run: |
           cd integration
-          go test -tags=integration -count=1 ./all
+          go test -tags=integration -count=1 -v ./all
