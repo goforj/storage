@@ -40,7 +40,7 @@ Each backend has its own API and client library.
 | <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | No | Container-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | No | Embedded integration fixture in the shared matrix. |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Yes | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Conditional | Depends on the underlying rclone remote; representative local integration coverage. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Conditional | Depends on the underlying rclone remote; see the [rclone storage systems overview](https://rclone.org/overview/). |
 
 `Conditional` URL support means backend- or environment-dependent behavior, for example GCS emulator mode or the capabilities of a specific rclone remote.
 
@@ -66,10 +66,10 @@ go get github.com/goforj/storage/driver/rclonestorage
 
 ## Usage
 
-Current guidance:
-- use typed driver constructors for direct application code and tests
-- use `storage.Manager` when you want named disks and config-driven construction
-- use typed driver configs for both `storage.Manager` and `storage.Build`
+Choose the construction style that fits your application:
+- Use a driver constructor like `localstorage.New(...)` when you want a single backend directly.
+- Use `storage.Build(...)` when you want one backend through the shared `storage` API.
+- Use `storage.New(...)` when you want multiple named disks managed from config.
 
 ### Manager and named disks
 
@@ -1114,19 +1114,19 @@ Current fixture types in the centralized matrix:
 Common contributor commands:
 
 ```bash
-GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test ./...
+go test ./...
 ```
 
 ```bash
 cd integration
-GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+go test -tags=integration ./all -count=1
 ```
 
 Run a single integration backend:
 
 ```bash
 cd integration
-INTEGRATION_DRIVER=gcs GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+INTEGRATION_DRIVER=gcs go test -tags=integration ./all -count=1
 ```
 
 Make targets:
