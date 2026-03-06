@@ -251,6 +251,29 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
+func (d *driver) Stat(p string) (storage.Entry, error) {
+	return d.StatContext(context.Background(), p)
+}
+
+func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+	if err := ctx.Err(); err != nil {
+		return storage.Entry{}, err
+	}
+	fp, err := d.fullPath(p)
+	if err != nil {
+		return storage.Entry{}, err
+	}
+	info, err := d.client.Stat(fp)
+	if err != nil {
+		return storage.Entry{}, wrapError(err)
+	}
+	size := info.Size()
+	if info.IsDir() {
+		size = 0
+	}
+	return storage.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: info.IsDir()}, nil
+}
+
 func (d *driver) Exists(p string) (bool, error) {
 	return d.ExistsContext(context.Background(), p)
 }
@@ -325,6 +348,32 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		return fn(storage.Entry{Path: d.stripPrefix(fp), Size: info.Size(), IsDir: false})
 	}
 	return d.walkDir(ctx, fp, fn)
+}
+
+func (d *driver) Copy(src, dst string) error {
+	return d.CopyContext(context.Background(), src, dst)
+}
+
+func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	data, err := d.GetContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	return d.PutContext(ctx, dst, data)
+}
+
+func (d *driver) Move(src, dst string) error {
+	return d.MoveContext(context.Background(), src, dst)
+}
+
+func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	if err := d.CopyContext(ctx, src, dst); err != nil {
+		return err
+	}
+	return d.DeleteContext(ctx, src)
 }
 
 func (d *driver) URL(p string) (string, error) {

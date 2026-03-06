@@ -1,0 +1,62 @@
+{
+  "delete": [
+    {
+      "driver": "local",
+      "op": "delete",
+      "ns_op": 30471,
+      "bytes_op": 288,
+      "allocs_op": 4,
+      "ops": 41726
+    }
+  ],
+  "exists": [
+    {
+      "driver": "local",
+      "op": "exists",
+      "ns_op": 1598,
+      "bytes_op": 480,
+      "allocs_op": 5,
+      "ops": 757066
+    }
+  ],
+  "get_small": [
+    {
+      "driver": "local",
+      "op": "get_small",
+      "ns_op": 11410,
+      "bytes_op": 1096,
+      "allocs_op": 8,
+      "ops": 107983
+    }
+  ],
+  "list": [
+    {
+      "driver": "local",
+      "op": "list",
+      "ns_op": 33043,
+      "bytes_op": 9416,
+      "allocs_op": 91,
+      "ops": 37510
+    }
+  ],
+  "put_small": [
+    {
+      "driver": "local",
+      "op": "put_small",
+      "ns_op": 63113,
+      "bytes_op": 736,
+      "allocs_op": 12,
+      "ops": 20858
+    }
+  ],
+  "walk": [
+    {
+      "driver": "local",
+      "op": "walk",
+      "ns_op": 59724,
+      "bytes_op": 8728,
+      "allocs_op": 64,
+      "ops": 20094
+    }
+  ]
+}

@@ -19,11 +19,14 @@ type stubFS struct{}
 func (stubFS) Get(string) ([]byte, error)   { return nil, nil }
 func (stubFS) Put(string, []byte) error     { return nil }
 func (stubFS) Delete(string) error          { return nil }
+func (stubFS) Stat(string) (Entry, error)   { return Entry{}, nil }
 func (stubFS) Exists(string) (bool, error)  { return true, nil }
 func (stubFS) List(string) ([]Entry, error) { return nil, nil }
 func (stubFS) Walk(string, func(Entry) error) error {
 	return ErrUnsupported
 }
+func (stubFS) Copy(string, string) error  { return nil }
+func (stubFS) Move(string, string) error  { return nil }
 func (stubFS) URL(string) (string, error) { return "", nil }
 
 func TestManagerNewErrors(t *testing.T) {

@@ -14,8 +14,10 @@ import (
 //   - Put overwrites an existing object at the same path.
 //   - List is one-level and non-recursive.
 //   - List with an empty path lists from the disk root or prefix root.
-//   - Walk is recursive and may return ErrUnsupported on drivers that do not implement it.
+//   - Walk is recursive.
 //   - URL returns a usable access URL when the driver supports it.
+//   - Copy overwrites the destination object when the backend supports copy semantics.
+//   - Move relocates an object and may be implemented as copy followed by delete.
 //   - Unsupported operations should return ErrUnsupported.
 //
 // @group Core
@@ -69,6 +71,20 @@ type Storage interface {
 	//	// Output: false
 	Delete(p string) error
 
+	// Stat returns the entry at path.
+	//
+	// Example: stat an object
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Remote: "/tmp/storage-stat",
+	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//
+	//	entry, _ := disk.Stat("docs/readme.txt")
+	//	fmt.Println(entry.Path, entry.Size)
+	//	// Output: docs/readme.txt 5
+	Stat(p string) (Entry, error)
+
 	// Exists reports whether an object exists at path.
 	//
 	// Example: check for an object
@@ -112,6 +128,36 @@ type Storage interface {
 	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
 	//	// Output: true
 	Walk(p string, fn func(Entry) error) error
+
+	// Copy copies the object at src to dst.
+	//
+	// Example: copy an object
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Remote: "/tmp/storage-copy",
+	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//	_ = disk.Copy("docs/readme.txt", "docs/copy.txt")
+	//
+	//	data, _ := disk.Get("docs/copy.txt")
+	//	fmt.Println(string(data))
+	//	// Output: hello
+	Copy(src, dst string) error
+
+	// Move moves the object at src to dst.
+	//
+	// Example: move an object
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Remote: "/tmp/storage-move",
+	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//	_ = disk.Move("docs/readme.txt", "docs/archive.txt")
+	//
+	//	ok, _ := disk.Exists("docs/readme.txt")
+	//	fmt.Println(ok)
+	//	// Output: false
+	Move(src, dst string) error
 
 	// URL returns a usable access URL when the driver supports it.
 	//
@@ -162,12 +208,18 @@ type ContextStorage interface {
 	PutContext(ctx context.Context, p string, contents []byte) error
 	// DeleteContext removes the object at path using the caller-provided context.
 	DeleteContext(ctx context.Context, p string) error
+	// StatContext returns the entry at path using the caller-provided context.
+	StatContext(ctx context.Context, p string) (Entry, error)
 	// ExistsContext reports whether an object exists at path using the caller-provided context.
 	ExistsContext(ctx context.Context, p string) (bool, error)
 	// ListContext returns the immediate children under path using the caller-provided context.
 	ListContext(ctx context.Context, p string) ([]Entry, error)
 	// WalkContext visits entries recursively using the caller-provided context.
 	WalkContext(ctx context.Context, p string, fn func(Entry) error) error
+	// CopyContext copies the object at src to dst using the caller-provided context.
+	CopyContext(ctx context.Context, src, dst string) error
+	// MoveContext moves the object at src to dst using the caller-provided context.
+	MoveContext(ctx context.Context, src, dst string) error
 	// URLContext returns a usable access URL using the caller-provided context.
 	URLContext(ctx context.Context, p string) (string, error)
 }

@@ -43,7 +43,7 @@ help: ##@other Show this help.
 #----------------------
 # Dev helpers
 #----------------------
-.PHONY: tidy test integration integration-driver examples-test coverage
+.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render
 
 #----------------------
 # Go helpers
@@ -70,3 +70,9 @@ integration: ##@go Run the centralized integration matrix in ./integration (may 
 integration-driver: ##@go Run a single backend in the centralized integration matrix: make integration-driver gcs
 	test -n "$(RUN_ARGS)" || (echo "usage: make integration-driver <driver>" && exit 1)
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && INTEGRATION_DRIVER="$(firstword $(RUN_ARGS))" GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all
+
+bench: ##@go Run benchmark suites in ./docs/bench
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd docs/bench && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=bench -run '^$$' -bench . -count=1
+
+bench-render: ##@go Render benchmark artifacts and update README benchmark embeds
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd docs/bench && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v

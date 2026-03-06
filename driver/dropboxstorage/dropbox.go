@@ -151,6 +151,32 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
+func (d *driver) Stat(p string) (storage.Entry, error) {
+	return d.StatContext(context.Background(), p)
+}
+
+func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+	if err := ctx.Err(); err != nil {
+		return storage.Entry{}, err
+	}
+	full, err := d.fullPath(p)
+	if err != nil {
+		return storage.Entry{}, err
+	}
+	meta, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
+	if err != nil {
+		return storage.Entry{}, wrapError(err)
+	}
+	switch m := meta.(type) {
+	case *files.FileMetadata:
+		return storage.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}, nil
+	case *files.FolderMetadata:
+		return storage.Entry{Path: d.stripPrefix(m.PathLower), Size: 0, IsDir: true}, nil
+	default:
+		return storage.Entry{}, fmt.Errorf("%w: unsupported metadata type", storage.ErrUnsupported)
+	}
+}
+
 func (d *driver) Exists(p string) (bool, error) {
 	return d.ExistsContext(context.Background(), p)
 }
@@ -261,6 +287,32 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 	arg := files.NewListFolderArg(full)
 	arg.Recursive = true
 	return d.walkPage(ctx, arg, fn)
+}
+
+func (d *driver) Copy(src, dst string) error {
+	return d.CopyContext(context.Background(), src, dst)
+}
+
+func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	data, err := d.GetContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	return d.PutContext(ctx, dst, data)
+}
+
+func (d *driver) Move(src, dst string) error {
+	return d.MoveContext(context.Background(), src, dst)
+}
+
+func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	if err := d.CopyContext(ctx, src, dst); err != nil {
+		return err
+	}
+	return d.DeleteContext(ctx, src)
 }
 
 func (d *driver) URL(p string) (string, error) {

@@ -14,8 +14,10 @@ func main() {
 	//   - Put overwrites an existing object at the same path.
 	//   - List is one-level and non-recursive.
 	//   - List with an empty path lists from the disk root or prefix root.
-	//   - Walk is recursive and may return ErrUnsupported on drivers that do not implement it.
+	//   - Walk is recursive.
 	//   - URL returns a usable access URL when the driver supports it.
+	//   - Copy overwrites the destination object when the backend supports copy semantics.
+	//   - Move relocates an object and may be implemented as copy followed by delete.
 	//   - Unsupported operations should return ErrUnsupported.
 
 	// Example: use the storage interface

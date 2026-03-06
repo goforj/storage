@@ -51,6 +51,29 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 	})
 
+	t.Run("stat", func(t *testing.T) {
+		path := "stat/file.txt"
+		payload := []byte("hello world")
+
+		if err := fsys.Put(path, payload); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+
+		entry, err := fsys.Stat(path)
+		if err != nil {
+			t.Fatalf("Stat: %v", err)
+		}
+		if entry.Path != path {
+			t.Fatalf("Stat path: expected %q got %q", path, entry.Path)
+		}
+		if entry.Size != int64(len(payload)) {
+			t.Fatalf("Stat size: expected %d got %d", len(payload), entry.Size)
+		}
+		if entry.IsDir {
+			t.Fatalf("Stat: expected object entry")
+		}
+	})
+
 	t.Run("listing-and-prefix", func(t *testing.T) {
 		files := []string{
 			"folder1/fileA.txt",
@@ -118,6 +141,64 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 	})
 
+	t.Run("copy", func(t *testing.T) {
+		src := "copy/source.txt"
+		dst := "copy/dest.txt"
+		payload := []byte("copied")
+
+		if err := fsys.Put(src, payload); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		if err := fsys.Copy(src, dst); err != nil {
+			t.Fatalf("Copy: %v", err)
+		}
+
+		got, err := fsys.Get(dst)
+		if err != nil {
+			t.Fatalf("Get copied object: %v", err)
+		}
+		if string(got) != string(payload) {
+			t.Fatalf("Get copied object: expected %q got %q", payload, got)
+		}
+
+		exists, err := fsys.Exists(src)
+		if err != nil {
+			t.Fatalf("Exists source after copy: %v", err)
+		}
+		if !exists {
+			t.Fatalf("Exists source after copy: expected true")
+		}
+	})
+
+	t.Run("move", func(t *testing.T) {
+		src := "move/source.txt"
+		dst := "move/dest.txt"
+		payload := []byte("moved")
+
+		if err := fsys.Put(src, payload); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		if err := fsys.Move(src, dst); err != nil {
+			t.Fatalf("Move: %v", err)
+		}
+
+		exists, err := fsys.Exists(src)
+		if err != nil {
+			t.Fatalf("Exists source after move: %v", err)
+		}
+		if exists {
+			t.Fatalf("Exists source after move: expected false")
+		}
+
+		got, err := fsys.Get(dst)
+		if err != nil {
+			t.Fatalf("Get moved object: %v", err)
+		}
+		if string(got) != string(payload) {
+			t.Fatalf("Get moved object: expected %q got %q", payload, got)
+		}
+	})
+
 	t.Run("url-behavior", func(t *testing.T) {
 		path := "url/file.txt"
 		if err := fsys.Put(path, []byte("url")); err != nil {
@@ -156,6 +237,15 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		cancel()
 		if err := csys.PutContext(canceled, "ctx/file.txt", []byte("x")); err == nil {
 			t.Fatalf("expected context cancellation")
+		}
+		if _, err := csys.StatContext(canceled, "ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from StatContext")
+		}
+		if err := csys.CopyContext(canceled, "ctx/file.txt", "ctx/file-copy.txt"); err == nil {
+			t.Fatalf("expected context cancellation from CopyContext")
+		}
+		if err := csys.MoveContext(canceled, "ctx/file.txt", "ctx/file-move.txt"); err == nil {
+			t.Fatalf("expected context cancellation from MoveContext")
 		}
 	})
 

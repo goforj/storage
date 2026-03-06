@@ -22,19 +22,25 @@ type fakeStorage struct{}
 func (fakeStorage) Get(string) ([]byte, error)                          { return nil, nil }
 func (fakeStorage) Put(string, []byte) error                            { return nil }
 func (fakeStorage) Delete(string) error                                 { return nil }
+func (fakeStorage) Stat(string) (Entry, error)                          { return Entry{}, nil }
 func (fakeStorage) Exists(string) (bool, error)                         { return false, nil }
 func (fakeStorage) List(string) ([]Entry, error)                        { return nil, nil }
 func (fakeStorage) Walk(string, func(Entry) error) error                { return nil }
+func (fakeStorage) Copy(string, string) error                           { return nil }
+func (fakeStorage) Move(string, string) error                           { return nil }
 func (fakeStorage) URL(string) (string, error)                          { return "", nil }
 func (fakeStorage) GetContext(context.Context, string) ([]byte, error)  { return nil, nil }
 func (fakeStorage) PutContext(context.Context, string, []byte) error    { return nil }
 func (fakeStorage) DeleteContext(context.Context, string) error         { return nil }
+func (fakeStorage) StatContext(context.Context, string) (Entry, error)  { return Entry{}, nil }
 func (fakeStorage) ExistsContext(context.Context, string) (bool, error) { return false, nil }
 func (fakeStorage) ListContext(context.Context, string) ([]Entry, error) {
 	return nil, nil
 }
 func (fakeStorage) WalkContext(context.Context, string, func(Entry) error) error { return nil }
-func (fakeStorage) URLContext(context.Context, string) (string, error)            { return "", nil }
+func (fakeStorage) CopyContext(context.Context, string, string) error            { return nil }
+func (fakeStorage) MoveContext(context.Context, string, string) error            { return nil }
+func (fakeStorage) URLContext(context.Context, string) (string, error)           { return "", nil }
 
 func TestBuild(t *testing.T) {
 	driverName := fmt.Sprintf("fake-build-%s", t.Name())

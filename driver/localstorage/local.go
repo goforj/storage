@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -154,6 +155,33 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
+func (d *driver) Stat(p string) (storage.Entry, error) {
+	return d.StatContext(context.Background(), p)
+}
+
+func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+	if err := ctx.Err(); err != nil {
+		return storage.Entry{}, err
+	}
+	target, err := d.fullPath(p)
+	if err != nil {
+		return storage.Entry{}, err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return storage.Entry{}, wrapLocalError(err)
+	}
+	rel, err := d.userRelative(target)
+	if err != nil {
+		return storage.Entry{}, err
+	}
+	size := info.Size()
+	if info.IsDir() {
+		size = 0
+	}
+	return storage.Entry{Path: rel, Size: size, IsDir: info.IsDir()}, nil
+}
+
 func (d *driver) Exists(p string) (bool, error) {
 	return d.ExistsContext(context.Background(), p)
 }
@@ -271,6 +299,80 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 			IsDir: entry.IsDir(),
 		})
 	})
+}
+
+func (d *driver) Copy(src, dst string) error {
+	return d.CopyContext(context.Background(), src, dst)
+}
+
+func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	srcTarget, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	srcInfo, err := os.Stat(srcTarget)
+	if err != nil {
+		return wrapLocalError(err)
+	}
+	if srcInfo.IsDir() {
+		return fmt.Errorf("%w: copy of directory not supported", storage.ErrUnsupported)
+	}
+	dstTarget, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dstTarget), 0o755); err != nil {
+		return fmt.Errorf("storage: mkdir: %w", err)
+	}
+	in, err := os.Open(srcTarget)
+	if err != nil {
+		return wrapLocalError(err)
+	}
+	defer in.Close()
+	out, err := os.Create(dstTarget)
+	if err != nil {
+		return wrapLocalError(err)
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return wrapLocalError(err)
+	}
+	return wrapLocalError(out.Close())
+}
+
+func (d *driver) Move(src, dst string) error {
+	return d.MoveContext(context.Background(), src, dst)
+}
+
+func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	srcTarget, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	srcInfo, err := os.Stat(srcTarget)
+	if err != nil {
+		return wrapLocalError(err)
+	}
+	if srcInfo.IsDir() {
+		return fmt.Errorf("%w: move of directory not supported", storage.ErrUnsupported)
+	}
+	dstTarget, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dstTarget), 0o755); err != nil {
+		return fmt.Errorf("storage: mkdir: %w", err)
+	}
+	if err := os.Rename(srcTarget, dstTarget); err != nil {
+		return wrapLocalError(err)
+	}
+	return nil
 }
 
 func (d *driver) URL(p string) (string, error) {

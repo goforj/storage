@@ -14,7 +14,7 @@
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
 <!-- test-count:embed:start -->
   <img src="https://img.shields.io/badge/unit_tests-26-brightgreen" alt="Unit tests (executed count)">
-  <img src="https://img.shields.io/badge/integration_tests-49-blue" alt="Integration tests (executed count)">
+  <img src="https://img.shields.io/badge/integration_tests-67-blue" alt="Integration tests (executed count)">
 <!-- test-count:embed:end -->
 </p>
 
@@ -33,17 +33,15 @@ Each backend has its own API and client library.
 
 ## Driver Matrix
 
-| Driver | Kind | Walk | URL | Notes |
-| ---: | --- | :---: | :---: | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Yes | No | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | Yes | Yes | Supports signed object URLs; MinIO-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Yes | Conditional | Supports signed URLs outside emulator mode; emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Yes | No | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Yes | No | Embedded integration fixture in the shared matrix. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Yes | Yes | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Yes | Conditional | Depends on the underlying rclone remote; see the [rclone storage systems overview](https://rclone.org/overview/). |
-
-`Conditional` URL support means backend- or environment-dependent behavior, for example GCS emulator mode or the capabilities of a specific rclone remote.
+| Driver | Kind | Notes |
+| ---: | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Returns temporary links; external integration strategy still open. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Depends on the underlying rclone remote; see the [rclone storage systems overview](https://rclone.org/overview/). |
 
 ## Install
 
@@ -285,6 +283,57 @@ See [`examples`](./examples) for runnable examples.
 
 Driver-specific behavior and capabilities are documented in [`DRIVER_SUPPORT.md`](./DRIVER_SUPPORT.md).
 
+## Benchmarks
+
+<!-- bench:embed:start -->
+
+Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.
+
+Run the renderer with:
+
+```bash
+cd docs/bench
+go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v
+```
+
+Notes:
+
+- `gcs` uses fake-gcs-server.
+- `ftp` uses the embedded Go FTP fixture.
+- `s3` and `sftp` use testcontainers and are skipped automatically if Docker is unavailable.
+- `rclone_local` measures rclone overhead on top of a local filesystem remote.
+
+### Latency (ns/op)
+
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg)
+
+### Iterations (N)
+
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg)
+
+### Allocated Bytes (B/op)
+
+![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg)
+
+### Allocations (allocs/op)
+
+![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg)
+<!-- bench:embed:end -->
+
+## Capability Matrix
+
+| Driver | Stat | Copy | Move | Walk | URL | Context |
+| ---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
+
+`~` indicates backend- or environment-dependent behavior. For example, GCS URL generation is unavailable in emulator mode and rclone URL support depends on the underlying remote.
+
 ## API reference
 
 The API section below is autogenerated; do not edit between the markers.
@@ -297,8 +346,8 @@ The API section below is autogenerated; do not edit between the markers.
 |------:|-----------|
 | **Config** | [rclonestorage.LocalRemote](#rclonestorage-localremote) [rclonestorage.MustRenderLocal](#rclonestorage-mustrenderlocal) [rclonestorage.MustRenderS3](#rclonestorage-mustrenders3) [rclonestorage.RenderLocal](#rclonestorage-renderlocal) [rclonestorage.RenderS3](#rclonestorage-renders3) [rclonestorage.S3Remote](#rclonestorage-s3remote) |
 | **Construction** | [Build](#build) [DriverConfig](#driverconfig) [DriverFactory](#driverfactory) [ResolvedConfig](#resolvedconfig) |
-| **Context** | [BuildContext](#buildcontext) [ContextStorage](#contextstorage) [ContextStorage.DeleteContext](#contextstorage-deletecontext) [ContextStorage.ExistsContext](#contextstorage-existscontext) [ContextStorage.GetContext](#contextstorage-getcontext) [ContextStorage.ListContext](#contextstorage-listcontext) [ContextStorage.PutContext](#contextstorage-putcontext) [ContextStorage.URLContext](#contextstorage-urlcontext) [ContextStorage.WalkContext](#contextstorage-walkcontext) |
-| **Core** | [DiskName](#diskname) [Entry](#entry) [Storage](#storage) [Storage.Delete](#storage-delete) [Storage.Exists](#storage-exists) [Storage.Get](#storage-get) [Storage.List](#storage-list) [Storage.Put](#storage-put) [Storage.URL](#storage-url) [Storage.Walk](#storage-walk) |
+| **Context** | [BuildContext](#buildcontext) [ContextStorage](#contextstorage) [ContextStorage.CopyContext](#contextstorage-copycontext) [ContextStorage.DeleteContext](#contextstorage-deletecontext) [ContextStorage.ExistsContext](#contextstorage-existscontext) [ContextStorage.GetContext](#contextstorage-getcontext) [ContextStorage.ListContext](#contextstorage-listcontext) [ContextStorage.MoveContext](#contextstorage-movecontext) [ContextStorage.PutContext](#contextstorage-putcontext) [ContextStorage.StatContext](#contextstorage-statcontext) [ContextStorage.URLContext](#contextstorage-urlcontext) [ContextStorage.WalkContext](#contextstorage-walkcontext) |
+| **Core** | [DiskName](#diskname) [Entry](#entry) [Storage](#storage) [Storage.Copy](#storage-copy) [Storage.Delete](#storage-delete) [Storage.Exists](#storage-exists) [Storage.Get](#storage-get) [Storage.List](#storage-list) [Storage.Move](#storage-move) [Storage.Put](#storage-put) [Storage.Stat](#storage-stat) [Storage.URL](#storage-url) [Storage.Walk](#storage-walk) |
 | **Driver Config** | [dropboxstorage.Config](#dropboxstorage-config) [ftpstorage.Config](#ftpstorage-config) [gcsstorage.Config](#gcsstorage-config) [localstorage.Config](#localstorage-config) [rclonestorage.Config](#rclonestorage-config) [s3storage.Config](#s3storage-config) [sftpstorage.Config](#sftpstorage-config) |
 | **Driver Constructors** | [dropboxstorage.New](#dropboxstorage-new) [ftpstorage.New](#ftpstorage-new) [gcsstorage.New](#gcsstorage-new) [localstorage.New](#localstorage-new) [rclonestorage.New](#rclonestorage-new) [s3storage.New](#s3storage-new) [sftpstorage.New](#sftpstorage-new) |
 | **Manager** | [Config](#config) [Manager](#manager) [Manager.Default](#manager-default) [Manager.Disk](#manager-disk) [New](#new) [RegisterDriver](#registerdriver) |
@@ -493,6 +542,10 @@ using the caller-provided context.
 ContextStorage exposes context-aware storage operations for cancellation and deadlines.
 Use Storage for the common path and type-assert to ContextStorage when you need caller-provided context.
 
+### <a id="contextstorage-copycontext"></a>ContextStorage.CopyContext
+
+CopyContext copies the object at src to dst using the caller-provided context.
+
 ### <a id="contextstorage-deletecontext"></a>ContextStorage.DeleteContext
 
 DeleteContext removes the object at path using the caller-provided context.
@@ -524,9 +577,17 @@ fmt.Println(string(data))
 
 ListContext returns the immediate children under path using the caller-provided context.
 
+### <a id="contextstorage-movecontext"></a>ContextStorage.MoveContext
+
+MoveContext moves the object at src to dst using the caller-provided context.
+
 ### <a id="contextstorage-putcontext"></a>ContextStorage.PutContext
 
 PutContext writes an object at path using the caller-provided context.
+
+### <a id="contextstorage-statcontext"></a>ContextStorage.StatContext
+
+StatContext returns the entry at path using the caller-provided context.
 
 ### <a id="contextstorage-urlcontext"></a>ContextStorage.URLContext
 
@@ -574,8 +635,10 @@ Semantics:
 - Put overwrites an existing object at the same path.
 - List is one-level and non-recursive.
 - List with an empty path lists from the disk root or prefix root.
-- Walk is recursive and may return ErrUnsupported on drivers that do not implement it.
+- Walk is recursive.
 - URL returns a usable access URL when the driver supports it.
+- Copy overwrites the destination object when the backend supports copy semantics.
+- Move relocates an object and may be implemented as copy followed by delete.
 - Unsupported operations should return ErrUnsupported.
 
 ```go
@@ -583,6 +646,22 @@ var disk storage.Storage
 disk, _ = storage.Build(localstorage.Config{
 	Remote: "/tmp/storage-interface",
 })
+```
+
+### <a id="storage-copy"></a>Storage.Copy
+
+Copy copies the object at src to dst.
+
+```go
+disk, _ := storage.Build(localstorage.Config{
+	Remote: "/tmp/storage-copy",
+})
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+_ = disk.Copy("docs/readme.txt", "docs/copy.txt")
+
+data, _ := disk.Get("docs/copy.txt")
+fmt.Println(string(data))
+// Output: hello
 ```
 
 ### <a id="storage-delete"></a>Storage.Delete
@@ -646,6 +725,22 @@ fmt.Println(entries[0].Path)
 // Output: docs/readme.txt
 ```
 
+### <a id="storage-move"></a>Storage.Move
+
+Move moves the object at src to dst.
+
+```go
+disk, _ := storage.Build(localstorage.Config{
+	Remote: "/tmp/storage-move",
+})
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+_ = disk.Move("docs/readme.txt", "docs/archive.txt")
+
+ok, _ := disk.Exists("docs/readme.txt")
+fmt.Println(ok)
+// Output: false
+```
+
 ### <a id="storage-put"></a>Storage.Put
 
 Put writes an object at path, overwriting any existing object.
@@ -657,6 +752,21 @@ disk, _ := storage.Build(localstorage.Config{
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 fmt.Println("stored")
 // Output: stored
+```
+
+### <a id="storage-stat"></a>Storage.Stat
+
+Stat returns the entry at path.
+
+```go
+disk, _ := storage.Build(localstorage.Config{
+	Remote: "/tmp/storage-stat",
+})
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+
+entry, _ := disk.Stat("docs/readme.txt")
+fmt.Println(entry.Path, entry.Size)
+// Output: docs/readme.txt 5
 ```
 
 ### <a id="storage-url"></a>Storage.URL
