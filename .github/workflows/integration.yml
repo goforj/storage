@@ -15,6 +15,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "stable"
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            examples/go.sum
+            integration/go.sum
+            storagetest/go.sum
+            driver/*/go.sum
 
       - name: Run integration tests
         run: |
