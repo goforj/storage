@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.90.0
 	github.com/fsouza/fake-gcs-server v1.52.3
 	github.com/goforj/storage v0.0.0
+	github.com/goforj/storage/driver/memorystorage v0.0.0
 	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
 	google.golang.org/api v0.264.0
 )
@@ -86,3 +87,5 @@ require (
 )
 
 replace github.com/goforj/storage => ..
+
+replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage

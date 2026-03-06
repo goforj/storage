@@ -283,6 +283,35 @@ func main() {
 
 See [`examples`](./examples) for runnable examples.
 
+### Testing with fakes
+
+```go
+package main
+
+import (
+    "testing"
+
+    "github.com/goforj/storage"
+    memorystorage "github.com/goforj/storage/driver/memorystorage"
+    "github.com/goforj/storage/storagetest"
+)
+
+func TestUpload(t *testing.T) {
+    // Create one fake disk.
+    disk := storagetest.Fake(t)
+    _ = disk.Put("photo.jpg", []byte("ok"))
+
+    // Or create a fake manager with named in-memory disks.
+    mgr := storagetest.FakeManager(t, "photos", map[storage.DiskName]memorystorage.Config{
+        "photos":  {Prefix: "photos"},
+        "avatars": {Prefix: "avatars"},
+    })
+
+    photos, _ := mgr.Disk("photos")
+    _ = photos.Put("one.jpg", []byte("ok"))
+}
+```
+
 ## Benchmarks
 
 <!-- bench:embed:start -->
