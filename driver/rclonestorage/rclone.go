@@ -94,6 +94,19 @@ var (
 //		Prefix: "sandbox",
 //	})
 //	_ = fs
+//
+// Example: rclone storage with inline config
+//
+//	fs, _ := rclonestorage.New(rclonestorage.Config{
+//		Remote: "localdisk:/tmp/storage",
+//		RcloneConfigData: `
+//
+// [localdisk]
+// type = local
+// `,
+//
+//	})
+//	_ = fs
 func New(cfg Config) (storage.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }

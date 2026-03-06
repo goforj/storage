@@ -9,15 +9,16 @@ import (
 )
 
 func main() {
-	// Get reads the object at path.
+	// Copy copies the object at src to dst.
 
-	// Example: read an object
+	// Example: copy an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-get",
+		Remote: "/tmp/storage-copy",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	_ = disk.Copy("docs/readme.txt", "docs/copy.txt")
 
-	data, _ := disk.Get("docs/readme.txt")
+	data, _ := disk.Get("docs/copy.txt")
 	fmt.Println(string(data))
 	// Output: hello
 }

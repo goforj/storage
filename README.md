@@ -1070,10 +1070,26 @@ fs, _ := memorystorage.New(memorystorage.Config{
 
 New constructs an rclone-backed storage. All disks share a single config path.
 
+_Example: rclone storage_
+
 ```go
 fs, _ := rclonestorage.New(rclonestorage.Config{
 	Remote: "local:",
 	Prefix: "sandbox",
+})
+```
+
+_Example: rclone storage with inline config_
+
+```go
+fs, _ := rclonestorage.New(rclonestorage.Config{
+	Remote: "localdisk:/tmp/storage",
+	RcloneConfigData: `
+
+[localdisk]
+type = local
+`,
+
 })
 ```
 
