@@ -131,7 +131,7 @@ func main() {
 }
 ```
 
-### Build a single disk from typed driver config
+### Single-backend construction
 
 ```go
 package main
@@ -144,8 +144,8 @@ import (
 )
 
 func main() {
-    // Build a single storage disk from typed config.
-    disk, err := storage.Build(localstorage.Config{
+    // Build one disk through the shared storage API.
+    built, err := storage.Build(localstorage.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
     })
@@ -153,18 +153,16 @@ func main() {
         log.Fatal(err)
     }
 
-    // Put a file.
-    if err := disk.Put("build.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // List files at the disk root.
-    entries, err := disk.List("")
+    // Or construct the driver directly.
+    direct, err := localstorage.New(localstorage.Config{
+        Remote: "/tmp/storage",
+        Prefix: "scratch",
+    })
     if err != nil {
         log.Fatal(err)
     }
 
-    _ = entries // build.txt
+    _, _ = built, direct
 }
 ```
 
@@ -174,6 +172,7 @@ func main() {
 package main
 
 import (
+    "errors"
     "fmt"
     "log"
 
@@ -222,31 +221,8 @@ func main() {
     if err := disk.Delete("docs/readme.txt"); err != nil {
         log.Fatal(err)
     }
-}
-```
 
-### URL support
-
-```go
-package main
-
-import (
-    "errors"
-    "fmt"
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-)
-
-func main() {
-    disk, err := storage.Build(localstorage.Config{
-        Remote: "/tmp/storage",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
+    // Ask the backend for an access URL when supported.
     url, err := disk.URL("docs/readme.txt")
     switch {
     case err == nil:
@@ -257,42 +233,6 @@ func main() {
     default:
         log.Fatal(err)
     }
-}
-```
-
-### Direct driver constructor
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage/driver/localstorage"
-)
-
-func main() {
-    // Construct a driver directly.
-    disk, err := localstorage.New(localstorage.Config{
-        Remote: "/tmp/storage",
-        Prefix: "scratch",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file.
-    if err := disk.Put("build.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // Read the file back.
-    data, err := disk.Get("build.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = data // []byte("hello")
 }
 ```
 
