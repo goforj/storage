@@ -16,11 +16,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("s3", New)
+	storage.RegisterDriver("s3", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
@@ -42,28 +44,59 @@ type s3PresignAPI interface {
 	PresignGetObject(context.Context, *s3.GetObjectInput, ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
-// New constructs an s3-backed filesystem using AWS SDK v2.
+type Config struct {
+	Bucket          string
+	Endpoint        string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	UsePathStyle    bool
+	UnsignedPayload bool
+	Prefix          string
+}
+
+func (Config) DriverName() string { return "s3" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver:            "s3",
+		S3Bucket:          c.Bucket,
+		S3Endpoint:        c.Endpoint,
+		S3Region:          c.Region,
+		S3AccessKeyID:     c.AccessKeyID,
+		S3SecretAccessKey: c.SecretAccessKey,
+		S3UsePathStyle:    c.UsePathStyle,
+		S3UnsignedPayload: c.UnsignedPayload,
+		Prefix:            c.Prefix,
+	}
+}
+
+// New constructs S3-backed storage using AWS SDK v2.
 // @group Drivers
 //
 // Example: s3 driver
 //
-//	fs, _ := s3driver.New(context.Background(), filesystem.DiskConfig{Driver: "s3", S3Bucket: "bucket", S3Region: "us-east-1"}, filesystem.Config{})
-func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := s3driver.New(context.Background(), s3driver.Config{Bucket: "bucket", Region: "us-east-1"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.S3Bucket == "" {
-		return nil, fmt.Errorf("filesystem: s3 driver requires S3Bucket")
+		return nil, fmt.Errorf("storage: s3 driver requires S3Bucket")
 	}
 	if cfg.S3Region == "" {
-		return nil, fmt.Errorf("filesystem: s3 driver requires S3Region")
+		return nil, fmt.Errorf("storage: s3 driver requires S3Region")
 	}
 
-	prefix, err := filesystem.NormalizePath(cfg.Prefix)
+	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
 
 	awsCfg, err := loadAWSConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("filesystem: load aws config: %w", err)
+		return nil, fmt.Errorf("storage: load aws config: %w", err)
 	}
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = cfg.S3UsePathStyle
@@ -78,7 +111,7 @@ func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (f
 	}, nil
 }
 
-func loadAWSConfig(ctx context.Context, cfg filesystem.DiskConfig) (aws.Config, error) {
+func loadAWSConfig(ctx context.Context, cfg storage.ResolvedConfig) (aws.Config, error) {
 	optFns := []func(*config.LoadOptions) error{
 		config.WithRegion(cfg.S3Region),
 	}
@@ -180,7 +213,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -192,7 +225,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		prefix += "/"
 	}
 
-	var entries []filesystem.Entry
+	var entries []storage.Entry
 	var token *string
 	for {
 		out, err := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
@@ -209,7 +242,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 			if rel == "" {
 				continue
 			}
-			entries = append(entries, filesystem.Entry{Path: rel, IsDir: true})
+			entries = append(entries, storage.Entry{Path: rel, IsDir: true})
 		}
 		for _, obj := range out.Contents {
 			if strings.HasSuffix(aws.ToString(obj.Key), "/") {
@@ -219,7 +252,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 			if rel == "" {
 				continue
 			}
-			entries = append(entries, filesystem.Entry{
+			entries = append(entries, storage.Entry{
 				Path:  rel,
 				Size:  aws.ToInt64(obj.Size),
 				IsDir: false,
@@ -253,11 +286,11 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 }
 
 func (d *Driver) key(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return filesystem.JoinPrefix(d.prefix, normalized), nil
+	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *Driver) stripPrefix(k string) string {
@@ -272,11 +305,11 @@ func (d *Driver) stripPrefix(k string) string {
 func wrapError(err error) error {
 	var nfe *types.NotFound
 	if errors.As(err, &nfe) {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	var apiErr *types.NoSuchKey
 	if errors.As(err, &apiErr) {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	return err
 }

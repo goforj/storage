@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"cloud.google.com/go/storage"
+	gcsapi "cloud.google.com/go/storage"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func TestGCSKeyAndPrefixHelpers(t *testing.T) {
@@ -24,7 +24,7 @@ func TestGCSKeyAndPrefixHelpers(t *testing.T) {
 }
 
 func TestGCSWrapError(t *testing.T) {
-	if err := wrapError(storage.ErrObjectNotExist); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(gcsapi.ErrObjectNotExist); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

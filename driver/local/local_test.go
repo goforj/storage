@@ -6,30 +6,26 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/goforj/filesystem"
-	filesystemtest "github.com/goforj/filesystem/testutil"
+	"github.com/goforj/storage"
+	storagetest "github.com/goforj/storage/storagetest"
 )
 
 func TestLocalDriverContract(t *testing.T) {
 	root := t.TempDir()
-	cfg := filesystem.Config{
+	cfg := storage.Config{
 		Default: "local",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"local": {
-				Driver: "local",
-				Remote: root,
-				Prefix: "sandbox",
-			},
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"local": Config{Remote: root, Prefix: "sandbox"},
 		},
 	}
 
-	manager, err := filesystem.New(cfg)
+	manager, err := storage.New(cfg)
 	if err != nil {
 		t.Fatalf("New manager: %v", err)
 	}
 	fsys := manager.Default()
 
-	filesystemtest.RunFilesystemContractTests(t, fsys)
+	storagetest.RunStorageContractTests(t, fsys)
 }
 
 func TestLocalPrefixIsolation(t *testing.T) {
@@ -39,17 +35,13 @@ func TestLocalPrefixIsolation(t *testing.T) {
 		t.Fatalf("write outside: %v", err)
 	}
 
-	cfg := filesystem.Config{
+	cfg := storage.Config{
 		Default: "local",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"local": {
-				Driver: "local",
-				Remote: root,
-				Prefix: "sandbox",
-			},
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"local": Config{Remote: root, Prefix: "sandbox"},
 		},
 	}
-	manager, err := filesystem.New(cfg)
+	manager, err := storage.New(cfg)
 	if err != nil {
 		t.Fatalf("New manager: %v", err)
 	}

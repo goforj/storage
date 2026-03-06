@@ -1,8 +1,6 @@
 # for integration testing
 # s3 - minio
-# gcs - fake-gcs-server
 # sftp - emberstack/sftp
-# ftp - local custom image
 
 services:
   minio:

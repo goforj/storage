@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/goforj/filesystem"
-	filesystemtest "github.com/goforj/filesystem/testutil"
+	"github.com/goforj/storage"
+	storagetest "github.com/goforj/storage/storagetest"
 )
 
 func TestSFTPWithEmbeddedServer(t *testing.T) {
@@ -42,17 +42,15 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 
 	go acceptLoop(t, ln, serverConfig, root)
 
-	cfg := filesystem.Config{
+	cfg := storage.Config{
 		Default: "sftp",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"sftp": {
-				Driver:                  "sftp",
-				SFTPHost:                "127.0.0.1",
-				SFTPPort:                ln.Addr().(*net.TCPAddr).Port,
-				SFTPUser:                "test",
-				SFTPPassword:            "test",
-				SFTPInsecureIgnoreHostKey: true,
-				Prefix:                  "",
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"sftp": Config{
+				Host:                  "127.0.0.1",
+				Port:                  ln.Addr().(*net.TCPAddr).Port,
+				User:                  "test",
+				Password:              "test",
+				InsecureIgnoreHostKey: true,
 			},
 		},
 	}
@@ -60,7 +58,7 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 	// brief delay to ensure server is accepting
 	time.Sleep(100 * time.Millisecond)
 
-	mgr, err := filesystem.New(cfg)
+	mgr, err := storage.New(cfg)
 	if err != nil {
 		t.Fatalf("New manager: %v", err)
 	}
@@ -69,7 +67,7 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("disk: %v", err)
 	}
 
-	filesystemtest.RunFilesystemContractTests(t, fs)
+	storagetest.RunStorageContractTests(t, fs)
 }
 
 func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root string) {
@@ -79,12 +77,12 @@ func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root strin
 			return
 		}
 		go func(c net.Conn) {
-		_, chans, reqs, err := ssh.NewServerConn(c, cfg)
-		if err != nil {
-			_ = c.Close()
-			return
-		}
-		go ssh.DiscardRequests(reqs)
+			_, chans, reqs, err := ssh.NewServerConn(c, cfg)
+			if err != nil {
+				_ = c.Close()
+				return
+			}
+			go ssh.DiscardRequests(reqs)
 			go handleChannels(t, chans, root)
 		}(conn)
 	}

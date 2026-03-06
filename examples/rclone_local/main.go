@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/goforj/filesystem"
-	_ "github.com/goforj/filesystem-rclone"
+	"github.com/goforj/storage"
+	rclonedriver "github.com/goforj/storage/driver/rclone"
 )
 
 const inlineConfig = `
@@ -23,21 +23,20 @@ func main() {
 	}
 	defer os.RemoveAll(root)
 
-	cfg := filesystem.Config{
-		Default:          "rclone",
-		RcloneConfigData: inlineConfig,
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"rclone": {
-				Driver: "rclone",
-				Remote: fmt.Sprintf("localfs:%s", root),
-				Prefix: "sandbox",
+	cfg := storage.Config{
+		Default: "rclone",
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"rclone": rclonedriver.Config{
+				Remote:           fmt.Sprintf("localfs:%s", root),
+				Prefix:           "sandbox",
+				RcloneConfigData: inlineConfig,
 			},
 		},
 	}
 
 	ctx := context.Background()
 
-	mgr, err := filesystem.New(cfg)
+	mgr, err := storage.New(cfg)
 	if err != nil {
 		log.Fatalf("manager: %v", err)
 	}

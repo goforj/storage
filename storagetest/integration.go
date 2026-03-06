@@ -1,4 +1,4 @@
-package filesystemtest
+package storagetest
 
 import (
 	"context"

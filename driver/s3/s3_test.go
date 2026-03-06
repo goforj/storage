@@ -14,8 +14,8 @@ import (
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/stretchr/testify/require"
 
-	"github.com/goforj/filesystem"
-	filesystemtest "github.com/goforj/filesystem/testutil"
+	"github.com/goforj/storage"
+	storagetest "github.com/goforj/storage/storagetest"
 )
 
 func TestS3DriverWithFakeS3(t *testing.T) {
@@ -25,29 +25,28 @@ func TestS3DriverWithFakeS3(t *testing.T) {
 		t.Fatalf("unable to start fake s3 server")
 	}
 
-	cfg := filesystem.Config{
+	cfg := storage.Config{
 		Default: "s3",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"s3": {
-				Driver:            "s3",
-				S3Bucket:          "bucket",
-				S3Endpoint:        server.URL,
-				S3Region:          "us-east-1",
-				S3AccessKeyID:     "access",
-				S3SecretAccessKey: "secret",
-				S3UsePathStyle:    true,
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"s3": Config{
+				Bucket:          "bucket",
+				Endpoint:        server.URL,
+				Region:          "us-east-1",
+				AccessKeyID:     "access",
+				SecretAccessKey: "secret",
+				UsePathStyle:    true,
 			},
 		},
 	}
 
 	ensureBucket(t, server.URL, "bucket")
 
-	mgr, err := filesystem.New(cfg)
+	mgr, err := storage.New(cfg)
 	require.NoError(t, err)
 	fs, err := mgr.Disk("s3")
 	require.NoError(t, err)
 
-	filesystemtest.RunFilesystemContractTests(t, fs)
+	storagetest.RunStorageContractTests(t, fs)
 }
 
 func fakeServer(t *testing.T, fake *gofakes3.GoFakeS3) *httptest.Server {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func TestFTPPrefixHelpers(t *testing.T) {
@@ -15,10 +15,10 @@ func TestFTPPrefixHelpers(t *testing.T) {
 }
 
 func TestFTPWrapError(t *testing.T) {
-	if err := wrapError(errors.New("file not found")); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(errors.New("file not found")); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
-	if err := wrapError(errors.New("File not available")); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(errors.New("File not available")); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for case-insensitive match")
 	}
 }

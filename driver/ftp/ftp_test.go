@@ -12,8 +12,8 @@ import (
 
 	"github.com/goftp/server"
 
-	"github.com/goforj/filesystem"
-	filesystemtest "github.com/goforj/filesystem/testutil"
+	"github.com/goforj/storage"
+	storagetest "github.com/goforj/storage/storagetest"
 )
 
 type memFactory struct {
@@ -130,16 +130,14 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		_ = s.Shutdown()
 	})
 
-	cfg := filesystem.Config{
+	cfg := storage.Config{
 		Default: "ftp",
-		Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-			"ftp": {
-				Driver:      "ftp",
-				FTPHost:     "127.0.0.1",
-				FTPPort:     opts.Port,
-				FTPUser:     "anonymous",
-				FTPPassword: "anonymous",
-				Prefix:      "",
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"ftp": Config{
+				Host:     "127.0.0.1",
+				Port:     opts.Port,
+				User:     "anonymous",
+				Password: "anonymous",
 			},
 		},
 	}
@@ -147,7 +145,7 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 	// small delay to ensure server is listening
 	time.Sleep(200 * time.Millisecond)
 
-	mgr, err := filesystem.New(cfg)
+	mgr, err := storage.New(cfg)
 	if err != nil {
 		t.Fatalf("New manager: %v", err)
 	}
@@ -156,7 +154,7 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("disk: %v", err)
 	}
 
-	filesystemtest.RunFilesystemContractTests(t, fs)
+	storagetest.RunStorageContractTests(t, fs)
 }
 
 func pickPort() int {

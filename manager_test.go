@@ -1,4 +1,4 @@
-package filesystem
+package storage
 
 import (
 	"context"
@@ -6,12 +6,20 @@ import (
 	"testing"
 )
 
+type stubDriverConfig struct {
+	name string
+	cfg  ResolvedConfig
+}
+
+func (c stubDriverConfig) DriverName() string             { return c.name }
+func (c stubDriverConfig) ResolvedConfig() ResolvedConfig { return c.cfg }
+
 type stubFS struct{}
 
-func (stubFS) Get(context.Context, string) ([]byte, error) { return nil, nil }
-func (stubFS) Put(context.Context, string, []byte) error   { return nil }
-func (stubFS) Delete(context.Context, string) error        { return nil }
-func (stubFS) Exists(context.Context, string) (bool, error) { return true, nil }
+func (stubFS) Get(context.Context, string) ([]byte, error)   { return nil, nil }
+func (stubFS) Put(context.Context, string, []byte) error     { return nil }
+func (stubFS) Delete(context.Context, string) error          { return nil }
+func (stubFS) Exists(context.Context, string) (bool, error)  { return true, nil }
 func (stubFS) List(context.Context, string) ([]Entry, error) { return nil, nil }
 func (stubFS) URL(context.Context, string) (string, error)   { return "", nil }
 
@@ -26,8 +34,8 @@ func TestManagerNewErrors(t *testing.T) {
 	// unknown driver
 	_, err := New(Config{
 		Default: "missing",
-		Disks: map[DiskName]DiskConfig{
-			"missing": {Driver: "nope"},
+		Disks: map[DiskName]DriverConfig{
+			"missing": stubDriverConfig{name: "nope"},
 		},
 	})
 	if err == nil {
@@ -35,13 +43,13 @@ func TestManagerNewErrors(t *testing.T) {
 	}
 
 	// driver factory returns error
-	RegisterDriver("stub-error", func(context.Context, DiskConfig, Config) (Filesystem, error) {
+	RegisterDriver("stub-error", func(context.Context, ResolvedConfig) (Storage, error) {
 		return nil, errors.New("boom")
 	})
 	_, err = New(Config{
 		Default: "bad",
-		Disks: map[DiskName]DiskConfig{
-			"bad": {Driver: "stub-error"},
+		Disks: map[DiskName]DriverConfig{
+			"bad": stubDriverConfig{name: "stub-error"},
 		},
 	})
 	if err == nil {
@@ -50,14 +58,14 @@ func TestManagerNewErrors(t *testing.T) {
 }
 
 func TestManagerSuccessAndLookups(t *testing.T) {
-	RegisterDriver("stub-ok", func(context.Context, DiskConfig, Config) (Filesystem, error) {
+	RegisterDriver("stub-ok", func(context.Context, ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
 	cfg := Config{
 		Default: "primary",
-		Disks: map[DiskName]DiskConfig{
-			"primary": {Driver: "stub-ok"},
-			"other":   {Driver: "stub-ok"},
+		Disks: map[DiskName]DriverConfig{
+			"primary": stubDriverConfig{name: "stub-ok"},
+			"other":   stubDriverConfig{name: "stub-ok"},
 		},
 	}
 	m, err := New(cfg)

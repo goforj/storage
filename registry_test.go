@@ -1,4 +1,4 @@
-package filesystem
+package storage
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 func TestRegisterDriverDuplicatePanics(t *testing.T) {
 	name := "stub-duplicate"
-	RegisterDriver(name, func(_ context.Context, _ DiskConfig, _ Config) (Filesystem, error) {
+	RegisterDriver(name, func(_ context.Context, _ ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
 	defer func() {
@@ -15,7 +15,7 @@ func TestRegisterDriverDuplicatePanics(t *testing.T) {
 			t.Fatalf("expected panic on duplicate registration")
 		}
 	}()
-	RegisterDriver(name, func(_ context.Context, _ DiskConfig, _ Config) (Filesystem, error) {
+	RegisterDriver(name, func(_ context.Context, _ ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
 }

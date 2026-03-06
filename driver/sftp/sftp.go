@@ -13,11 +13,13 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("sftp", New)
+	storage.RegisterDriver("sftp", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
@@ -25,15 +27,46 @@ type Driver struct {
 	prefix string
 }
 
-// New constructs an SFTP-backed filesystem using ssh and pkg/sftp.
+type Config struct {
+	Host                  string
+	Port                  int
+	User                  string
+	Password              string
+	KeyPath               string
+	KnownHostsPath        string
+	InsecureIgnoreHostKey bool
+	Prefix                string
+}
+
+func (Config) DriverName() string { return "sftp" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver:                    "sftp",
+		SFTPHost:                  c.Host,
+		SFTPPort:                  c.Port,
+		SFTPUser:                  c.User,
+		SFTPPassword:              c.Password,
+		SFTPKeyPath:               c.KeyPath,
+		SFTPKnownHostsPath:        c.KnownHostsPath,
+		SFTPInsecureIgnoreHostKey: c.InsecureIgnoreHostKey,
+		Prefix:                    c.Prefix,
+	}
+}
+
+// New constructs SFTP-backed storage using ssh and pkg/sftp.
 // @group Drivers
 //
 // Example: sftp driver
 //
-//	fs, _ := sftpdriver.New(context.Background(), filesystem.DiskConfig{Driver: "sftp", SFTPHost: "localhost", SFTPUser: "user", SFTPPassword: "pass"}, filesystem.Config{})
-func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := sftpdriver.New(context.Background(), sftpdriver.Config{Host: "localhost", User: "user", Password: "pass"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.SFTPHost == "" {
-		return nil, fmt.Errorf("filesystem: sftp driver requires SFTPHost")
+		return nil, fmt.Errorf("storage: sftp driver requires SFTPHost")
 	}
 	user := cfg.SFTPUser
 	if user == "" {
@@ -64,14 +97,14 @@ func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (fil
 	addr := fmt.Sprintf("%s:%d", cfg.SFTPHost, port)
 	sshClient, err := ssh.Dial("tcp", addr, sshCfg)
 	if err != nil {
-		return nil, fmt.Errorf("filesystem: sftp dial: %w", err)
+		return nil, fmt.Errorf("storage: sftp dial: %w", err)
 	}
 	client, err := sftp.NewClient(sshClient)
 	if err != nil {
-		return nil, fmt.Errorf("filesystem: sftp client: %w", err)
+		return nil, fmt.Errorf("storage: sftp client: %w", err)
 	}
 
-	prefix, err := filesystem.NormalizePath(cfg.Prefix)
+	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		_ = client.Close()
 		return nil, err
@@ -83,7 +116,7 @@ func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (fil
 	}, nil
 }
 
-func buildAuth(cfg filesystem.DiskConfig) ([]ssh.AuthMethod, error) {
+func buildAuth(cfg storage.ResolvedConfig) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 	if cfg.SFTPPassword != "" {
 		methods = append(methods, ssh.Password(cfg.SFTPPassword))
@@ -91,21 +124,21 @@ func buildAuth(cfg filesystem.DiskConfig) ([]ssh.AuthMethod, error) {
 	if cfg.SFTPKeyPath != "" {
 		key, err := os.ReadFile(cfg.SFTPKeyPath)
 		if err != nil {
-			return nil, fmt.Errorf("filesystem: read key: %w", err)
+			return nil, fmt.Errorf("storage: read key: %w", err)
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			return nil, fmt.Errorf("filesystem: parse key: %w", err)
+			return nil, fmt.Errorf("storage: parse key: %w", err)
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
 	if len(methods) == 0 {
-		return nil, fmt.Errorf("filesystem: sftp requires password or key")
+		return nil, fmt.Errorf("storage: sftp requires password or key")
 	}
 	return methods, nil
 }
 
-func buildHostKeyCallback(cfg filesystem.DiskConfig) (ssh.HostKeyCallback, error) {
+func buildHostKeyCallback(cfg storage.ResolvedConfig) (ssh.HostKeyCallback, error) {
 	if cfg.SFTPInsecureIgnoreHostKey {
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
@@ -193,7 +226,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -206,10 +239,10 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		return nil, wrapError(err)
 	}
 	basePrefix := d.stripPrefix(fp)
-	var entries []filesystem.Entry
+	var entries []storage.Entry
 	for _, info := range infos {
 		rel := path.Join(basePrefix, info.Name())
-		entries = append(entries, filesystem.Entry{
+		entries = append(entries, storage.Entry{
 			Path:  rel,
 			Size:  info.Size(),
 			IsDir: info.IsDir(),
@@ -219,15 +252,15 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 }
 
 func (d *Driver) URL(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for sftp", filesystem.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for sftp", storage.ErrUnsupported)
 }
 
 func (d *Driver) fullPath(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return filesystem.JoinPrefix(d.prefix, normalized), nil
+	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *Driver) stripPrefix(p string) string {
@@ -241,10 +274,10 @@ func (d *Driver) stripPrefix(p string) string {
 
 func wrapError(err error) error {
 	if os.IsNotExist(err) {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	if os.IsPermission(err) {
-		return fmt.Errorf("%w: %v", filesystem.ErrForbidden, err)
+		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
 	}
 	return err
 }

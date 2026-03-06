@@ -1,4 +1,4 @@
-package filesystem
+package storage
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// DriverFactory constructs a Filesystem for a given disk configuration.
-type DriverFactory func(ctx context.Context, cfg DiskConfig, global Config) (Filesystem, error)
+// DriverFactory constructs a Storage for a given normalized disk configuration.
+type DriverFactory func(ctx context.Context, cfg ResolvedConfig) (Storage, error)
 
 var (
 	registryMu sync.RWMutex
@@ -20,7 +20,7 @@ func RegisterDriver(name string, factory DriverFactory) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, exists := registry[name]; exists {
-		panic(fmt.Sprintf("filesystem: driver %q already registered", name))
+		panic(fmt.Sprintf("storage: driver %q already registered", name))
 	}
 	registry[name] = factory
 }

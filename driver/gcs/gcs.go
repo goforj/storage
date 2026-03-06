@@ -3,40 +3,70 @@ package gcsdriver
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/storage"
+	gcsapi "cloud.google.com/go/storage"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("gcs", New)
+	storage.RegisterDriver("gcs", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
-	client *storage.Client
-	bucket string
-	prefix string
+	client   *gcsapi.Client
+	bucket   string
+	prefix   string
+	emulator bool
 }
 
-// New constructs a GCS-backed filesystem using cloud.google.com/go/storage.
+type Config struct {
+	Bucket          string
+	CredentialsJSON string
+	Endpoint        string
+	Prefix          string
+}
+
+func (Config) DriverName() string { return "gcs" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver:             "gcs",
+		GCSBucket:          c.Bucket,
+		GCSCredentialsJSON: c.CredentialsJSON,
+		GCSEndpoint:        c.Endpoint,
+		Prefix:             c.Prefix,
+	}
+}
+
+// New constructs GCS-backed storage using cloud.google.com/go/storage.
 // @group Drivers
 //
 // Example: gcs driver
 //
-//	fs, _ := gcsdriver.New(context.Background(), filesystem.DiskConfig{Driver: "gcs", GCSBucket: "bucket"}, filesystem.Config{})
-func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := gcsdriver.New(context.Background(), gcsdriver.Config{Bucket: "bucket"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.GCSBucket == "" {
-		return nil, fmt.Errorf("filesystem: gcs driver requires GCSBucket")
+		return nil, fmt.Errorf("storage: gcs driver requires GCSBucket")
 	}
-	prefix, err := filesystem.NormalizePath(cfg.Prefix)
+	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -46,25 +76,32 @@ func New(ctx context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (f
 		return nil, err
 	}
 	return &Driver{
-		client: client,
-		bucket: cfg.GCSBucket,
-		prefix: prefix,
+		client:   client,
+		bucket:   cfg.GCSBucket,
+		prefix:   prefix,
+		emulator: cfg.GCSEndpoint != "",
 	}, nil
 }
 
-func newClient(ctx context.Context, cfg filesystem.DiskConfig) (*storage.Client, error) {
+func newClient(ctx context.Context, cfg storage.ResolvedConfig) (*gcsapi.Client, error) {
 	var opts []option.ClientOption
 	if cfg.GCSCredentialsJSON != "" {
 		opts = append(opts, option.WithCredentialsJSON([]byte(cfg.GCSCredentialsJSON)))
 	}
 	if cfg.GCSEndpoint != "" {
-		opts = append(opts, option.WithEndpoint(cfg.GCSEndpoint))
 		if cfg.GCSCredentialsJSON == "" {
 			opts = append(opts, option.WithoutAuthentication())
 		}
-		_ = os.Setenv("STORAGE_EMULATOR_HOST", strings.TrimPrefix(cfg.GCSEndpoint, "http://"))
+		if strings.HasPrefix(cfg.GCSEndpoint, "https://") {
+			opts = append(opts, option.WithHTTPClient(&http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}))
+		}
+		_ = os.Setenv("STORAGE_EMULATOR_HOST", cfg.GCSEndpoint)
 	}
-	return storage.NewClient(ctx, opts...)
+	return gcsapi.NewClient(ctx, opts...)
 }
 
 func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
@@ -131,7 +168,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	}
 	_, err = d.client.Bucket(d.bucket).Object(key).Attrs(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, wrapError(err)
@@ -139,7 +176,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -150,12 +187,12 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
-	it := d.client.Bucket(d.bucket).Objects(ctx, &storage.Query{
+	it := d.client.Bucket(d.bucket).Objects(ctx, &gcsapi.Query{
 		Prefix:    prefix,
 		Delimiter: "/",
 	})
 
-	var entries []filesystem.Entry
+	var entries []storage.Entry
 	for {
 		obj, err := it.Next()
 		if err == iterator.Done {
@@ -167,7 +204,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		if obj.Prefix != "" {
 			rel := strings.TrimSuffix(d.stripPrefix(obj.Prefix), "/")
 			if rel != "" {
-				entries = append(entries, filesystem.Entry{Path: rel, IsDir: true})
+				entries = append(entries, storage.Entry{Path: rel, IsDir: true})
 			}
 			continue
 		}
@@ -175,7 +212,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		if rel == "" {
 			continue
 		}
-		entries = append(entries, filesystem.Entry{
+		entries = append(entries, storage.Entry{
 			Path:  rel,
 			Size:  obj.Size,
 			IsDir: false,
@@ -188,11 +225,14 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	if d.emulator {
+		return "", storage.ErrUnsupported
+	}
 	key, err := d.key(p)
 	if err != nil {
 		return "", err
 	}
-	url, err := d.client.Bucket(d.bucket).SignedURL(key, &storage.SignedURLOptions{
+	url, err := d.client.Bucket(d.bucket).SignedURL(key, &gcsapi.SignedURLOptions{
 		Method:  "GET",
 		Expires: time.Now().Add(15 * time.Minute),
 	})
@@ -203,11 +243,11 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 }
 
 func (d *Driver) key(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return filesystem.JoinPrefix(d.prefix, normalized), nil
+	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *Driver) stripPrefix(k string) string {
@@ -220,8 +260,16 @@ func (d *Driver) stripPrefix(k string) string {
 }
 
 func wrapError(err error) error {
-	if err == storage.ErrObjectNotExist {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+	if isNotFound(err) {
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	return err
+}
+
+func isNotFound(err error) bool {
+	if errors.Is(err, gcsapi.ErrObjectNotExist) {
+		return true
+	}
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
 }

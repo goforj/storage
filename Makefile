@@ -43,41 +43,27 @@ help: ##@other Show this help.
 #----------------------
 # Dev helpers
 #----------------------
-RCLONE_LINK ?= filesystem-rclone
-RCLONE_SRC  ?= ../filesystem-rclone
-
-.PHONY: dev-link-rclone dev-unlink-rclone tidy test
-
-dev-link-rclone: ##@dev Symlink the filesystem-rclone repo into this repo (set RCLONE_SRC if not ../filesystem-rclone)
-	@if [ -L "$(RCLONE_LINK)" ] || [ -e "$(RCLONE_LINK)" ]; then \
-		echo "$(RCLONE_LINK) already exists; skipping symlink"; \
-	else \
-		if [ ! -d "$(RCLONE_SRC)" ]; then \
-			echo "RCLONE_SRC '$(RCLONE_SRC)' not found; clone filesystem-rclone alongside this repo or override RCLONE_SRC"; \
-			exit 1; \
-		fi; \
-		ln -s "$(RCLONE_SRC)" "$(RCLONE_LINK)"; \
-		echo "Linked $(RCLONE_LINK) -> $(RCLONE_SRC)"; \
-	fi
-	@# uncomment replace lines in examples/rclone_local/go.mod if present
-	@go run ./scripts/devreplace -file examples/rclone_local/go.mod -module github.com/goforj/filesystem-rclone -enable
-
-dev-unlink-rclone: ##@dev Remove the filesystem-rclone symlink
-	@if [ -L "$(RCLONE_LINK)" ]; then rm "$(RCLONE_LINK)"; echo "Removed symlink $(RCLONE_LINK)"; else echo "No symlink $(RCLONE_LINK) to remove"; fi
-	@# re-comment replace lines in examples/rclone_local/go.mod if present
-	@go run ./scripts/devreplace -file examples/rclone_local/go.mod -module github.com/goforj/filesystem-rclone -disable
+.PHONY: tidy test integration integration-driver examples-test
 
 #----------------------
 # Go helpers
 #----------------------
+GO_TEST_FLAGS ?= -count=1
+GOCACHE ?= /tmp/storage-gocache
+GOMODCACHE ?= /tmp/storage-gomodcache
+
 tidy: ##@go Run go mod tidy
-	go mod tidy
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go mod tidy
 
 test: ##@go Run unit tests
-	go test ./...
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test $(GO_TEST_FLAGS) ./...
 
-integration: ##@go Run integration tests across core and add-on (requires RUN_INTEGRATION=1 and filesystem-rclone present)
-	GOFLAGS=-tags=integration RUN_INTEGRATION=1 go test -count=1 ./...
-	@if [ -d "$(RCLONE_LINK)" ]; then \
-		(cd $(RCLONE_LINK) && GOFLAGS=-tags=integration RUN_INTEGRATION=1 go test -count=1 ./...); \
-	fi
+examples-test: ##@go Run tests in the examples module
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd examples && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test $(GO_TEST_FLAGS) ./...
+
+integration: ##@go Run the centralized integration matrix in ./integration (may require Docker)
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all
+
+integration-driver: ##@go Run a single backend in the centralized integration matrix: make integration-driver gcs
+	test -n "$(RUN_ARGS)" || (echo "usage: make integration-driver <driver>" && exit 1)
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && INTEGRATION_DRIVER="$(firstword $(RUN_ARGS))" GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all

@@ -1,4 +1,4 @@
-package filesystemtest
+package storagetest
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
-// RunFilesystemContractTests executes the shared contract against any Filesystem implementation.
-func RunFilesystemContractTests(t *testing.T, fsys filesystem.Filesystem) {
+// RunStorageContractTests executes the shared contract against any Storage implementation.
+func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -89,6 +89,40 @@ func RunFilesystemContractTests(t *testing.T, fsys filesystem.Filesystem) {
 		}
 	})
 
+	t.Run("walk", func(t *testing.T) {
+		walker, ok := fsys.(interface {
+			Walk(context.Context, string, func(storage.Entry) error) error
+		})
+		if !ok {
+			t.Skip("Walk not supported; skipping")
+		}
+
+		// Seed a small tree that exercises both nested objects and prefixes.
+		files := []string{
+			"folder1/fileA.txt",
+			"folder1/sub/fileB.txt",
+			"folder2/fileC.txt",
+		}
+		for _, f := range files {
+			if err := fsys.Put(ctx, f, []byte(f)); err != nil {
+				t.Fatalf("Put %q: %v", f, err)
+			}
+		}
+
+		var walked []string
+		if err := walker.Walk(ctx, "", func(entry storage.Entry) error {
+			walked = append(walked, entry.Path)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		for _, expect := range files {
+			if !slices.Contains(walked, expect) {
+				t.Fatalf("Walk missing %q; got %v", expect, walked)
+			}
+		}
+	})
+
 	t.Run("url-behavior", func(t *testing.T) {
 		path := "url/file.txt"
 		if err := fsys.Put(ctx, path, []byte("url")); err != nil {
@@ -96,7 +130,7 @@ func RunFilesystemContractTests(t *testing.T, fsys filesystem.Filesystem) {
 		}
 		url, err := fsys.URL(ctx, path)
 		if err != nil {
-			if !errors.Is(err, filesystem.ErrUnsupported) {
+			if !errors.Is(err, storage.ErrUnsupported) {
 				t.Fatalf("URL unexpected error: %v", err)
 			}
 			return
@@ -108,12 +142,12 @@ func RunFilesystemContractTests(t *testing.T, fsys filesystem.Filesystem) {
 
 	t.Run("error-classification", func(t *testing.T) {
 		_, err := fsys.Get(ctx, "missing/file.txt")
-		if err == nil || !errors.Is(err, filesystem.ErrNotFound) {
+		if err == nil || !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound wrapping, got: %v", err)
 		}
 
 		err = fsys.Put(ctx, "../escape.txt", []byte("nope"))
-		if err == nil || !errors.Is(err, filesystem.ErrForbidden) {
+		if err == nil || !errors.Is(err, storage.ErrForbidden) {
 			t.Fatalf("expected ErrForbidden for path traversal, got: %v", err)
 		}
 	})
@@ -149,7 +183,7 @@ func RunFilesystemContractTests(t *testing.T, fsys filesystem.Filesystem) {
 	})
 }
 
-func extractPaths(entries []filesystem.Entry) []string {
+func extractPaths(entries []storage.Entry) []string {
 	paths := make([]string, 0, len(entries))
 	for _, e := range entries {
 		paths = append(paths, e.Path)

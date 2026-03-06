@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 type fakeS3 struct {
@@ -119,10 +119,10 @@ func TestS3KeyAndPrefixHelpers(t *testing.T) {
 }
 
 func TestS3WrapError(t *testing.T) {
-	if err := wrapError(&types.NoSuchKey{}); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(&types.NoSuchKey{}); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for NoSuchKey")
 	}
-	if err := wrapError(&types.NotFound{}); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(&types.NotFound{}); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for NotFound")
 	}
 	if !isNotFound(&types.NotFound{}) || !isNotFound(&types.NoSuchKey{}) {

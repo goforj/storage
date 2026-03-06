@@ -10,11 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("local", New)
+	storage.RegisterDriver("local", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
@@ -22,24 +24,43 @@ type Driver struct {
 	prefix string
 }
 
+type Config struct {
+	Remote string
+	Prefix string
+}
+
+func (Config) DriverName() string { return "local" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver: "local",
+		Remote: c.Remote,
+		Prefix: c.Prefix,
+	}
+}
+
 // New constructs a local driver rooted at cfg.Remote with an optional prefix.
 // @group Drivers
 //
 // Example: local driver
 //
-//	fs, _ := local.New(context.Background(), filesystem.DiskConfig{Remote: "/tmp", Prefix: "sandbox"}, filesystem.Config{})
-func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := local.New(context.Background(), local.Config{Remote: "/tmp", Prefix: "sandbox"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.Remote == "" {
-		return nil, fmt.Errorf("filesystem: local driver requires remote path")
+		return nil, fmt.Errorf("storage: local driver requires remote path")
 	}
-	cleanPrefix, err := filesystem.NormalizePath(cfg.Prefix)
+	cleanPrefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
 
 	root, err := filepath.Abs(cfg.Remote)
 	if err != nil {
-		return nil, fmt.Errorf("filesystem: resolve local root: %w", err)
+		return nil, fmt.Errorf("storage: resolve local root: %w", err)
 	}
 
 	return &Driver{
@@ -73,7 +94,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("filesystem: mkdir: %w", err)
+		return fmt.Errorf("storage: mkdir: %w", err)
 	}
 	if err := os.WriteFile(target, contents, 0o644); err != nil {
 		return wrapLocalError(err)
@@ -116,7 +137,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -134,7 +155,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		return nil, err
 	}
 
-	var result []filesystem.Entry
+	var result []storage.Entry
 	for _, e := range entries {
 		name := e.Name()
 		rel := filepath.ToSlash(filepath.Join(basePrefix, name))
@@ -143,7 +164,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 		if info != nil {
 			size = info.Size()
 		}
-		result = append(result, filesystem.Entry{
+		result = append(result, storage.Entry{
 			Path:  rel,
 			Size:  size,
 			IsDir: e.IsDir(),
@@ -153,7 +174,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 }
 
 func (d *Driver) URL(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for local driver", filesystem.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for local driver", storage.ErrUnsupported)
 }
 
 // ModTime returns the file modification time. This is a test helper and not part of the public API.
@@ -175,17 +196,17 @@ func (d *Driver) ResolvePath(p string) (string, error) {
 }
 
 func (d *Driver) fullPath(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	joined := filepath.Join(d.root, filepath.FromSlash(filesystem.JoinPrefix(d.prefix, normalized)))
+	joined := filepath.Join(d.root, filepath.FromSlash(storage.JoinPrefix(d.prefix, normalized)))
 	rel, err := filepath.Rel(d.root, joined)
 	if err != nil {
-		return "", fmt.Errorf("filesystem: compute relative path: %w", err)
+		return "", fmt.Errorf("storage: compute relative path: %w", err)
 	}
 	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("%w: path escapes root", filesystem.ErrForbidden)
+		return "", fmt.Errorf("%w: path escapes root", storage.ErrForbidden)
 	}
 	return joined, nil
 }
@@ -193,7 +214,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 func (d *Driver) userRelative(target string) (string, error) {
 	rel, err := filepath.Rel(d.root, target)
 	if err != nil {
-		return "", fmt.Errorf("filesystem: compute relative path: %w", err)
+		return "", fmt.Errorf("storage: compute relative path: %w", err)
 	}
 	rel = filepath.ToSlash(rel)
 	rel = strings.TrimPrefix(rel, d.prefix)
@@ -206,10 +227,10 @@ func (d *Driver) userRelative(target string) (string, error) {
 
 func wrapLocalError(err error) error {
 	if errorsIsNotExist(err) {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	if errorsIsPermission(err) {
-		return fmt.Errorf("%w: %v", filesystem.ErrForbidden, err)
+		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
 	}
 	return err
 }

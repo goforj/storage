@@ -10,11 +10,13 @@ import (
 	"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox"
 	"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox/files"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("dropbox", New)
+	storage.RegisterDriver("dropbox", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
@@ -32,17 +34,36 @@ type dropboxClient interface {
 	GetTemporaryLink(*files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error)
 }
 
-// New constructs a Dropbox-backed filesystem using the official SDK.
+type Config struct {
+	Token  string
+	Prefix string
+}
+
+func (Config) DriverName() string { return "dropbox" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver:       "dropbox",
+		DropboxToken: c.Token,
+		Prefix:       c.Prefix,
+	}
+}
+
+// New constructs Dropbox-backed storage using the official SDK.
 // @group Drivers
 //
 // Example: dropbox driver
 //
-//	fs, _ := dropboxdriver.New(context.Background(), filesystem.DiskConfig{Driver: "dropbox", DropboxToken: "token"}, filesystem.Config{})
-func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := dropboxdriver.New(context.Background(), dropboxdriver.Config{Token: "token"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.DropboxToken == "" {
-		return nil, fmt.Errorf("filesystem: dropbox driver requires DropboxToken")
+		return nil, fmt.Errorf("storage: dropbox driver requires DropboxToken")
 	}
-	prefix, err := filesystem.NormalizePath(cfg.Prefix)
+	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +130,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return nil, err
@@ -117,7 +138,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 	arg := files.NewListFolderArg(full)
 	arg.Recursive = false
 
-	var entries []filesystem.Entry
+	var entries []storage.Entry
 	err = d.listPage(ctx, arg, &entries)
 	if err != nil {
 		return nil, wrapError(err)
@@ -125,7 +146,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 	return entries, nil
 }
 
-func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]filesystem.Entry) error {
+func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]storage.Entry) error {
 	res, err := d.client.ListFolder(arg)
 	if err != nil {
 		return err
@@ -134,14 +155,14 @@ func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 		switch m := e.(type) {
 		case *files.FileMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, filesystem.Entry{
+			*entries = append(*entries, storage.Entry{
 				Path:  rel,
 				Size:  int64(m.Size),
 				IsDir: false,
 			})
 		case *files.FolderMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, filesystem.Entry{
+			*entries = append(*entries, storage.Entry{
 				Path:  rel,
 				Size:  0,
 				IsDir: true,
@@ -155,7 +176,7 @@ func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 	return nil
 }
 
-func (d *Driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]filesystem.Entry) error {
+func (d *Driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]storage.Entry) error {
 	res, err := d.client.ListFolderContinue(arg)
 	if err != nil {
 		return err
@@ -164,14 +185,14 @@ func (d *Driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 		switch m := e.(type) {
 		case *files.FileMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, filesystem.Entry{
+			*entries = append(*entries, storage.Entry{
 				Path:  rel,
 				Size:  int64(m.Size),
 				IsDir: false,
 			})
 		case *files.FolderMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, filesystem.Entry{
+			*entries = append(*entries, storage.Entry{
 				Path:  rel,
 				Size:  0,
 				IsDir: true,
@@ -199,11 +220,11 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 }
 
 func (d *Driver) fullPath(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	joined := filesystem.JoinPrefix(d.prefix, normalized)
+	joined := storage.JoinPrefix(d.prefix, normalized)
 	if joined == "" {
 		return "/", nil
 	}
@@ -225,7 +246,7 @@ func wrapError(err error) error {
 		return nil
 	}
 	if isNotFound(err) {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	return err
 }

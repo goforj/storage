@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func TestSFTPPrefixHelpers(t *testing.T) {
@@ -23,10 +23,10 @@ func TestSFTPPrefixHelpers(t *testing.T) {
 }
 
 func TestSFTPWrapError(t *testing.T) {
-	if err := wrapError(os.ErrNotExist); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(os.ErrNotExist); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound")
 	}
-	if err := wrapError(os.ErrPermission); !errors.Is(err, filesystem.ErrForbidden) {
+	if err := wrapError(os.ErrPermission); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden")
 	}
 }

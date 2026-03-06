@@ -13,11 +13,13 @@ import (
 
 	"github.com/jlaffaye/ftp"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 func init() {
-	filesystem.RegisterDriver("ftp", New)
+	storage.RegisterDriver("ftp", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return newFromDiskConfig(ctx, cfg)
+	})
 }
 
 type Driver struct {
@@ -29,15 +31,44 @@ type Driver struct {
 	insecure bool
 }
 
-// New constructs an FTP-backed filesystem using jlaffaye/ftp.
+type Config struct {
+	Host               string
+	Port               int
+	User               string
+	Password           string
+	TLS                bool
+	InsecureSkipVerify bool
+	Prefix             string
+}
+
+func (Config) DriverName() string { return "ftp" }
+
+func (c Config) ResolvedConfig() storage.ResolvedConfig {
+	return storage.ResolvedConfig{
+		Driver:                "ftp",
+		FTPHost:               c.Host,
+		FTPPort:               c.Port,
+		FTPUser:               c.User,
+		FTPPassword:           c.Password,
+		FTPTLS:                c.TLS,
+		FTPInsecureSkipVerify: c.InsecureSkipVerify,
+		Prefix:                c.Prefix,
+	}
+}
+
+// New constructs FTP-backed storage using jlaffaye/ftp.
 // @group Drivers
 //
 // Example: ftp driver
 //
-//	fs, _ := ftpdriver.New(context.Background(), filesystem.DiskConfig{Driver: "ftp", FTPHost: "127.0.0.1", FTPUser: "anonymous"}, filesystem.Config{})
-func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (filesystem.Filesystem, error) {
+//	fs, _ := ftpdriver.New(context.Background(), ftpdriver.Config{Host: "127.0.0.1", User: "anonymous"})
+func New(ctx context.Context, cfg Config) (storage.Storage, error) {
+	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+}
+
+func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.FTPHost == "" {
-		return nil, fmt.Errorf("filesystem: ftp requires FTPHost")
+		return nil, fmt.Errorf("storage: ftp requires FTPHost")
 	}
 	user := cfg.FTPUser
 	pass := cfg.FTPPassword
@@ -45,7 +76,7 @@ func New(_ context.Context, cfg filesystem.DiskConfig, _ filesystem.Config) (fil
 	if port == 0 {
 		port = 21
 	}
-	prefix, err := filesystem.NormalizePath(cfg.Prefix)
+	prefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +198,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	})
 	if err != nil {
 		wrapped := wrapError(err)
-		if errors.Is(wrapped, filesystem.ErrNotFound) {
+		if errors.Is(wrapped, storage.ErrNotFound) {
 			return false, nil
 		}
 		return false, wrapped
@@ -175,7 +206,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error) {
+func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -183,7 +214,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 	if err != nil {
 		return nil, err
 	}
-	var entries []filesystem.Entry
+	var entries []storage.Entry
 	err = d.withConn(func(c *ftp.ServerConn) error {
 		l, err := c.List(fp)
 		if err != nil {
@@ -194,7 +225,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 			if fp != "" && fp != "." && fp != "/" {
 				rel = path.Join(d.stripPrefix(fp), e.Name)
 			}
-			entries = append(entries, filesystem.Entry{
+			entries = append(entries, storage.Entry{
 				Path:  rel,
 				Size:  int64(e.Size),
 				IsDir: e.Type == ftp.EntryTypeFolder,
@@ -209,15 +240,15 @@ func (d *Driver) List(ctx context.Context, p string) ([]filesystem.Entry, error)
 }
 
 func (d *Driver) URL(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for ftp", filesystem.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for ftp", storage.ErrUnsupported)
 }
 
 func (d *Driver) fullPath(p string) (string, error) {
-	normalized, err := filesystem.NormalizePath(p)
+	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return filesystem.JoinPrefix(d.prefix, normalized), nil
+	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *Driver) stripPrefix(p string) string {
@@ -235,7 +266,7 @@ func wrapError(err error) error {
 	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") || strings.Contains(msg, "can't check for file existence") || strings.Contains(msg, "550") {
-		return fmt.Errorf("%w: %v", filesystem.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	return err
 }

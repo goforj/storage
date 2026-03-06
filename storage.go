@@ -1,4 +1,4 @@
-package filesystem
+package storage
 
 import (
 	"context"
@@ -8,8 +8,15 @@ import (
 	"strings"
 )
 
-// Filesystem is the public interface for interacting with a storage backend.
-type Filesystem interface {
+// Storage is the public interface for interacting with a storage backend.
+//
+// Semantics:
+//   - Put overwrites an existing object at the same path.
+//   - List is one-level and non-recursive.
+//   - List with an empty path lists from the disk root or prefix root.
+//   - URL returns a usable access URL when the driver supports it.
+//   - Unsupported operations should return ErrUnsupported.
+type Storage interface {
 	Get(ctx context.Context, p string) ([]byte, error)
 	Put(ctx context.Context, p string, contents []byte) error
 	Delete(ctx context.Context, p string) error
@@ -18,7 +25,19 @@ type Filesystem interface {
 	URL(ctx context.Context, p string) (string, error)
 }
 
+// Walker is an optional capability for recursive traversal.
+//
+// Walk is not part of the core Storage interface because recursion has very
+// different cost and behavior across backends.
+type Walker interface {
+	Walk(ctx context.Context, p string, fn func(Entry) error) error
+}
+
 // Entry represents an item returned by List.
+//
+// Path is relative to the storage namespace, not an OS-native path.
+// Directory-like entries are listing artifacts, not a promise of POSIX-style
+// storage semantics.
 type Entry struct {
 	Path  string
 	Size  int64
@@ -26,33 +45,38 @@ type Entry struct {
 }
 
 var (
-	ErrNotFound    = errors.New("filesystem: not found")
-	ErrForbidden   = errors.New("filesystem: forbidden")
-	ErrUnsupported = errors.New("filesystem: unsupported operation")
+	ErrNotFound    = errors.New("storage: not found")
+	ErrForbidden   = errors.New("storage: forbidden")
+	ErrUnsupported = errors.New("storage: unsupported operation")
 )
 
 // DiskName is a typed identifier for configured disks.
 type DiskName string
 
-// Config defines all configured disks and the global rclone configuration path.
-type Config struct {
-	Default DiskName
-	Disks   map[DiskName]DiskConfig
-
-	// RcloneConfigPath is process-scoped. All rclone-backed disks share this path.
-	// RcloneConfigData is an inline config (ini content) kept in memory (no temp file).
-	// Only one of RcloneConfigPath or RcloneConfigData may be set, and the first init wins for the process.
-	RcloneConfigPath string
-	RcloneConfigData string
+// DriverConfig is implemented by typed driver configs such as local.Config or
+// s3driver.Config. It is the public config boundary for Manager and Build.
+type DriverConfig interface {
+	DriverName() string
+	ResolvedConfig() ResolvedConfig
 }
 
-// DiskConfig describes a single disk.
-type DiskConfig struct {
+// Config defines named disks using typed driver configs.
+type Config struct {
+	Default DiskName
+	Disks   map[DiskName]DriverConfig
+}
+
+// ResolvedConfig is the normalized internal config passed to registered drivers.
+// Users should prefer typed driver configs and treat this as registry adapter
+// glue, not the primary construction API.
+type ResolvedConfig struct {
 	Driver string
 
 	// rclone-specific (only used by rclone driver)
-	Remote string
-	Prefix string
+	Remote           string
+	Prefix           string
+	RcloneConfigPath string
+	RcloneConfigData string
 
 	// s3 (native)
 	S3Bucket          string
@@ -89,7 +113,10 @@ type DiskConfig struct {
 	GCSEndpoint        string
 }
 
-// NormalizePath cleans a user path and rejects attempts to escape the disk root.
+// NormalizePath cleans a user path, normalizes separators, and rejects attempts
+// to escape the disk root or prefix root.
+//
+// The empty string and root-like inputs normalize to the logical root.
 // @group Paths
 func NormalizePath(p string) (string, error) {
 	cleaned := path.Clean(strings.TrimSpace(p))

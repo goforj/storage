@@ -1,37 +1,28 @@
 <p align="center">
-  <img src="./docs/images/logo.png?v=2" width="400" alt="filesystem logo">
+  <img src="./docs/images/logo.png?v=2" width="300" alt="storage logo">
 </p>
 
 <p align="center">
-    An opinionated, testable filesystem abstraction for Go - native drivers where you want control, optional rclone (via add-on) where you want breadth.
+  An opinionated, testable storage abstraction for Go. Laravel-inspired in product model, Go-native in API design.
 </p>
 
 <p align="center">
-    Testable. Explicit. Minimal surface area.
+  Small surface area. Explicit drivers. Shared contract tests.
 </p>
-
 
 <p align="center">
-    <a href="https://pkg.go.dev/github.com/goforj/filesystem"><img src="https://pkg.go.dev/badge/github.com/goforj/filesystem.svg" alt="Go Reference"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-    <a href="https://github.com/goforj/filesystem/actions"><img src="https://github.com/goforj/filesystem/actions/workflows/test.yml/badge.svg" alt="Go Test"></a>
-    <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.18+-blue?logo=go" alt="Go version"></a>
-    <img src="https://img.shields.io/github/v/tag/goforj/filesystem?label=version&sort=semver" alt="Latest tag">
-    <a href="https://codecov.io/gh/goforj/filesystem" ><img src="https://codecov.io/github/goforj/filesystem/graph/badge.svg?token=BPR5IIC5F9"/></a>
-<!-- test-count:embed:start -->
-    <img src="https://img.shields.io/badge/tests-57-brightgreen" alt="Tests">
-<!-- test-count:embed:end -->
-    <a href="https://goreportcard.com/report/github.com/goforj/filesystem"><img src="https://goreportcard.com/badge/github.com/goforj/filesystem" alt="Go Report Card"></a>
+  <a href="https://pkg.go.dev/github.com/goforj/storage"><img src="https://pkg.go.dev/badge/github.com/goforj/storage.svg" alt="Go Reference"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/goforj/storage/actions"><img src="https://github.com/goforj/storage/actions/workflows/test.yml/badge.svg" alt="Go Test"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24+-blue?logo=go" alt="Go version"></a>
 </p>
 
-## What is this?
+## Overview
 
-> Think “Laravel filesystem”, but Go-native, explicit, and testable.
-
-A tiny, stable API over multiple storage backends:
+`storage` provides a small API over multiple storage backends:
 
 ```go
-type Filesystem interface {
+type Storage interface {
     Get(ctx context.Context, p string) ([]byte, error)
     Put(ctx context.Context, p string, contents []byte) error
     Delete(ctx context.Context, p string) error
@@ -41,20 +32,78 @@ type Filesystem interface {
 }
 ```
 
-- Native SDK drivers for control and performance.
-- Rclone driver for breadth and hardened auth flows.
-- Predictable errors via `errors.Is` (`ErrNotFound`, `ErrForbidden`, `ErrUnsupported`).
-- Prefix handling is normalized and traversal-safe.
+What it is:
+- named disks via `storage.Manager`
+- direct single-disk construction via `storage.Build`
+- typed direct constructors in driver modules
+- explicit driver imports with blank-import registration
+- shared cross-driver contract tests in `storagetest`
+- centralized integration coverage in `integration`
+
+What it is not:
+- a POSIX filesystem abstraction
+- a kitchen-sink package that forces every driver dependency into the root module
+
+## Modules
+
+The repository is organized as one product with multiple Go modules:
+
+- `github.com/goforj/storage`
+- `github.com/goforj/storage/storagetest`
+- `github.com/goforj/storage/integration`
+- `github.com/goforj/storage/driver/local`
+- `github.com/goforj/storage/driver/s3`
+- `github.com/goforj/storage/driver/gcs`
+- `github.com/goforj/storage/driver/sftp`
+- `github.com/goforj/storage/driver/ftp`
+- `github.com/goforj/storage/driver/dropbox`
+- `github.com/goforj/storage/driver/rclone`
+- `github.com/goforj/storage/examples`
+
+This keeps the root module thin while letting consumers opt into only the drivers they use.
 
 ## Install
 
+Root module:
+
 ```bash
-go get github.com/goforj/filesystem
+go get github.com/goforj/storage
 ```
 
-## Config & Usage
+Then add the driver modules you need, for example:
 
-Use typed disk names and declare drivers explicitly. Rclone now lives in the add-on module (`github.com/goforj/filesystem-rclone`) and can be configured inline (in-memory) or via a path; env-defined remotes work too.
+```bash
+go get github.com/goforj/storage/driver/local
+go get github.com/goforj/storage/driver/s3
+go get github.com/goforj/storage/driver/rclone
+```
+
+## Driver Matrix
+
+| Driver / Backend | Kind | URL | Centralized integration | Support tier | Notes |
+| --- | --- | --- | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | No | Yes, direct local fixture | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | Yes, presigned GET | Yes, MinIO via testcontainers | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Also suitable for S3-compatible endpoints. |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Yes, signed URL. No in emulator mode | Yes, fake-gcs-server emulator | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Emulator-backed integration in the shared matrix. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | No | Yes, SFTP container via testcontainers | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Password and key authentication supported. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | No | Yes, embedded FTP fixture in shared matrix | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Plain FTP and explicit TLS supported. |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Yes, temporary link | No | <img src="https://img.shields.io/badge/tier-2-757575" alt="Tier 2"> | Lower support tier until external integration coverage is defined. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Backend-dependent via `PublicLink` | Yes, representative local fixture | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Breadth driver, not the baseline for all semantics. |
+
+Common contract across bundled drivers:
+- `Get`, `Put`, `Delete`, `Exists`, and one-level `List`
+- typed driver config and `New(...)` constructor
+- manager registration for named-disk usage
+- normalized `ErrNotFound`, `ErrForbidden`, and `ErrUnsupported` behavior
+
+## Usage
+
+Current guidance:
+- use typed driver constructors for direct application code and tests
+- use `storage.Manager` when you want named disks and config-driven construction
+- use typed driver configs for both `storage.Manager` and `storage.Build`
+
+### Manager and named disks
 
 ```go
 package main
@@ -63,361 +112,193 @@ import (
     "context"
     "log"
 
-    "github.com/goforj/filesystem"
-    _ "github.com/goforj/filesystem-rclone"
-    _ "github.com/goforj/filesystem/driver/s3"
-    _ "github.com/goforj/filesystem/driver/local"
+    "github.com/goforj/storage"
+    localdriver "github.com/goforj/storage/driver/local"
+    s3driver "github.com/goforj/storage/driver/s3"
+)
+
+func main() {
+    mgr, err := storage.New(storage.Config{
+        Default: "assets",
+        Disks: map[storage.DiskName]storage.DriverConfig{
+            "assets": localdriver.Config{
+                Remote: "/tmp/storage",
+                Prefix: "assets",
+            },
+            "uploads": s3driver.Config{
+                Bucket:          "app-uploads",
+                Region:          "us-east-1",
+                Endpoint:        "http://localhost:9000",
+                AccessKeyID:     "minioadmin",
+                SecretAccessKey: "minioadmin",
+                UsePathStyle:    true,
+                Prefix:          "uploads",
+            },
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    disk, err := mgr.Disk("assets")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := disk.Put(context.Background(), "hello.txt", []byte("hello")); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Build a single disk from typed driver config
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/goforj/storage"
+    localdriver "github.com/goforj/storage/driver/local"
+)
+
+func main() {
+    disk, err := storage.Build(context.Background(), localdriver.Config{
+        Remote: "/tmp/storage",
+        Prefix: "scratch",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Direct driver constructor
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    localdriver "github.com/goforj/storage/driver/local"
+)
+
+func main() {
+    disk, err := localdriver.New(context.Background(), localdriver.Config{
+        Remote: "/tmp/storage",
+        Prefix: "scratch",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Rclone
+
+`rclone` is back in this repository as its own driver module.
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    rclonedriver "github.com/goforj/storage/driver/rclone"
 )
 
 const rcloneConfig = `
-[myremote]
-type = s3
-provider = AWS
-access_key_id = ACCESS
-secret_access_key = SECRET
-region = us-east-1
-force_path_style = true
-endpoint = http://localhost:4566
+[localdisk]
+type = local
 `
 
 func main() {
-    cfg := filesystem.Config{
-        Default:          "s3",
-        RcloneConfigData: rcloneConfig, // or RcloneConfigPath if you already have a file
-        Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-            "s3": {
-                Driver:            "s3",
-                S3Bucket:          "bucket",
-                S3Region:          "us-east-1",
-                S3Endpoint:        "http://localhost:4566",
-                S3AccessKeyID:     "ACCESS",
-                S3SecretAccessKey: "SECRET",
-                S3UsePathStyle:    true,
-                Prefix:            "sandbox",
-            },
-            "local": {
-                Driver: "local",
-                Remote: "/tmp/storage",
-                Prefix: "sandbox",
-            },
-            "rclone": {
-                Driver: "rclone",
-                Remote: "myremote:bucket",
-                Prefix: "sandbox",
-            },
-        },
-    }
-
-    mgr, err := filesystem.New(cfg)
+    disk, err := rclonedriver.New(context.Background(), rclonedriver.Config{
+        Remote:           "localdisk:/tmp/storage",
+        Prefix:           "sandbox",
+        RcloneConfigData: rcloneConfig,
+    })
     if err != nil {
         log.Fatal(err)
     }
-    fs, _ := mgr.Disk("s3")
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
 
-    if err := fs.Put(ctx, "folder/file.txt", []byte("hello")); err != nil {
+    if err := disk.Put(context.Background(), "rclone.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
-    data, err := fs.Get(ctx, "folder/file.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-    _ = data
 }
 ```
 
-## Drivers
+See [`examples`](./examples) for runnable examples.
 
-| **Driver** | Description                                             | Notes                                   |
-|------:|---------------------------------------------------------|-----------------------------------------|
-| **local**  | Local filesystem rooted at `Remote`                     | Prefix-scoped, traversal-safe           |
-| **s3**     | AWS S3 (+ compatibles) via AWS SDK v2                   | Path-style optional; presigned URLs     |
-| **gcs**    | Google Cloud Storage via cloud.google.com/go/storage    | Signed URLs; minimal metadata in `Put`  |
-| **sftp**   | SFTP via ssh + pkg/sftp                                 | Host key opt-in; URL unsupported        |
-| **ftp**    | FTP via [jlaffaye/ftp](https://github.com/jlaffaye/ftp) | TLS optional; URL unsupported           |
-| **dropbox**| Dropbox via official SDK                                | Uses temporary links for URL            |
-| **rclone** | All rclone backends (imports `backend/all`) via add-on `github.com/goforj/filesystem-rclone` (blank import) | Config is process-scoped                |
+Notes:
+- `List` is one-level and non-recursive.
+- `List(ctx, "")` lists from the disk root or prefix root.
+- `Entry` currently includes `Path`, `Size`, and `IsDir`.
+- `URL` returns a usable access URL when the driver supports it.
+- unsupported operations return `storage.ErrUnsupported`.
+- normalized cross-driver errors use `errors.Is` with `storage.ErrNotFound`, `storage.ErrForbidden`, and `storage.ErrUnsupported`.
 
-### Rclone Backends (add-on)
-
-See [rclone docs](https://rclone.org/overview/) for full details. Supported backends include:
-
-| **Backend** | Notes |
-|-----------:|-------|
-| **amazonclouddrive** | Amazon Cloud Drive |
-| **azureblob** | Microsoft Azure Blob |
-| **azurefiles** | Microsoft Azure Files |
-| **b2** | Backblaze B2 |
-| **box** | Box |
-| **cache** | Cache a remote |
-| **chunker** | Transparently chunk/split large files |
-| **combine** | Combine several remotes into one |
-| **compress** | Compress a remote |
-| **crypt** | Encrypt/decrypt a remote |
-| **drive** | Google Drive |
-| **dropbox** | Dropbox |
-| **fichier** | 1Fichier |
-| **filefabric** | Enterprise File Fabric |
-| **filescom** | Files.com |
-| **ftp** | FTP |
-| **gcs** | Google Cloud Storage (not Drive) |
-| **gphotos** | Google Photos |
-| **gofile** | Gofile |
-| **hasher** | Better checksums for other remotes |
-| **hdfs** | Hadoop distributed file system |
-| **hidrive** | HiDrive |
-| **http** | HTTP |
-| **imagekit** | ImageKit.io |
-| **internetarchive** | Internet Archive |
-| **jottacloud** | Jottacloud |
-| **koofr** | Koofr and compatibles |
-| **linkbox** | Linkbox |
-| **local** | Local disk |
-| **mailru** | Mail.ru Cloud |
-| **mega** | Mega |
-| **memory** | In-memory object storage |
-| **netstorage** | Akamai NetStorage |
-| **oos** | Oracle Object Storage |
-| **onedrive** | Microsoft OneDrive |
-| **opendrive** | OpenDrive |
-| **pcloud** | Pcloud |
-| **pikpak** | PikPak |
-| **pixeldrain** | Pixeldrain |
-| **premiumizeme** | premiumize.me |
-| **protondrive** | Proton Drive |
-| **putio** | Put.io |
-| **qingstor** | QingCloud Object Storage |
-| **quatrix** | Quatrix by Maytech |
-| **s3** | Amazon S3-compatible providers |
-| **seafile** | Seafile |
-| **sftp** | SSH/SFTP |
-| **sia** | Sia Decentralized Cloud |
-| **smb** | SMB / CIFS |
-| **storj / tardigrade** | Storj Decentralized Cloud Storage |
-| **sugarsync** | Sugarsync |
-| **swift** | OpenStack Swift |
-| **ulozto** | Uloz.to |
-| **union** | Union of multiple remotes |
-| **uptobox** | Uptobox |
-| **webdav** | WebDAV |
-| **yandex** | Yandex Disk |
-| **zoho** | Zoho |
-
-## Driver usage examples
-
-Minimal snippets for each driver (replace credentials/hosts as needed):
-
-### Local
-```go
-_ "github.com/goforj/filesystem/driver/local"
-
-cfg := filesystem.Config{
-    Default: "local",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "local": {Driver: "local", Remote: "/tmp/storage", Prefix: "sandbox"},
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("local")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### S3 (native)
-```go
-_ "github.com/goforj/filesystem/driver/s3"
-
-cfg := filesystem.Config{
-    Default: "s3",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "s3": {
-            Driver:            "s3",
-            S3Bucket:          "bucket",
-            S3Region:          "us-east-1",
-            S3Endpoint:        "http://localhost:4566",
-            S3AccessKeyID:     "ACCESS",
-            S3SecretAccessKey: "SECRET",
-            S3UsePathStyle:    true,
-            Prefix:            "sandbox",
-        },
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("s3")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "folder/file.txt", []byte("hello"))
-```
-
-### GCS (native)
-```go
-_ "github.com/goforj/filesystem/driver/gcs"
-
-cfg := filesystem.Config{
-    Default: "gcs",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "gcs": {
-            Driver:             "gcs",
-            GCSBucket:          "bucket",
-            GCSCredentialsJSON: os.Getenv("GCS_CREDS_JSON"),
-            Prefix:             "sandbox",
-        },
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("gcs")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### SFTP (native)
-```go
-_ "github.com/goforj/filesystem/driver/sftp"
-
-cfg := filesystem.Config{
-    Default: "sftp",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "sftp": {
-            Driver:                   "sftp",
-            SFTPHost:                 "sftp.example.com",
-            SFTPPort:                 22,
-            SFTPUser:                 "user",
-            SFTPPassword:             "pass",
-            Prefix:                   "sandbox",
-            SFTPInsecureIgnoreHostKey: true, // or provide known_hosts
-        },
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("sftp")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### FTP (native)
-```go
-_ "github.com/goforj/filesystem/driver/ftp"
-
-cfg := filesystem.Config{
-    Default: "ftp",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "ftp": {
-            Driver:      "ftp",
-            FTPHost:     "127.0.0.1",
-            FTPPort:     21,
-            FTPUser:     "anonymous",
-            FTPPassword: "anonymous",
-            Prefix:      "sandbox",
-            FTPTLS:      false,
-        },
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("ftp")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### Dropbox (native)
-```go
-_ "github.com/goforj/filesystem/driver/dropbox"
-
-cfg := filesystem.Config{
-    Default: "dropbox",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "dropbox": {
-            Driver:       "dropbox",
-            DropboxToken: "TOKEN",
-            Prefix:       "sandbox",
-        },
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("dropbox")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### Rclone (any backend)
-```go
-_ "github.com/goforj/filesystem-rclone"
-
-const inline = `
-[myremote]
-type = s3
-provider = AWS
-access_key_id = ACCESS
-secret_access_key = SECRET
-region = us-east-1
-force_path_style = true
-endpoint = http://localhost:4566
-`
-cfg := filesystem.Config{
-    Default:          "rclone",
-    RcloneConfigData: inline, // or RcloneConfigPath, or env-only remotes
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "rclone": {Driver: "rclone", Remote: "myremote:bucket", Prefix: "sandbox"},
-    },
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("rclone")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-### Rclone (env-only remote)
-Environment variables can define a remote without inline or path config. Rclone reads `RCLONE_CONFIG_<REMOTE>_<KEY>` where `<REMOTE>` is uppercased and `<KEY>` matches the backend option. Common S3 keys: `TYPE`, `PROVIDER`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, `FORCE_PATH_STYLE`. Consult the rclone backend docs for additional keys.
-
-```bash
-export RCLONE_CONFIG_ENVREMOTE_TYPE=s3
-export RCLONE_CONFIG_ENVREMOTE_PROVIDER=AWS
-export RCLONE_CONFIG_ENVREMOTE_ACCESS_KEY_ID=ACCESS
-export RCLONE_CONFIG_ENVREMOTE_SECRET_ACCESS_KEY=SECRET
-export RCLONE_CONFIG_ENVREMOTE_REGION=us-east-1
-export RCLONE_CONFIG_ENVREMOTE_FORCE_PATH_STYLE=true
-export RCLONE_CONFIG_ENVREMOTE_ENDPOINT=http://localhost:4566
-```
-
-```go
-_ "github.com/goforj/filesystem-rclone"
-
-cfg := filesystem.Config{
-    Default: "rclone",
-    Disks: map[filesystem.DiskName]filesystem.DiskConfig{
-        "rclone": {Driver: "rclone", Remote: "envremote:bucket", Prefix: "sandbox"},
-    },
-    // RcloneConfigData/Path omitted; env values define the remote
-}
-mgr, _ := filesystem.New(cfg)
-fs, _ := mgr.Disk("rclone")
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-_ = fs.Put(ctx, "file.txt", []byte("hello"))
-```
-
-## Rclone Config Sources
-- **Inline (in-memory):** set `RcloneConfigData`; first init wins process-wide.
-- **Path:** set `RcloneConfigPath`; do not combine with inline.
-- **Env:** `RCLONE_CONFIG_<REMOTE>_<KEY>` env vars are honored and take precedence (e.g., `RCLONE_CONFIG_MYREMOTE_TYPE=s3`).
+More detail lives in [`DRIVER_SUPPORT.md`](./DRIVER_SUPPORT.md).
 
 ## Testing
-- Unit + contract suite: `go test ./...` (example build test skips if `examples/` is absent).
-- Integration suite (docker-compose): `docker-compose up -d` then `RUN_INTEGRATION=1 go test -tags integration ./...`
-  - Defaults match compose services:
-    - S3/MinIO: `INTEGRATION_S3_ENDPOINT=http://localhost:9000`, access `fsuser`, secret `fspass123`, bucket `fs-integration`
-    - GCS (fake-gcs-server): `INTEGRATION_GCS_ENDPOINT=http://localhost:4443`, bucket `gcs-integration`
-    - SFTP: `127.0.0.1:2222` user `fsuser`, pass `pass`
-    - FTP: `127.0.0.1:2121` user `fsuser`, pass `fspass` (PASV 30000-30009)
-- Localstack rclone S3 test remains opt-in via `RUN_LOCALSTACK_S3=1`.
 
-## Notes
-- Prefixes are normalized and guard against traversal.
-- Public URLs may be unsupported depending on driver; check for `ErrUnsupported`.
-- Rclone config is process-scoped; inline avoids temp files, path uses the given file.
+Shared contract tests live in `storagetest`.
+
+Centralized integration coverage lives in `integration` and runs the same contract across supported backends.
+That centralized matrix is the authoritative integration path for the repository.
+
+Current fixture types in the centralized matrix:
+- testcontainers: `s3`, `sftp`
+- emulator: `gcs`
+- embedded/local fixtures: `local`, `ftp`, `rclone_local`
+
+Examples:
+
+```bash
+GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test ./...
+```
+
+```bash
+cd integration
+GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+```
+
+Select a single backend during integration runs:
+
+```bash
+cd integration
+INTEGRATION_DRIVER=gcs GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+```
+
+Make targets:
+
+```bash
+make test
+make examples-test
+make integration
+make integration-driver gcs
+```
+
+## Status
+
+Current repository direction:
+- `storage` is the canonical root module and package name
+- drivers are separate modules in the same repository
+- `rclone` is supported as an in-repo driver module
+- `examples` is its own module
+- centralized integration coverage currently exercises `local`, `gcs`, `ftp`, `s3`, `sftp`, and representative `rclone` usage
+
+The detailed refactor plan and tracker live in [`STORAGE_REFACTOR_PROPOSAL.md`](./STORAGE_REFACTOR_PROPOSAL.md).

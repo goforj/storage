@@ -9,7 +9,7 @@ import (
 
 	"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox/files"
 
-	"github.com/goforj/filesystem"
+	"github.com/goforj/storage"
 )
 
 type errNotFound struct{}
@@ -31,10 +31,10 @@ func TestDropboxPrefixHelpers(t *testing.T) {
 }
 
 func TestDropboxWrapError(t *testing.T) {
-	if err := wrapError(errNotFound{}); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(errNotFound{}); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound")
 	}
-	if err := wrapError(errors.New("other")); errors.Is(err, filesystem.ErrNotFound) {
+	if err := wrapError(errors.New("other")); errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("unexpected ErrNotFound")
 	}
 }
@@ -124,7 +124,7 @@ func TestDropboxDriverOperations(t *testing.T) {
 
 	// deletion and not found
 	client.delErr = errNotFound{}
-	if err := d.Delete(context.Background(), "missing.txt"); !errors.Is(err, filesystem.ErrNotFound) {
+	if err := d.Delete(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected wrapped not found, got %v", err)
 	}
 }
