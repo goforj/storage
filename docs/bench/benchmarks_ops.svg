@@ -1,33 +1,83 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="960" viewBox="0 0 1800 960">
+<svg xmlns="http://www.w3.org/2000/svg" width="2086" height="1040" viewBox="0 0 2086 1040">
 <rect width="100%" height="100%" fill="#0b1020"/>
-<text x="900" y="48" text-anchor="middle" fill="#f8fafc" font-size="32" font-family="Arial, sans-serif">Storage Benchmark Iterations (N)</text>
-<line x1="220" y1="90" x2="1740" y2="90" stroke="#334155" stroke-width="1"/>
-<text x="208" y="95" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">757066</text>
-<line x1="220" y1="252" x2="1740" y2="252" stroke="#334155" stroke-width="1"/>
-<text x="208" y="257" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">567800</text>
-<line x1="220" y1="415" x2="1740" y2="415" stroke="#334155" stroke-width="1"/>
-<text x="208" y="420" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">378533</text>
-<line x1="220" y1="577" x2="1740" y2="577" stroke="#334155" stroke-width="1"/>
-<text x="208" y="582" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">189266</text>
-<line x1="220" y1="740" x2="1740" y2="740" stroke="#334155" stroke-width="1"/>
-<text x="208" y="745" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">0</text>
-<rect x="220" y="723" width="18" height="17" rx="4" fill="#0f766e"/>
-<rect x="246" y="648" width="18" height="92" rx="4" fill="#2563eb"/>
-<rect x="272" y="90" width="18" height="650" rx="4" fill="#ea580c"/>
-<rect x="298" y="708" width="18" height="32" rx="4" fill="#7c3aed"/>
-<rect x="324" y="723" width="18" height="17" rx="4" fill="#dc2626"/>
-<rect x="350" y="705" width="18" height="35" rx="4" fill="#059669"/>
-<text x="290" y="780" fill="#e2e8f0" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">local</text>
-<rect x="220" y="835" width="22" height="22" rx="4" fill="#0f766e"/>
-<text x="252" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">put_small</text>
-<rect x="470" y="835" width="22" height="22" rx="4" fill="#2563eb"/>
-<text x="502" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">get_small</text>
-<rect x="720" y="835" width="22" height="22" rx="4" fill="#ea580c"/>
-<text x="752" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">exists</text>
-<rect x="970" y="835" width="22" height="22" rx="4" fill="#7c3aed"/>
-<text x="1002" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">list</text>
-<rect x="1220" y="835" width="22" height="22" rx="4" fill="#dc2626"/>
-<text x="1252" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">walk</text>
-<rect x="1470" y="835" width="22" height="22" rx="4" fill="#059669"/>
-<text x="1502" y="852" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">delete</text>
+<text x="1043" y="52" text-anchor="middle" fill="#f8fafc" font-size="36" font-family="Arial, sans-serif" font-weight="700">Storage Benchmark Iterations (N)</text>
+<text x="1043" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>
+<line x1="240" y1="110" x2="2016" y2="110" stroke="#334155" stroke-width="1"/>
+<text x="224" y="116" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">2.75M</text>
+<line x1="240" y1="280" x2="2016" y2="280" stroke="#334155" stroke-width="1"/>
+<text x="224" y="286" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">2.06M</text>
+<line x1="240" y1="450" x2="2016" y2="450" stroke="#334155" stroke-width="1"/>
+<text x="224" y="456" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">1.37M</text>
+<line x1="240" y1="620" x2="2016" y2="620" stroke="#334155" stroke-width="1"/>
+<text x="224" y="626" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">687.3k</text>
+<line x1="240" y1="790" x2="2016" y2="790" stroke="#334155" stroke-width="1"/>
+<text x="224" y="796" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">0.00</text>
+<rect x="240" y="790" width="24" height="0" rx="6" fill="#0f766e"/>
+<rect x="274" y="790" width="24" height="0" rx="6" fill="#2563eb"/>
+<rect x="308" y="790" width="24" height="0" rx="6" fill="#ea580c"/>
+<rect x="342" y="790" width="24" height="0" rx="6" fill="#7c3aed"/>
+<rect x="376" y="790" width="24" height="0" rx="6" fill="#dc2626"/>
+<rect x="410" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="334" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">ftp</text>
+<line x1="228" y1="838" x2="434" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="488" y="790" width="24" height="0" rx="6" fill="#0f766e"/>
+<rect x="522" y="790" width="24" height="0" rx="6" fill="#2563eb"/>
+<rect x="556" y="790" width="24" height="0" rx="6" fill="#ea580c"/>
+<rect x="590" y="790" width="24" height="0" rx="6" fill="#7c3aed"/>
+<rect x="624" y="790" width="24" height="0" rx="6" fill="#dc2626"/>
+<rect x="658" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="582" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">gcs</text>
+<line x1="476" y1="838" x2="682" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="736" y="789" width="24" height="1" rx="6" fill="#0f766e"/>
+<rect x="770" y="785" width="24" height="5" rx="6" fill="#2563eb"/>
+<rect x="804" y="752" width="24" height="38" rx="6" fill="#ea580c"/>
+<rect x="838" y="789" width="24" height="1" rx="6" fill="#7c3aed"/>
+<rect x="872" y="789" width="24" height="1" rx="6" fill="#dc2626"/>
+<rect x="906" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="830" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">local</text>
+<line x1="724" y1="838" x2="930" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="984" y="608" width="24" height="182" rx="6" fill="#0f766e"/>
+<rect x="1018" y="165" width="24" height="625" rx="6" fill="#2563eb"/>
+<rect x="1052" y="110" width="24" height="680" rx="6" fill="#ea580c"/>
+<rect x="1086" y="710" width="24" height="80" rx="6" fill="#7c3aed"/>
+<rect x="1120" y="723" width="24" height="67" rx="6" fill="#dc2626"/>
+<rect x="1154" y="590" width="24" height="200" rx="6" fill="#059669"/>
+<text x="1078" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">memory</text>
+<line x1="972" y1="838" x2="1178" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="1232" y="789" width="24" height="1" rx="6" fill="#0f766e"/>
+<rect x="1266" y="784" width="24" height="6" rx="6" fill="#2563eb"/>
+<rect x="1300" y="738" width="24" height="52" rx="6" fill="#ea580c"/>
+<rect x="1334" y="788" width="24" height="2" rx="6" fill="#7c3aed"/>
+<rect x="1368" y="789" width="24" height="1" rx="6" fill="#dc2626"/>
+<rect x="1402" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="1326" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">rclone_local</text>
+<line x1="1220" y1="838" x2="1426" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="1480" y="790" width="24" height="0" rx="6" fill="#0f766e"/>
+<rect x="1514" y="790" width="24" height="0" rx="6" fill="#2563eb"/>
+<rect x="1548" y="790" width="24" height="0" rx="6" fill="#ea580c"/>
+<rect x="1582" y="790" width="24" height="0" rx="6" fill="#7c3aed"/>
+<rect x="1616" y="790" width="24" height="0" rx="6" fill="#dc2626"/>
+<rect x="1650" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="1574" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">s3</text>
+<line x1="1468" y1="838" x2="1674" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="1728" y="790" width="24" height="0" rx="6" fill="#0f766e"/>
+<rect x="1762" y="790" width="24" height="0" rx="6" fill="#2563eb"/>
+<rect x="1796" y="789" width="24" height="1" rx="6" fill="#ea580c"/>
+<rect x="1830" y="790" width="24" height="0" rx="6" fill="#7c3aed"/>
+<rect x="1864" y="790" width="24" height="0" rx="6" fill="#dc2626"/>
+<rect x="1898" y="790" width="24" height="0" rx="6" fill="#059669"/>
+<text x="1822" y="820" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">sftp</text>
+<line x1="1716" y1="838" x2="1922" y2="838" stroke="#1e293b" stroke-width="1"/>
+<rect x="240" y="900" width="24" height="24" rx="5" fill="#0f766e"/>
+<text x="276" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">put_small</text>
+<rect x="495" y="900" width="24" height="24" rx="5" fill="#2563eb"/>
+<text x="531" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">get_small</text>
+<rect x="750" y="900" width="24" height="24" rx="5" fill="#ea580c"/>
+<text x="786" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">exists</text>
+<rect x="1005" y="900" width="24" height="24" rx="5" fill="#7c3aed"/>
+<text x="1041" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">list</text>
+<rect x="1260" y="900" width="24" height="24" rx="5" fill="#dc2626"/>
+<text x="1296" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">walk</text>
+<rect x="1515" y="900" width="24" height="24" rx="5" fill="#059669"/>
+<text x="1551" y="918" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">delete</text>
 </svg>

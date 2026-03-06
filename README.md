@@ -296,6 +296,8 @@ cd docs/bench
 go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v
 ```
 
+Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.
+
 Notes:
 
 - `gcs` uses fake-gcs-server.

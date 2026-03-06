@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +24,7 @@ import (
 	ftpstorage "github.com/goforj/storage/driver/ftpstorage"
 	gcsstorage "github.com/goforj/storage/driver/gcsstorage"
 	localstorage "github.com/goforj/storage/driver/localstorage"
+	memorystorage "github.com/goforj/storage/driver/memorystorage"
 	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
 	s3storage "github.com/goforj/storage/driver/s3storage"
 	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
@@ -51,13 +52,18 @@ type benchRow struct {
 type benchmarkCase struct {
 	name     string
 	required bool
-	new      func(context.Context) (storage.Storage, func(), error)
+	setup    func(context.Context) (*benchmarkFixture, error)
 }
 
 type benchmarkOp struct {
 	name  string
 	setup func(context.Context, storage.Storage) error
-	run   func(*testing.B, context.Context, storage.Storage)
+	run   func(context.Context, storage.Storage) error
+}
+
+type benchmarkFixture struct {
+	newStore func(context.Context) (storage.Storage, func(), error)
+	cleanup  func()
 }
 
 var uniqueID uint64
@@ -111,33 +117,56 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	withDocker := os.Getenv("BENCH_WITH_DOCKER") == "1"
 	var cases []benchmarkCase
 
-	add := func(name string, factory func(context.Context) (storage.Storage, func(), error)) {
+	add := func(name string, factory func(context.Context) (*benchmarkFixture, error)) {
 		if !include(name) {
 			return
 		}
 		cases = append(cases, benchmarkCase{
 			name:     name,
 			required: os.Getenv("BENCH_DRIVER") == name,
-			new:      factory,
+			setup:    factory,
 		})
 	}
 
-	add("local", func(ctx context.Context) (storage.Storage, func(), error) {
+	addForced := func(name string, factory func(context.Context) (*benchmarkFixture, error)) {
+		cases = append(cases, benchmarkCase{
+			name:     name,
+			required: os.Getenv("BENCH_DRIVER") == name,
+			setup:    factory,
+		})
+	}
+
+	add("local", func(ctx context.Context) (*benchmarkFixture, error) {
 		root, err := os.MkdirTemp("", "storage-bench-local-*")
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		store, err := storage.Build(localstorage.Config{Remote: root, Prefix: "bench"})
-		if err != nil {
-			_ = os.RemoveAll(root)
-			return nil, nil, err
-		}
-		return store, func() { _ = os.RemoveAll(root) }, nil
+		return &benchmarkFixture{
+			newStore: func(context.Context) (storage.Storage, func(), error) {
+				store, err := storage.Build(localstorage.Config{Remote: root, Prefix: "bench"})
+				return store, func() {}, err
+			},
+			cleanup: func() { _ = os.RemoveAll(root) },
+		}, nil
 	})
 
-	add("gcs", func(ctx context.Context) (storage.Storage, func(), error) {
+	add("memory", func(ctx context.Context) (*benchmarkFixture, error) {
+		return &benchmarkFixture{
+			newStore: func(context.Context) (storage.Storage, func(), error) {
+				store, err := storage.Build(memorystorage.Config{Prefix: "bench"})
+				return store, func() {}, err
+			},
+			cleanup: func() {},
+		}, nil
+	})
+
+	add("gcs", func(ctx context.Context) (*benchmarkFixture, error) {
 		host := "127.0.0.1"
-		port := uint16(pickPort())
+		portValue, err := pickPort()
+		if err != nil {
+			return nil, err
+		}
+		port := uint16(portValue)
 		server, err := fakestorage.NewServerWithOptions(fakestorage.Options{
 			Scheme:     "http",
 			Host:       host,
@@ -145,122 +174,164 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 			PublicHost: fmt.Sprintf("%s:%d", host, port),
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		bucket := "storage-bench"
 		server.CreateBucketWithOpts(fakestorage.CreateBucketOpts{Name: bucket})
-		store, err := storage.Build(gcsstorage.Config{
-			Bucket:   bucket,
-			Endpoint: server.URL(),
-			Prefix:   "bench",
-		})
-		if err != nil {
-			server.Stop()
-			return nil, nil, err
-		}
-		return store, func() { server.Stop() }, nil
+		return &benchmarkFixture{
+			newStore: func(context.Context) (storage.Storage, func(), error) {
+				store, err := storage.Build(gcsstorage.Config{
+					Bucket:   bucket,
+					Endpoint: server.URL(),
+					Prefix:   "bench",
+				})
+				return store, func() {}, err
+			},
+			cleanup: func() { server.Stop() },
+		}, nil
 	})
 
-	if include("ftp") {
-		add("ftp", func(ctx context.Context) (storage.Storage, func(), error) {
-			host := "127.0.0.1"
-			root, err := os.MkdirTemp("", "storage-bench-ftp-*")
-			if err != nil {
-				return nil, nil, err
-			}
-			port := pickPort()
-			srv, err := startEmbeddedFTPServer(host, port, root)
-			if err != nil {
-				_ = os.RemoveAll(root)
-				return nil, nil, err
-			}
-			store, err := storage.Build(ftpstorage.Config{
-				Host:     host,
-				Port:     port,
-				User:     "ftpuser",
-				Password: "ftppass",
-				Prefix:   "bench",
-			})
-			if err != nil {
+	add("ftp", func(ctx context.Context) (*benchmarkFixture, error) {
+		host := "127.0.0.1"
+		root, err := os.MkdirTemp("", "storage-bench-ftp-*")
+		if err != nil {
+			return nil, err
+		}
+		port, err := pickPort()
+		if err != nil {
+			_ = os.RemoveAll(root)
+			return nil, err
+		}
+		srv, err := startEmbeddedFTPServer(host, port, root)
+		if err != nil {
+			_ = os.RemoveAll(root)
+			return nil, err
+		}
+		return &benchmarkFixture{
+			newStore: func(context.Context) (storage.Storage, func(), error) {
+				store, err := storage.Build(ftpstorage.Config{
+					Host:     host,
+					Port:     port,
+					User:     "ftpuser",
+					Password: "ftppass",
+					Prefix:   "bench",
+				})
+				return store, func() {}, err
+			},
+			cleanup: func() {
 				_ = srv.Shutdown()
 				_ = os.RemoveAll(root)
-				return nil, nil, err
-			}
-			return store, func() {
-				_ = srv.Shutdown()
-				_ = os.RemoveAll(root)
-			}, nil
-		})
-	}
+			},
+		}, nil
+	})
 
-	add("rclone_local", func(ctx context.Context) (storage.Storage, func(), error) {
+	add("rclone_local", func(ctx context.Context) (*benchmarkFixture, error) {
 		root, err := os.MkdirTemp("", "storage-bench-rclone-*")
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		conf, err := rclonestorage.RenderLocal(rclonestorage.LocalRemote{Name: "localdisk"})
 		if err != nil {
 			_ = os.RemoveAll(root)
-			return nil, nil, err
+			return nil, err
 		}
-		store, err := rclonestorage.New(rclonestorage.Config{
-			Remote:           "localdisk:" + root,
-			Prefix:           "bench",
-			RcloneConfigData: conf,
-		})
-		if err != nil {
-			_ = os.RemoveAll(root)
-			return nil, nil, err
-		}
-		return store, func() { _ = os.RemoveAll(root) }, nil
+		return &benchmarkFixture{
+			newStore: func(context.Context) (storage.Storage, func(), error) {
+				store, err := rclonestorage.New(rclonestorage.Config{
+					Remote:           "localdisk:" + root,
+					Prefix:           "bench",
+					RcloneConfigData: conf,
+				})
+				return store, func() {}, err
+			},
+			cleanup: func() { _ = os.RemoveAll(root) },
+		}, nil
 	})
 
 	if withDocker || include("s3") {
-		add("s3", func(ctx context.Context) (storage.Storage, func(), error) {
+		addForced("s3", func(ctx context.Context) (*benchmarkFixture, error) {
 			container, endpoint, err := startMinioContainer(ctx)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
 				_ = container.Terminate(ctx)
-				return nil, nil, err
+				return nil, err
 			}
-			store, err := storage.Build(s3storage.Config{
-				Bucket:          "storage-bench",
-				Region:          "us-east-1",
+			return &benchmarkFixture{
+				newStore: func(context.Context) (storage.Storage, func(), error) {
+					store, err := storage.Build(s3storage.Config{
+						Bucket:          "storage-bench",
+						Region:          "us-east-1",
+						Endpoint:        endpoint,
+						AccessKeyID:     "minioadmin",
+						SecretAccessKey: "minioadmin",
+						UsePathStyle:    true,
+						Prefix:          "bench",
+					})
+					return store, func() {}, err
+				},
+				cleanup: func() { _ = container.Terminate(context.Background()) },
+			}, nil
+		})
+	}
+
+	if withDocker || include("rclone_s3") {
+		addForced("rclone_s3", func(ctx context.Context) (*benchmarkFixture, error) {
+			container, endpoint, err := startMinioContainer(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
+				_ = container.Terminate(ctx)
+				return nil, err
+			}
+			conf, err := rclonestorage.RenderS3(rclonestorage.S3Remote{
+				Name:            "benchs3",
 				Endpoint:        endpoint,
+				Region:          "us-east-1",
 				AccessKeyID:     "minioadmin",
 				SecretAccessKey: "minioadmin",
-				UsePathStyle:    true,
-				Prefix:          "bench",
+				PathStyle:       true,
 			})
 			if err != nil {
 				_ = container.Terminate(ctx)
-				return nil, nil, err
+				return nil, err
 			}
-			return store, func() { _ = container.Terminate(context.Background()) }, nil
+			return &benchmarkFixture{
+				newStore: func(context.Context) (storage.Storage, func(), error) {
+					store, err := rclonestorage.New(rclonestorage.Config{
+						Remote:           "benchs3:storage-bench",
+						Prefix:           "bench",
+						RcloneConfigData: conf,
+					})
+					return store, func() {}, err
+				},
+				cleanup: func() { _ = container.Terminate(context.Background()) },
+			}, nil
 		})
 	}
 
 	if withDocker || include("sftp") {
-		add("sftp", func(ctx context.Context) (storage.Storage, func(), error) {
+		addForced("sftp", func(ctx context.Context) (*benchmarkFixture, error) {
 			container, host, port, err := startSFTPContainer(ctx)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
-			store, err := storage.Build(sftpstorage.Config{
-				Host:                  host,
-				Port:                  port,
-				User:                  "storage",
-				Password:              "storage",
-				InsecureIgnoreHostKey: true,
-				Prefix:                "upload/bench",
-			})
-			if err != nil {
-				_ = container.Terminate(ctx)
-				return nil, nil, err
-			}
-			return store, func() { _ = container.Terminate(context.Background()) }, nil
+			return &benchmarkFixture{
+				newStore: func(context.Context) (storage.Storage, func(), error) {
+					store, err := storage.Build(sftpstorage.Config{
+						Host:                  host,
+						Port:                  port,
+						User:                  "storage",
+						Password:              "storage",
+						InsecureIgnoreHostKey: true,
+						Prefix:                "upload/bench",
+					})
+					return store, func() {}, err
+				},
+				cleanup: func() { _ = container.Terminate(context.Background()) },
+			}, nil
 		})
 	}
 
@@ -278,7 +349,11 @@ func benchmarkStoreOps(b *testing.B, store storage.Storage) {
 				}
 			}
 			b.ReportAllocs()
-			op.run(b, context.Background(), store)
+			for i := 0; i < b.N; i++ {
+				if err := op.run(context.Background(), store); err != nil {
+					b.Fatal(err)
+				}
+			}
 		})
 	}
 }
@@ -289,8 +364,8 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 	fmt.Printf("benchrender: selected drivers: %s\n", strings.Join(caseNames(cases), ", "))
 	for _, bc := range cases {
 		driverStart := time.Now()
-		fmt.Printf("benchrender: driver %s: setup\n", bc.name)
-		store, cleanup, err := bc.new(ctx)
+		fmt.Printf("benchrender: driver %s: selected\n", bc.name)
+		fixture, err := bc.setup(ctx)
 		if err != nil {
 			if bc.required {
 				panic(fmt.Errorf("%s benchmark setup failed: %w", bc.name, err))
@@ -298,21 +373,36 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 			fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name+":", err)
 			continue
 		}
-		if cleanup != nil {
-			defer cleanup()
+		if fixture.cleanup != nil {
+			defer fixture.cleanup()
 		}
-		fmt.Printf("benchrender: driver %s: ready\n", bc.name)
 
 		for _, op := range benchmarkOps() {
 			opStart := time.Now()
-			fmt.Printf("benchrender: driver %s: %s\n", bc.name, op.name)
+			fmt.Printf("benchrender: driver %s: %s setup\n", bc.name, op.name)
+			store, cleanup, err := fixture.newStore(ctx)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
+				break
+			}
 			if op.setup != nil {
 				if err := op.setup(ctx, store); err != nil {
+					if cleanup != nil {
+						cleanup()
+					}
 					fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
 					continue
 				}
 			}
-			ns, bytes, allocs, runs := benchOp(ctx, store, op.run)
+			fmt.Printf("benchrender: driver %s: %s run\n", bc.name, op.name)
+			ns, bytes, allocs, runs, err := renderOp(ctx, bc.name, store, op)
+			if cleanup != nil {
+				cleanup()
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
+				break
+			}
 			results[op.name] = append(results[op.name], benchRow{
 				Driver:   bc.name,
 				Op:       op.name,
@@ -335,17 +425,44 @@ func benchOp(ctx context.Context, store storage.Storage, run func(*testing.B, co
 	return float64(res.NsPerOp()), float64(res.AllocedBytesPerOp()), float64(res.AllocsPerOp()), int64(res.N)
 }
 
+func renderOp(ctx context.Context, driver string, store storage.Storage, op benchmarkOp) (float64, float64, float64, int64, error) {
+	duration := renderDurationForDriver(driver)
+	if duration <= 0 {
+		duration = 250 * time.Millisecond
+	}
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	deadline := start.Add(duration)
+	var ops int64
+	for time.Now().Before(deadline) {
+		if err := op.run(ctx, store); err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("render op %s/%s failed: %w", driver, op.name, err)
+		}
+		ops++
+	}
+	if ops == 0 {
+		if err := op.run(ctx, store); err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("render op %s/%s failed: %w", driver, op.name, err)
+		}
+		ops = 1
+	}
+	total := time.Since(start)
+	runtime.ReadMemStats(&after)
+
+	bytesPerOp := float64(after.TotalAlloc-before.TotalAlloc) / float64(ops)
+	allocsPerOp := float64(after.Mallocs-before.Mallocs) / float64(ops)
+	return float64(total.Nanoseconds()) / float64(ops), bytesPerOp, allocsPerOp, ops, nil
+}
+
 func benchmarkOps() []benchmarkOp {
 	return []benchmarkOp{
 		{
 			name: "put_small",
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				for i := 0; i < b.N; i++ {
-					path := nextBenchPath("put")
-					if err := putContext(store, ctx, path, []byte("hello")); err != nil {
-						b.Fatal(err)
-					}
-				}
+			run: func(ctx context.Context, store storage.Storage) error {
+				path := nextBenchPath("put")
+				return putContext(store, ctx, path, []byte("hello"))
 			},
 		},
 		{
@@ -353,12 +470,9 @@ func benchmarkOps() []benchmarkOp {
 			setup: func(ctx context.Context, store storage.Storage) error {
 				return putContext(store, ctx, "reads/get.txt", []byte("hello"))
 			},
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				for i := 0; i < b.N; i++ {
-					if _, err := getContext(store, ctx, "reads/get.txt"); err != nil {
-						b.Fatal(err)
-					}
-				}
+			run: func(ctx context.Context, store storage.Storage) error {
+				_, err := getContext(store, ctx, "reads/get.txt")
+				return err
 			},
 		},
 		{
@@ -366,16 +480,15 @@ func benchmarkOps() []benchmarkOp {
 			setup: func(ctx context.Context, store storage.Storage) error {
 				return putContext(store, ctx, "reads/exists.txt", []byte("hello"))
 			},
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				for i := 0; i < b.N; i++ {
-					ok, err := existsContext(store, ctx, "reads/exists.txt")
-					if err != nil {
-						b.Fatal(err)
-					}
-					if !ok {
-						b.Fatal("expected object to exist")
-					}
+			run: func(ctx context.Context, store storage.Storage) error {
+				ok, err := existsContext(store, ctx, "reads/exists.txt")
+				if err != nil {
+					return err
 				}
+				if !ok {
+					return fmt.Errorf("expected object to exist")
+				}
+				return nil
 			},
 		},
 		{
@@ -388,16 +501,15 @@ func benchmarkOps() []benchmarkOp {
 				}
 				return nil
 			},
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				for i := 0; i < b.N; i++ {
-					entries, err := listContext(store, ctx, "list")
-					if err != nil {
-						b.Fatal(err)
-					}
-					if len(entries) == 0 {
-						b.Fatal("expected entries")
-					}
+			run: func(ctx context.Context, store storage.Storage) error {
+				entries, err := listContext(store, ctx, "list")
+				if err != nil {
+					return err
 				}
+				if len(entries) == 0 {
+					return fmt.Errorf("expected entries")
+				}
+				return nil
 			},
 		},
 		{
@@ -415,43 +527,31 @@ func benchmarkOps() []benchmarkOp {
 				}
 				return nil
 			},
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				for i := 0; i < b.N; i++ {
-					count := 0
-					err := walkContext(store, ctx, "walk", func(entry storage.Entry) error {
-						if !entry.IsDir {
-							count++
-						}
-						return nil
-					})
-					if err != nil {
-						if errors.Is(err, storage.ErrUnsupported) {
-							b.Skip("walk unsupported")
-						}
-						b.Fatal(err)
+			run: func(ctx context.Context, store storage.Storage) error {
+				count := 0
+				err := walkContext(store, ctx, "walk", func(entry storage.Entry) error {
+					if !entry.IsDir {
+						count++
 					}
-					if count == 0 {
-						b.Fatal("expected walked entries")
-					}
+					return nil
+				})
+				if err != nil {
+					return err
 				}
+				if count == 0 {
+					return fmt.Errorf("expected walked entries")
+				}
+				return nil
 			},
 		},
 		{
 			name: "delete",
-			run: func(b *testing.B, ctx context.Context, store storage.Storage) {
-				b.StopTimer()
-				for i := 0; i < b.N; i++ {
-					path := nextBenchPath("delete")
-					if err := putContext(store, ctx, path, []byte("hello")); err != nil {
-						b.Fatal(err)
-					}
-					b.StartTimer()
-					err := deleteContext(store, ctx, path)
-					b.StopTimer()
-					if err != nil {
-						b.Fatal(err)
-					}
+			run: func(ctx context.Context, store storage.Storage) error {
+				path := nextBenchPath("delete")
+				if err := putContext(store, ctx, path, []byte("hello")); err != nil {
+					return err
 				}
+				return deleteContext(store, ctx, path)
 			},
 		},
 	}
@@ -507,7 +607,14 @@ func nextBenchPath(prefix string) string {
 func selectedBenchDrivers() func(string) bool {
 	want := strings.TrimSpace(strings.ToLower(os.Getenv("BENCH_DRIVER")))
 	if want == "" || want == "all" {
-		return func(string) bool { return true }
+		return func(name string) bool {
+			switch strings.ToLower(name) {
+			case "memory", "local", "gcs", "ftp", "rclone_local":
+				return true
+			default:
+				return false
+			}
+		}
 	}
 	selected := map[string]bool{}
 	for _, part := range strings.Split(want, ",") {
@@ -517,6 +624,24 @@ func selectedBenchDrivers() func(string) bool {
 		}
 	}
 	return func(name string) bool { return selected[strings.ToLower(name)] }
+}
+
+func renderDurationForDriver(driver string) time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("BENCH_RENDER_MS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	switch strings.ToLower(driver) {
+	case "memory", "local":
+		return 250 * time.Millisecond
+	case "gcs", "rclone_local", "ftp":
+		return 350 * time.Millisecond
+	case "s3", "sftp", "rclone_s3":
+		return 500 * time.Millisecond
+	default:
+		return 350 * time.Millisecond
+	}
 }
 
 func saveBenchmarkRows(path string, rows map[string][]benchRow) error {
@@ -547,6 +672,7 @@ func renderReadmeSection() string {
 		"cd docs/bench\n" +
 		"go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v\n" +
 		"```\n\n" +
+		"Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.\n\n" +
 		"Notes:\n\n" +
 		"- `gcs` uses fake-gcs-server.\n" +
 		"- `ftp` is excluded by default because the current driver opens a fresh connection per operation; include it with `BENCH_DRIVER=ftp`.\n" +
@@ -605,20 +731,6 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 		"delete":    "#059669",
 	}
 
-	const (
-		width     = 1800
-		height    = 960
-		leftPad   = 220
-		rightPad  = 60
-		topPad    = 90
-		bottomPad = 220
-		groupGap  = 30
-		barGap    = 8
-		barWidth  = 18
-		labelY    = 780
-		legendY   = 835
-	)
-
 	maxVal := 0.0
 	lookup := map[string]map[string]benchRow{}
 	for op, list := range rows {
@@ -634,19 +746,34 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 		maxVal = 1
 	}
 
-	groupWidth := len(ops)*(barWidth+barGap) + groupGap
+	const (
+		minWidth  = 1820
+		height    = 1040
+		leftPad   = 240
+		rightPad  = 70
+		topPad    = 110
+		bottomPad = 250
+		groupGap  = 44
+		barGap    = 10
+		barWidth  = 24
+		labelY    = 820
+		legendY   = 900
+	)
 	chartHeight := height - topPad - bottomPad
+	groupWidth := len(ops)*(barWidth+barGap) + groupGap
+	width := max(minWidth, leftPad+rightPad+len(drivers)*groupWidth+40)
 
 	var svg bytes.Buffer
 	svg.WriteString(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">`+"\n", width, height, width, height))
 	svg.WriteString(`<rect width="100%" height="100%" fill="#0b1020"/>` + "\n")
-	svg.WriteString(fmt.Sprintf(`<text x="%d" y="48" text-anchor="middle" fill="#f8fafc" font-size="32" font-family="Arial, sans-serif">%s</text>`+"\n", width/2, title))
+	svg.WriteString(fmt.Sprintf(`<text x="%d" y="52" text-anchor="middle" fill="#f8fafc" font-size="36" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", width/2, title))
+	svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>`+"\n", width/2))
 
 	for i := 0; i <= 4; i++ {
 		y := topPad + int(float64(chartHeight)*float64(i)/4.0)
 		v := maxVal * (1 - float64(i)/4.0)
 		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#334155" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#94a3b8" font-size="16" text-anchor="end" font-family="Arial, sans-serif">%.0f</text>`+"\n", leftPad-12, y+5, v))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
 	}
 
 	for i, driver := range drivers {
@@ -660,21 +787,39 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 			h := int((v / maxVal) * float64(chartHeight))
 			x := groupX + j*(barWidth+barGap)
 			y := topPad + chartHeight - h
-			svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="4" fill="%s"/>`+"\n", x, y, barWidth, h, colors[op]))
+			svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="6" fill="%s"/>`+"\n", x, y, barWidth, h, colors[op]))
 		}
 		labelX := groupX + (len(ops)*(barWidth+barGap))/2 - 8
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#e2e8f0" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">%s</text>`+"\n", labelX, labelY, driver))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", labelX, labelY, driver))
+		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#1e293b" stroke-width="1"/>`+"\n", groupX-12, labelY+18, groupX+len(ops)*(barWidth+barGap)-10, labelY+18))
 	}
 
 	legendX := leftPad
 	for i, op := range ops {
-		x := legendX + i*250
-		svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="22" height="22" rx="4" fill="%s"/>`+"\n", x, legendY, colors[op]))
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#e2e8f0" font-size="16" font-family="Arial, sans-serif">%s</text>`+"\n", x+32, legendY+17, op))
+		x := legendX + i*255
+		svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="24" height="24" rx="5" fill="%s"/>`+"\n", x, legendY, colors[op]))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">%s</text>`+"\n", x+36, legendY+18, op))
 	}
 
 	svg.WriteString(`</svg>` + "\n")
 	return svg.String()
+}
+
+func formatChartValue(v float64) string {
+	switch {
+	case v >= 1_000_000:
+		return fmt.Sprintf("%.2fM", v/1_000_000)
+	case v >= 10_000:
+		return fmt.Sprintf("%.1fk", v/1_000)
+	case v >= 1_000:
+		return fmt.Sprintf("%.2fk", v/1_000)
+	case v >= 100:
+		return fmt.Sprintf("%.0f", v)
+	case v >= 10:
+		return fmt.Sprintf("%.1f", v)
+	default:
+		return fmt.Sprintf("%.2f", v)
+	}
 }
 
 func orderedDrivers(rows map[string][]benchRow) []string {
@@ -730,13 +875,13 @@ func findRoot() string {
 	}
 }
 
-func pickPort() int {
+func pickPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
 	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port
+	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
 func startEmbeddedFTPServer(host string, port int, root string) (*server.Server, error) {
@@ -891,7 +1036,7 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "atmoz/sftp:latest",
-		Cmd:          []string{"storage:storage:1001"},
+		Cmd:          []string{"storage:storage:::upload"},
 		ExposedPorts: []string{"22/tcp"},
 		WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(30 * time.Second),
 	}

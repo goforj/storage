@@ -3,60 +3,348 @@
     {
       "driver": "local",
       "op": "delete",
-      "ns_op": 30471,
-      "bytes_op": 288,
-      "allocs_op": 4,
-      "ops": 41726
+      "ns_op": 78161.75617380432,
+      "bytes_op": 1040.9628008752736,
+      "allocs_op": 16.003438574554547,
+      "ops": 3199
+    },
+    {
+      "driver": "memory",
+      "op": "delete",
+      "ns_op": 308.6786413221304,
+      "bytes_op": 192.0879016674795,
+      "allocs_op": 9.000370413813966,
+      "ops": 809905
+    },
+    {
+      "driver": "gcs",
+      "op": "delete",
+      "ns_op": 1337914.5992366413,
+      "bytes_op": 1603147.9083969465,
+      "allocs_op": 54036.248091603054,
+      "ops": 262
+    },
+    {
+      "driver": "ftp",
+      "op": "delete",
+      "ns_op": 558580.0111642743,
+      "bytes_op": 84131.95534290271,
+      "allocs_op": 390.4465709728868,
+      "ops": 627
+    },
+    {
+      "driver": "rclone_local",
+      "op": "delete",
+      "ns_op": 97352.95022246942,
+      "bytes_op": 3193.686318131257,
+      "allocs_op": 40.00639599555061,
+      "ops": 3596
+    },
+    {
+      "driver": "s3",
+      "op": "delete",
+      "ns_op": 1594310.9076433121,
+      "bytes_op": 90147.5668789809,
+      "allocs_op": 1203.7292993630574,
+      "ops": 314
+    },
+    {
+      "driver": "sftp",
+      "op": "delete",
+      "ns_op": 588304.1670588235,
+      "bytes_op": 2354.315294117647,
+      "allocs_op": 58.051764705882356,
+      "ops": 850
     }
   ],
   "exists": [
     {
       "driver": "local",
       "op": "exists",
-      "ns_op": 1598,
-      "bytes_op": 480,
-      "allocs_op": 5,
-      "ops": 757066
+      "ns_op": 1606.1688778099724,
+      "bytes_op": 480.04029527597,
+      "allocs_op": 5.000199163513244,
+      "ops": 155651
+    },
+    {
+      "driver": "memory",
+      "op": "exists",
+      "ns_op": 90.94022138476424,
+      "bytes_op": 48.000471433871944,
+      "allocs_op": 2.0000156417102573,
+      "ops": 2749060
+    },
+    {
+      "driver": "gcs",
+      "op": "exists",
+      "ns_op": 217043.75945443273,
+      "bytes_op": 209846.5021698698,
+      "allocs_op": 6916.46931184129,
+      "ops": 1613
+    },
+    {
+      "driver": "ftp",
+      "op": "exists",
+      "ns_op": 189090.91950297137,
+      "bytes_op": 23140.85359265262,
+      "allocs_op": 141.12857914640736,
+      "ops": 1851
+    },
+    {
+      "driver": "rclone_local",
+      "op": "exists",
+      "ns_op": 1641.4753145767577,
+      "bytes_op": 680.0050651196166,
+      "allocs_op": 9.000154767543838,
+      "ops": 213223
+    },
+    {
+      "driver": "s3",
+      "op": "exists",
+      "ns_op": 216522.041991342,
+      "bytes_op": 40596.862337662336,
+      "allocs_op": 560.1493506493506,
+      "ops": 2310
+    },
+    {
+      "driver": "sftp",
+      "op": "exists",
+      "ns_op": 120092.63928914505,
+      "bytes_op": 532.1421709894332,
+      "allocs_op": 12.002401536983669,
+      "ops": 4164
     }
   ],
   "get_small": [
     {
       "driver": "local",
       "op": "get_small",
-      "ns_op": 11410,
-      "bytes_op": 1096,
-      "allocs_op": 8,
-      "ops": 107983
+      "ns_op": 10607.904107264087,
+      "bytes_op": 1096.020366598778,
+      "allocs_op": 8.000424304141209,
+      "ops": 23568
+    },
+    {
+      "driver": "memory",
+      "op": "get_small",
+      "ns_op": 98.86174947188097,
+      "bytes_op": 56.00501110018799,
+      "allocs_op": 3.000022540460126,
+      "ops": 2528786
+    },
+    {
+      "driver": "gcs",
+      "op": "get_small",
+      "ns_op": 200975.38748564868,
+      "bytes_op": 202155.31572904708,
+      "allocs_op": 6795.809988518944,
+      "ops": 1742
+    },
+    {
+      "driver": "ftp",
+      "op": "get_small",
+      "ns_op": 337079.7237728585,
+      "bytes_op": 27243.41867179981,
+      "allocs_op": 217.23965351299327,
+      "ops": 1039
+    },
+    {
+      "driver": "rclone_local",
+      "op": "get_small",
+      "ns_op": 12832.054736764921,
+      "bytes_op": 1728.0193576770787,
+      "allocs_op": 15.00047660947353,
+      "ops": 27276
+    },
+    {
+      "driver": "s3",
+      "op": "get_small",
+      "ns_op": 308080.35551447934,
+      "bytes_op": 44981.92483056069,
+      "allocs_op": 624.1521873074553,
+      "ops": 1623
+    },
+    {
+      "driver": "sftp",
+      "op": "get_small",
+      "ns_op": 433076.1904761905,
+      "bytes_op": 2083.2900432900433,
+      "allocs_op": 41.00865800865801,
+      "ops": 1155
     }
   ],
   "list": [
     {
       "driver": "local",
       "op": "list",
-      "ns_op": 33043,
-      "bytes_op": 9416,
-      "allocs_op": 91,
-      "ops": 37510
+      "ns_op": 32246.028376112474,
+      "bytes_op": 9416.131046046692,
+      "allocs_op": 91.00361150522379,
+      "ops": 7753
+    },
+    {
+      "driver": "memory",
+      "op": "list",
+      "ns_op": 772.9820297257771,
+      "bytes_op": 1232.014445478522,
+      "allocs_op": 20.000457605055917,
+      "ops": 323423
+    },
+    {
+      "driver": "gcs",
+      "op": "list",
+      "ns_op": 206192.84982332157,
+      "bytes_op": 469817.20141342754,
+      "allocs_op": 1047.6537102473499,
+      "ops": 1698
+    },
+    {
+      "driver": "ftp",
+      "op": "list",
+      "ns_op": 432736.45488257107,
+      "bytes_op": 53445.34981458591,
+      "allocs_op": 634.310259579728,
+      "ops": 809
+    },
+    {
+      "driver": "rclone_local",
+      "op": "list",
+      "ns_op": 40931.713717693834,
+      "bytes_op": 15304.114138697229,
+      "allocs_op": 180.00362530698163,
+      "ops": 8551
+    },
+    {
+      "driver": "s3",
+      "op": "list",
+      "ns_op": 367555.1675238795,
+      "bytes_op": 74343.98236590742,
+      "allocs_op": 1312.2476120499632,
+      "ops": 1361
+    },
+    {
+      "driver": "sftp",
+      "op": "list",
+      "ns_op": 512407.87295081967,
+      "bytes_op": 9470.72131147541,
+      "allocs_op": 126.07377049180327,
+      "ops": 976
     }
   ],
   "put_small": [
     {
       "driver": "local",
       "op": "put_small",
-      "ns_op": 63113,
-      "bytes_op": 736,
-      "allocs_op": 12,
-      "ops": 20858
+      "ns_op": 55273.27923944285,
+      "bytes_op": 734.3479991156312,
+      "allocs_op": 11.946053504311298,
+      "ops": 4523
+    },
+    {
+      "driver": "memory",
+      "op": "put_small",
+      "ns_op": 339.081717160346,
+      "bytes_op": 330.9465106532463,
+      "allocs_op": 7.005706054765648,
+      "ops": 737287
+    },
+    {
+      "driver": "gcs",
+      "op": "put_small",
+      "ns_op": 321750.8395967003,
+      "bytes_op": 354950.093492209,
+      "allocs_op": 10278.22364802933,
+      "ops": 1091
+    },
+    {
+      "driver": "ftp",
+      "op": "put_small",
+      "ns_op": 353678.49393939396,
+      "bytes_op": 61170.22222222222,
+      "allocs_op": 251.4,
+      "ops": 990
+    },
+    {
+      "driver": "rclone_local",
+      "op": "put_small",
+      "ns_op": 70448.7655463876,
+      "bytes_op": 2385.2751056550615,
+      "allocs_op": 30.005031193399073,
+      "ops": 4969
+    },
+    {
+      "driver": "s3",
+      "op": "put_small",
+      "ns_op": 2213147.309734513,
+      "bytes_op": 50871.681415929204,
+      "allocs_op": 662.0265486725664,
+      "ops": 226
+    },
+    {
+      "driver": "sftp",
+      "op": "put_small",
+      "ns_op": 491251.5550098232,
+      "bytes_op": 1844.1964636542239,
+      "allocs_op": 46.05893909626719,
+      "ops": 1018
     }
   ],
   "walk": [
     {
       "driver": "local",
       "op": "walk",
-      "ns_op": 59724,
-      "bytes_op": 8728,
-      "allocs_op": 64,
-      "ops": 20094
+      "ns_op": 58516.703721039084,
+      "bytes_op": 8728.076761057804,
+      "allocs_op": 64.00257430376784,
+      "ops": 4273
+    },
+    {
+      "driver": "memory",
+      "op": "walk",
+      "ns_op": 917.743329858154,
+      "bytes_op": 1096.015095004552,
+      "allocs_op": 34.00039279316319,
+      "ops": 272408
+    },
+    {
+      "driver": "gcs",
+      "op": "walk",
+      "ns_op": 349158.23429710866,
+      "bytes_op": 566394.8075772682,
+      "allocs_op": 7577.63110667996,
+      "ops": 1003
+    },
+    {
+      "driver": "ftp",
+      "op": "walk",
+      "ns_op": 870583219.8115942,
+      "bytes_op": 71481.39130434782,
+      "allocs_op": 735.7246376811594,
+      "ops": 69
+    },
+    {
+      "driver": "rclone_local",
+      "op": "walk",
+      "ns_op": 81521.05635770842,
+      "bytes_op": 19855.372147182115,
+      "allocs_op": 184.1560316721006,
+      "ops": 4294
+    },
+    {
+      "driver": "s3",
+      "op": "walk",
+      "ns_op": 481777.978805395,
+      "bytes_op": 94915.50674373796,
+      "allocs_op": 1381.3882466281311,
+      "ops": 1038
+    },
+    {
+      "driver": "sftp",
+      "op": "walk",
+      "ns_op": 1984486.2777777778,
+      "bytes_op": 11516.126984126984,
+      "allocs_op": 227.06349206349208,
+      "ops": 252
     }
   ]
 }
