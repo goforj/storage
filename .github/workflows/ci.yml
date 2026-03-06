@@ -41,7 +41,7 @@ jobs:
           GOWORK=off go test ./... -run TestExamplesBuild -count=1 -v
 
       - name: Run tests with coverage
-        run: go test -coverprofile=coverage.txt
+        run: scripts/coverage-codecov.sh
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v5

@@ -9,15 +9,15 @@ import (
 )
 
 func main() {
-	// List returns the immediate children under path.
+	// Get reads the object at path.
 
-	// Example: list a directory
+	// Example: read an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-list",
+		Remote: "/tmp/storage-get",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 
-	entries, _ := disk.List("docs")
-	fmt.Println(entries[0].Path)
-	// Output: docs/readme.txt
+	data, _ := disk.Get("docs/readme.txt")
+	fmt.Println(string(data))
+	// Output: hello
 }

@@ -43,7 +43,7 @@ help: ##@other Show this help.
 #----------------------
 # Dev helpers
 #----------------------
-.PHONY: tidy test integration integration-driver examples-test
+.PHONY: tidy test integration integration-driver examples-test coverage
 
 #----------------------
 # Go helpers
@@ -60,6 +60,9 @@ test: ##@go Run unit tests
 
 examples-test: ##@go Run tests in the examples module
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd examples && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test $(GO_TEST_FLAGS) ./...
+
+coverage: ##@go Generate combined unit + integration coverage for Codecov
+	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE_DIR="$(GOCACHE)" GOMODCACHE_DIR="$(GOMODCACHE)" scripts/coverage-codecov.sh
 
 integration: ##@go Run the centralized integration matrix in ./integration (may require Docker)
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all

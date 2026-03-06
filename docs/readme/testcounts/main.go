@@ -101,8 +101,6 @@ func countIntegrationRunEvents(integrationDir string, integrationNames map[strin
 	args := []string{"test", "-tags=integration", "./all", "-run", runPattern, "-count=1", "-json"}
 	cmd := exec.Command("go", args...)
 	cmd.Dir = integrationDir
-	cmd.Env = append(os.Environ(), "INTEGRATION_DRIVER=local,gcs,ftp,rclone_local")
-
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
