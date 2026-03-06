@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  An opinionated, testable storage abstraction for Go. Laravel-inspired in product model, Go-native in API design.
+  A small, testable storage abstraction for Go with explicit drivers and shared contracts.
 </p>
 
 <p align="center">
@@ -80,15 +80,15 @@ go get github.com/goforj/storage/driver/rclone
 
 ## Driver Matrix
 
-| Driver / Backend | Kind | URL | Centralized integration | Support tier | Notes |
-| --- | --- | --- | --- | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | No | Yes, direct local fixture | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | Yes, presigned GET | Yes, MinIO via testcontainers | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Also suitable for S3-compatible endpoints. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Yes, signed URL. No in emulator mode | Yes, fake-gcs-server emulator | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Emulator-backed integration in the shared matrix. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | No | Yes, SFTP container via testcontainers | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Password and key authentication supported. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | No | Yes, embedded FTP fixture in shared matrix | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Plain FTP and explicit TLS supported. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Yes, temporary link | No | <img src="https://img.shields.io/badge/tier-2-757575" alt="Tier 2"> | Lower support tier until external integration coverage is defined. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Backend-dependent via `PublicLink` | Yes, representative local fixture | <img src="https://img.shields.io/badge/tier-1-2e7d32" alt="Tier 1"> | Breadth driver, not the baseline for all semantics. |
+| Driver / Backend | Kind | Key capabilities | Notes |
+| ---: | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | local dev, test-friendly | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | `URL`, S3-compatible endpoints | MinIO-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | `URL` | Emulator-backed integration coverage via fake-gcs-server. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | password auth, key auth | Container-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | plain FTP, explicit TLS | Embedded integration fixture in the shared matrix. |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | temporary links | Lower coverage currently; external integration strategy still open. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | backend breadth, config-driven remotes | Representative local integration coverage; not the baseline for all semantics. |
 
 Common contract across bundled drivers:
 - `Get`, `Put`, `Delete`, `Exists`, and one-level `List`

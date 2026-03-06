@@ -1,9 +1,8 @@
 // Package storage provides a small abstraction over file-like objects stored in
 // local, cloud, and remote backends.
 //
-// The package is Laravel-inspired in product model, but Go-native in API shape:
-// explicit drivers, named disks, and small interfaces with documented
-// semantics.
+// The package is Go-native in API shape: explicit drivers, named disks, and
+// small interfaces with documented semantics.
 //
 // Preferred construction paths:
 //   - direct use: call a driver module's New(ctx, Config)
