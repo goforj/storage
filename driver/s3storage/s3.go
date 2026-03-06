@@ -45,7 +45,7 @@ type s3PresignAPI interface {
 }
 
 // Config defines an S3-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define s3 storage config
 //
@@ -82,7 +82,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs S3-backed storage using AWS SDK v2.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: s3 storage
 //

@@ -32,7 +32,7 @@ type driver struct {
 }
 
 // Config defines an FTP-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define ftp storage config
 //
@@ -68,7 +68,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs FTP-backed storage using jlaffaye/ftp.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: ftp storage
 //

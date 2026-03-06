@@ -28,4 +28,5 @@ func main() {
 		fmt.Println(entry.Path)
 		return nil
 	})
+	// Output: walk unsupported
 }

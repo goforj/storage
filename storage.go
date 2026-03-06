@@ -98,6 +98,16 @@ type Storage interface {
 
 	// URL returns a usable access URL when the driver supports it.
 	//
+	// Example: request an object url
+	//
+	//	disk, _ := storage.Build(context.Background(), s3storage.Config{
+	//		Bucket: "uploads",
+	//		Region: "us-east-1",
+	//	})
+	//
+	//	url, _ := disk.URL(context.Background(), "docs/readme.txt")
+	//	_ = url // signed object URL
+	//
 	// Example: handle unsupported url generation
 	//
 	//	disk, _ := storage.Build(context.Background(), localstorage.Config{
@@ -144,6 +154,7 @@ type Walker interface {
 	//		fmt.Println(entry.Path)
 	//		return nil
 	//	})
+	//	// Output: walk unsupported
 	Walk(ctx context.Context, p string, fn func(Entry) error) error
 }
 

@@ -28,7 +28,7 @@ type driver struct {
 }
 
 // Config defines an SFTP-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define sftp storage config
 //
@@ -66,7 +66,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs SFTP-backed storage using ssh and pkg/sftp.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: sftp storage
 //

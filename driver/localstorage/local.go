@@ -25,7 +25,7 @@ type driver struct {
 }
 
 // Config defines local storage rooted at a filesystem path.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define local storage config
 //
@@ -50,7 +50,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs local storage rooted at cfg.Remote with an optional prefix.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: local storage
 //

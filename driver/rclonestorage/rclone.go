@@ -36,7 +36,7 @@ type driver struct {
 }
 
 // Config defines an rclone-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define rclone storage config
 //
@@ -74,7 +74,7 @@ var (
 )
 
 // New constructs an rclone-backed storage. All disks share a single config path.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: rclone storage
 //

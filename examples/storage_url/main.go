@@ -9,10 +9,20 @@ import (
 	"fmt"
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/localstorage"
+	"github.com/goforj/storage/driver/s3storage"
 )
 
 func main() {
 	// URL returns a usable access URL when the driver supports it.
+
+	// Example: request an object url
+	disk, _ := storage.Build(context.Background(), s3storage.Config{
+		Bucket: "uploads",
+		Region: "us-east-1",
+	})
+
+	url, _ := disk.URL(context.Background(), "docs/readme.txt")
+	_ = url // signed object URL
 
 	// Example: handle unsupported url generation
 	disk, _ := storage.Build(context.Background(), localstorage.Config{

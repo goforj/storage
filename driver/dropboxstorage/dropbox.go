@@ -35,7 +35,7 @@ type dropboxClient interface {
 }
 
 // Config defines a Dropbox-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define dropbox storage config
 //
@@ -59,7 +59,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs Dropbox-backed storage using the official SDK.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: dropbox storage
 //

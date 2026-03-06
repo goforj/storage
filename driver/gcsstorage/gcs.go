@@ -34,7 +34,7 @@ type driver struct {
 }
 
 // Config defines a GCS-backed storage disk.
-// @group Drivers
+// @group Driver Config
 //
 // Example: define gcs storage config
 //
@@ -62,7 +62,7 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 }
 
 // New constructs GCS-backed storage using cloud.google.com/go/storage.
-// @group Drivers
+// @group Driver Constructors
 //
 // Example: gcs storage
 //
