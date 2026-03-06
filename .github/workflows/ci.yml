@@ -1,10 +1,10 @@
-name: Go Test
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   unit:
@@ -49,3 +49,27 @@ jobs:
           files: coverage.txt
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            examples/go.sum
+            integration/go.sum
+            storagetest/go.sum
+            driver/*/go.sum
+
+      - name: Run integration tests
+        run: |
+          cd integration
+          go test -tags=integration -count=1 ./all
