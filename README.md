@@ -52,21 +52,23 @@ go get github.com/goforj/storage/driver/rclonestorage
 
 ## Driver Matrix
 
-| Driver / Backend | Kind | Key capabilities | Notes |
+| Driver / Backend | Kind | URL | Notes |
 | ---: | --- | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | local dev, test-friendly | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | `URL`, S3-compatible endpoints | MinIO-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | `URL` | Emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | password auth, key auth | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | plain FTP, explicit TLS | Embedded integration fixture in the shared matrix. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | temporary links | Lower coverage currently; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | backend breadth, config-driven remotes | Representative local integration coverage; not the baseline for all semantics. |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | `No` | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | `Yes` | Supports signed object URLs; MinIO-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | `Conditional` | Supports signed URLs outside emulator mode; emulator-backed integration coverage via fake-gcs-server. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | `No` | Container-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | `No` | Embedded integration fixture in the shared matrix. |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | `Yes` | Returns temporary links; external integration strategy still open. |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | `Conditional` | Depends on the underlying rclone remote; representative local integration coverage. |
 
 Common contract across bundled drivers:
 - `Get`, `Put`, `Delete`, `Exists`, and one-level `List`
 - typed driver config and `New(...)` constructor
 - manager registration for named-disk usage
 - normalized `ErrNotFound`, `ErrForbidden`, and `ErrUnsupported` behavior
+
+`Conditional` URL support means backend- or environment-dependent behavior, for example GCS emulator mode or the capabilities of a specific rclone remote.
 
 ## Usage
 
@@ -305,7 +307,7 @@ func main() {
 
 ### Rclone
 
-`rclone` is back in this repository as its own driver module.
+Use `rclonestorage` when you want to access rclone-backed remotes through the `storage` interface.
 
 ```go
 package main
@@ -350,54 +352,7 @@ func main() {
 
 See [`examples`](./examples) for runnable examples.
 
-Notes:
-- `List` is one-level and non-recursive.
-- `List(ctx, "")` lists from the disk root or prefix root.
-- `Entry` currently includes `Path`, `Size`, and `IsDir`.
-- `URL` returns a usable access URL when the driver supports it.
-- unsupported operations return `storage.ErrUnsupported`.
-- normalized cross-driver errors use `errors.Is` with `storage.ErrNotFound`, `storage.ErrForbidden`, and `storage.ErrUnsupported`.
-
-More detail lives in [`DRIVER_SUPPORT.md`](./DRIVER_SUPPORT.md).
-
-## Testing
-
-Shared contract tests live in `storagetest`.
-
-Centralized integration coverage lives in `integration` and runs the same contract across supported backends.
-That centralized matrix is the authoritative integration path for the repository.
-
-Current fixture types in the centralized matrix:
-- testcontainers: `s3`, `sftp`
-- emulator: `gcs`
-- embedded/local fixtures: `local`, `ftp`, `rclone_local`
-
-Examples:
-
-```bash
-GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test ./...
-```
-
-```bash
-cd integration
-GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
-```
-
-Select a single backend during integration runs:
-
-```bash
-cd integration
-INTEGRATION_DRIVER=gcs GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
-```
-
-Make targets:
-
-```bash
-make test
-make examples-test
-make integration
-make integration-driver gcs
-```
+Driver-specific behavior and capabilities are documented in [`DRIVER_SUPPORT.md`](./DRIVER_SUPPORT.md).
 
 ## API reference
 
@@ -1023,3 +978,42 @@ fmt.Println(p)
 // Output: avatars/user-1.png
 ```
 <!-- api:embed:end -->
+
+## Contributing
+
+Shared contract tests live in `storagetest`.
+
+Centralized integration coverage lives in `integration` and runs the same contract across supported backends.
+That centralized matrix is the authoritative integration path for the repository.
+
+Current fixture types in the centralized matrix:
+- testcontainers: `s3`, `sftp`
+- emulator: `gcs`
+- embedded/local fixtures: `local`, `ftp`, `rclone_local`
+
+Common contributor commands:
+
+```bash
+GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test ./...
+```
+
+```bash
+cd integration
+GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+```
+
+Run a single integration backend:
+
+```bash
+cd integration
+INTEGRATION_DRIVER=gcs GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storage-gomodcache go test -tags=integration ./all -count=1
+```
+
+Make targets:
+
+```bash
+make test
+make examples-test
+make integration
+make integration-driver gcs
+```
