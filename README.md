@@ -300,7 +300,7 @@ Notes:
 
 - `gcs` uses fake-gcs-server.
 - `ftp` uses the embedded Go FTP fixture.
-- `s3` and `sftp` use testcontainers and are skipped automatically if Docker is unavailable.
+- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.
 - `rclone_local` measures rclone overhead on top of a local filesystem remote.
 
 ### Latency (ns/op)

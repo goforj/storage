@@ -103,6 +103,7 @@ func RenderBenchmarks() {
 
 func benchmarkCases(ctx context.Context) []benchmarkCase {
 	include := selectedBenchDrivers()
+	withDocker := os.Getenv("BENCH_WITH_DOCKER") == "1"
 	var cases []benchmarkCase
 
 	add := func(name string, factory func(context.Context) (storage.Storage, func(), error)) {
@@ -207,50 +208,54 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		return store, func() { _ = os.RemoveAll(root) }, nil
 	})
 
-	add("s3", func(ctx context.Context) (storage.Storage, func(), error) {
-		container, endpoint, err := startMinioContainer(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
-			_ = container.Terminate(ctx)
-			return nil, nil, err
-		}
-		store, err := storage.Build(s3storage.Config{
-			Bucket:          "storage-bench",
-			Region:          "us-east-1",
-			Endpoint:        endpoint,
-			AccessKeyID:     "minioadmin",
-			SecretAccessKey: "minioadmin",
-			UsePathStyle:    true,
-			Prefix:          "bench",
+	if withDocker || include("s3") {
+		add("s3", func(ctx context.Context) (storage.Storage, func(), error) {
+			container, endpoint, err := startMinioContainer(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
+				_ = container.Terminate(ctx)
+				return nil, nil, err
+			}
+			store, err := storage.Build(s3storage.Config{
+				Bucket:          "storage-bench",
+				Region:          "us-east-1",
+				Endpoint:        endpoint,
+				AccessKeyID:     "minioadmin",
+				SecretAccessKey: "minioadmin",
+				UsePathStyle:    true,
+				Prefix:          "bench",
+			})
+			if err != nil {
+				_ = container.Terminate(ctx)
+				return nil, nil, err
+			}
+			return store, func() { _ = container.Terminate(context.Background()) }, nil
 		})
-		if err != nil {
-			_ = container.Terminate(ctx)
-			return nil, nil, err
-		}
-		return store, func() { _ = container.Terminate(context.Background()) }, nil
-	})
+	}
 
-	add("sftp", func(ctx context.Context) (storage.Storage, func(), error) {
-		container, host, port, err := startSFTPContainer(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		store, err := storage.Build(sftpstorage.Config{
-			Host:                  host,
-			Port:                  port,
-			User:                  "storage",
-			Password:              "storage",
-			InsecureIgnoreHostKey: true,
-			Prefix:                "upload/bench",
+	if withDocker || include("sftp") {
+		add("sftp", func(ctx context.Context) (storage.Storage, func(), error) {
+			container, host, port, err := startSFTPContainer(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			store, err := storage.Build(sftpstorage.Config{
+				Host:                  host,
+				Port:                  port,
+				User:                  "storage",
+				Password:              "storage",
+				InsecureIgnoreHostKey: true,
+				Prefix:                "upload/bench",
+			})
+			if err != nil {
+				_ = container.Terminate(ctx)
+				return nil, nil, err
+			}
+			return store, func() { _ = container.Terminate(context.Background()) }, nil
 		})
-		if err != nil {
-			_ = container.Terminate(ctx)
-			return nil, nil, err
-		}
-		return store, func() { _ = container.Terminate(context.Background()) }, nil
-	})
+	}
 
 	return cases
 }
@@ -529,7 +534,7 @@ func renderReadmeSection() string {
 		"Notes:\n\n" +
 		"- `gcs` uses fake-gcs-server.\n" +
 		"- `ftp` uses the embedded Go FTP fixture.\n" +
-		"- `s3` and `sftp` use testcontainers and are skipped automatically if Docker is unavailable.\n" +
+		"- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
 		"- `rclone_local` measures rclone overhead on top of a local filesystem remote.\n\n" +
 		"### Latency (ns/op)\n\n" +
 		"![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg)\n\n" +
