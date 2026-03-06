@@ -73,99 +73,6 @@ Choose the construction style that fits your application:
 
 All storage operations also expose `*Context` equivalents for deadlines and cancellation. The default methods use `context.Background()`.
 
-### Manager and named disks
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-    "github.com/goforj/storage/driver/s3storage"
-)
-
-func main() {
-    // Build a manager with multiple named disks.
-    mgr, err := storage.New(storage.Config{
-        Default: "assets",
-        Disks: map[storage.DiskName]storage.DriverConfig{
-            "assets": localstorage.Config{
-                Remote: "/tmp/storage",
-                Prefix: "assets",
-            },
-            "uploads": s3storage.Config{
-                Bucket:          "app-uploads",
-                Region:          "us-east-1",
-                Endpoint:        "http://localhost:9000",
-                AccessKeyID:     "minioadmin",
-                SecretAccessKey: "minioadmin",
-                UsePathStyle:    true,
-                Prefix:          "uploads",
-            },
-        },
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Resolve a disk by name.
-    disk, err := mgr.Disk("assets")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file into the disk.
-    if err := disk.Put("hello.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // Read the file back.
-    data, err := disk.Get("hello.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = data // []byte("hello")
-}
-```
-
-### Single-backend construction
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-)
-
-func main() {
-    // Build one disk through the shared storage API.
-    built, err := storage.Build(localstorage.Config{
-        Remote: "/tmp/storage",
-        Prefix: "scratch",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Or construct the driver directly.
-    direct, err := localstorage.New(localstorage.Config{
-        Remote: "/tmp/storage",
-        Prefix: "scratch",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _, _ = built, direct
-}
-```
-
 ### Common operations
 
 ```go
@@ -233,6 +140,99 @@ func main() {
     default:
         log.Fatal(err)
     }
+}
+```
+
+### Single-backend construction
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/goforj/storage"
+    "github.com/goforj/storage/driver/localstorage"
+)
+
+func main() {
+    // Build one disk through the shared storage API.
+    built, err := storage.Build(localstorage.Config{
+        Remote: "/tmp/storage",
+        Prefix: "scratch",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Or construct the driver directly.
+    direct, err := localstorage.New(localstorage.Config{
+        Remote: "/tmp/storage",
+        Prefix: "scratch",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _, _ = built, direct
+}
+```
+
+### Manager and named disks
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/goforj/storage"
+    "github.com/goforj/storage/driver/localstorage"
+    "github.com/goforj/storage/driver/s3storage"
+)
+
+func main() {
+    // Build a manager with multiple named disks.
+    mgr, err := storage.New(storage.Config{
+        Default: "assets",
+        Disks: map[storage.DiskName]storage.DriverConfig{
+            "assets": localstorage.Config{
+                Remote: "/tmp/storage",
+                Prefix: "assets",
+            },
+            "uploads": s3storage.Config{
+                Bucket:          "app-uploads",
+                Region:          "us-east-1",
+                Endpoint:        "http://localhost:9000",
+                AccessKeyID:     "minioadmin",
+                SecretAccessKey: "minioadmin",
+                UsePathStyle:    true,
+                Prefix:          "uploads",
+            },
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Resolve a disk by name.
+    disk, err := mgr.Disk("assets")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Put a file into the disk.
+    if err := disk.Put("hello.txt", []byte("hello")); err != nil {
+        log.Fatal(err)
+    }
+
+    // Read the file back.
+    data, err := disk.Get("hello.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = data // []byte("hello")
 }
 ```
 
