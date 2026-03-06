@@ -19,7 +19,7 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	client dropboxClient
 	prefix string
 }
@@ -34,6 +34,15 @@ type dropboxClient interface {
 	GetTemporaryLink(*files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error)
 }
 
+// Config defines a Dropbox-backed storage disk.
+// @group Drivers
+//
+// Example: define dropbox storage config
+//
+//	cfg := dropboxstorage.Config{
+//		Token: "token",
+//	}
+//	_ = cfg
 type Config struct {
 	Token  string
 	Prefix string
@@ -54,7 +63,10 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: dropbox storage
 //
-//	fs, _ := dropboxstorage.New(context.Background(), dropboxstorage.Config{Token: "token"})
+//	fs, _ := dropboxstorage.New(context.Background(), dropboxstorage.Config{
+//		Token: "token",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -71,10 +83,10 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 		Token:    cfg.DropboxToken,
 		LogLevel: dropbox.LogOff,
 	})
-	return &Driver{client: dbx, prefix: prefix}, nil
+	return &driver{client: dbx, prefix: prefix}, nil
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return nil, err
@@ -91,7 +103,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return err
@@ -103,7 +115,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return err
@@ -115,7 +127,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return false, err
@@ -130,7 +142,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return nil, err
@@ -146,7 +158,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]storage.Entry) error {
+func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]storage.Entry) error {
 	res, err := d.client.ListFolder(arg)
 	if err != nil {
 		return err
@@ -176,7 +188,7 @@ func (d *Driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 	return nil
 }
 
-func (d *Driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]storage.Entry) error {
+func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]storage.Entry) error {
 	res, err := d.client.ListFolderContinue(arg)
 	if err != nil {
 		return err
@@ -205,7 +217,7 @@ func (d *Driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 	return nil
 }
 
-func (d *Driver) URL(ctx context.Context, p string) (string, error) {
+func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return "", err
@@ -219,7 +231,7 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 	return link.Link, nil
 }
 
-func (d *Driver) fullPath(p string) (string, error) {
+func (d *driver) fullPath(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -231,7 +243,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 	return "/" + joined, nil
 }
 
-func (d *Driver) stripPrefix(p string) string {
+func (d *driver) stripPrefix(p string) string {
 	lower := strings.TrimPrefix(strings.ToLower(p), "/")
 	if d.prefix == "" {
 		return lower

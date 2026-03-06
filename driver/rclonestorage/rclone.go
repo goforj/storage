@@ -30,11 +30,21 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	fs     fs.Fs
 	prefix string
 }
 
+// Config defines an rclone-backed storage disk.
+// @group Drivers
+//
+// Example: define rclone storage config
+//
+//	cfg := rclonestorage.Config{
+//		Remote: "local:",
+//		Prefix: "sandbox",
+//	}
+//	_ = cfg
 type Config struct {
 	Remote           string
 	Prefix           string
@@ -68,7 +78,11 @@ var (
 //
 // Example: rclone storage
 //
-//	fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{Remote: "myremote:bucket", RcloneConfigData: "[myremote]\ntype = local\n"})
+//	fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{
+//		Remote: "local:",
+//		Prefix: "sandbox",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -92,13 +106,13 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 		return nil, fmt.Errorf("storage: create rclone fs: %w", err)
 	}
 
-	return &Driver{
+	return &driver{
 		fs:     rcloneFS,
 		prefix: prefix,
 	}, nil
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -123,7 +137,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -145,7 +159,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -163,7 +177,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -181,7 +195,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -217,7 +231,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return result, nil
 }
 
-func (d *Driver) URL(ctx context.Context, p string) (string, error) {
+func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -236,7 +250,7 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 }
 
 // ModTime returns the object's mod time. Intended for testing only.
-func (d *Driver) ModTime(ctx context.Context, p string) (time.Time, error) {
+func (d *driver) ModTime(ctx context.Context, p string) (time.Time, error) {
 	remote, err := d.fullPath(p)
 	if err != nil {
 		return time.Time{}, err
@@ -286,7 +300,7 @@ func initRclone(cfg storage.ResolvedConfig) error {
 	return nil
 }
 
-func (d *Driver) fullPath(p string) (string, error) {
+func (d *driver) fullPath(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -294,7 +308,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
-func (d *Driver) stripPrefix(remote string) string {
+func (d *driver) stripPrefix(remote string) string {
 	if d.prefix == "" {
 		return remote
 	}

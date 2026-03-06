@@ -25,7 +25,7 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	client  s3API
 	presign s3PresignAPI
 	bucket  string
@@ -44,6 +44,16 @@ type s3PresignAPI interface {
 	PresignGetObject(context.Context, *s3.GetObjectInput, ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
+// Config defines an S3-backed storage disk.
+// @group Drivers
+//
+// Example: define s3 storage config
+//
+//	cfg := s3storage.Config{
+//		Bucket: "uploads",
+//		Region: "us-east-1",
+//	}
+//	_ = cfg
 type Config struct {
 	Bucket          string
 	Endpoint        string
@@ -76,7 +86,11 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: s3 storage
 //
-//	fs, _ := s3storage.New(context.Background(), s3storage.Config{Bucket: "bucket", Region: "us-east-1"})
+//	fs, _ := s3storage.New(context.Background(), s3storage.Config{
+//		Bucket: "uploads",
+//		Region: "us-east-1",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -103,7 +117,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	})
 	presign := s3.NewPresignClient(client)
 
-	return &Driver{
+	return &driver{
 		client:  client,
 		presign: presign,
 		bucket:  cfg.S3Bucket,
@@ -131,7 +145,7 @@ func loadAWSConfig(ctx context.Context, cfg storage.ResolvedConfig) (aws.Config,
 	return config.LoadDefaultConfig(ctx, optFns...)
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -154,7 +168,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -174,7 +188,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -192,7 +206,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -213,7 +227,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -267,7 +281,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *Driver) URL(ctx context.Context, p string) (string, error) {
+func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -285,7 +299,7 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 	return out.URL, nil
 }
 
-func (d *Driver) key(p string) (string, error) {
+func (d *driver) key(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -293,7 +307,7 @@ func (d *Driver) key(p string) (string, error) {
 	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
-func (d *Driver) stripPrefix(k string) string {
+func (d *driver) stripPrefix(k string) string {
 	if d.prefix == "" {
 		return k
 	}

@@ -162,7 +162,7 @@ func TestDriverContextErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	d := &Driver{}
+	d := &driver{}
 
 	if _, err := d.Get(ctx, "file.txt"); err == nil {
 		t.Fatalf("expected Get to return context error")
@@ -190,21 +190,21 @@ func TestDriverGetNotFound(t *testing.T) {
 		return nil, fs.ErrorObjectNotFound
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.Get(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestDriverGetInvalidPath(t *testing.T) {
-	d := &Driver{fs: newFakeFs(), prefix: "root"}
+	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.Get(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
 }
 
 func TestDriverFullPathInvalid(t *testing.T) {
-	d := &Driver{prefix: "root"}
+	d := &driver{prefix: "root"}
 	if _, err := d.fullPath("../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -216,7 +216,7 @@ func TestDriverListPrefixEntry(t *testing.T) {
 		&fakeDirectory{fakeDirEntry: fakeDirEntry{remote: "prefix", fsys: fake}},
 	}
 
-	d := &Driver{fs: fake, prefix: "prefix"}
+	d := &driver{fs: fake, prefix: "prefix"}
 	entries, err := d.List(context.Background(), "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -234,7 +234,7 @@ func TestDriverListPrefixEntry(t *testing.T) {
 
 func TestDriverListInvalidPath(t *testing.T) {
 	fake := newFakeFs()
-	d := &Driver{fs: fake, prefix: "root"}
+	d := &driver{fs: fake, prefix: "root"}
 	if _, err := d.List(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -246,14 +246,14 @@ func TestDriverURLNotFound(t *testing.T) {
 		return "", fs.ErrorObjectNotFound
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.URL(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestDriverURLUnsupported(t *testing.T) {
-	d := &Driver{fs: newFakeFs()}
+	d := &driver{fs: newFakeFs()}
 	if _, err := d.URL(context.Background(), "file.txt"); !errors.Is(err, storage.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
@@ -265,7 +265,7 @@ func TestDriverURLForbidden(t *testing.T) {
 		return "", fs.ErrorPermissionDenied
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.URL(context.Background(), "file.txt"); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
@@ -277,7 +277,7 @@ func TestDriverURLSuccess(t *testing.T) {
 		return "https://example.com/file.txt", nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	url, err := d.URL(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("URL: %v", err)
@@ -288,7 +288,7 @@ func TestDriverURLSuccess(t *testing.T) {
 }
 
 func TestDriverURLInvalidPath(t *testing.T) {
-	d := &Driver{fs: newFakeFs(), prefix: "root"}
+	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.URL(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -310,7 +310,7 @@ func TestDriverGetOpenError(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.Get(context.Background(), "file.txt"); err == nil {
 		t.Fatalf("expected open error")
 	}
@@ -325,7 +325,7 @@ func TestDriverGetReadError(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.Get(context.Background(), "file.txt"); err == nil {
 		t.Fatalf("expected read error")
 	}
@@ -340,7 +340,7 @@ func TestDriverGetSuccess(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	data, err := d.Get(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -356,7 +356,7 @@ func TestDriverPutMkdirError(t *testing.T) {
 		return fs.ErrorPermissionDenied
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if err := d.Put(context.Background(), "dir/file.txt", []byte("x")); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
@@ -368,7 +368,7 @@ func TestDriverPutError(t *testing.T) {
 		return nil, hash.ErrUnsupported
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if err := d.Put(context.Background(), "file.txt", []byte("x")); !errors.Is(err, storage.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
@@ -380,7 +380,7 @@ func TestDriverDeleteObjectNotFound(t *testing.T) {
 		return nil, fs.ErrorObjectNotFound
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if err := d.Delete(context.Background(), "file.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -395,7 +395,7 @@ func TestDriverDeleteRemoveError(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if err := d.Delete(context.Background(), "file.txt"); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
@@ -409,14 +409,14 @@ func TestDriverDeleteSuccess(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if err := d.Delete(context.Background(), "file.txt"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
 
 func TestDriverDeleteInvalidPath(t *testing.T) {
-	d := &Driver{fs: newFakeFs(), prefix: "root"}
+	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if err := d.Delete(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -428,7 +428,7 @@ func TestDriverExistsNotFound(t *testing.T) {
 		return nil, fs.ErrorObjectNotFound
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	exists, err := d.Exists(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
@@ -439,7 +439,7 @@ func TestDriverExistsNotFound(t *testing.T) {
 }
 
 func TestDriverExistsInvalidPath(t *testing.T) {
-	d := &Driver{fs: newFakeFs(), prefix: "root"}
+	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.Exists(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -453,7 +453,7 @@ func TestDriverExistsTrue(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	exists, err := d.Exists(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
@@ -469,7 +469,7 @@ func TestDriverExistsError(t *testing.T) {
 		return nil, fs.ErrorPermissionDenied
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.Exists(context.Background(), "file.txt"); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
@@ -479,7 +479,7 @@ func TestDriverListError(t *testing.T) {
 	fake := newFakeFs()
 	fake.listErr = fs.ErrorDirNotFound
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.List(context.Background(), "missing"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -497,7 +497,7 @@ func TestDriverListEntries(t *testing.T) {
 		},
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	entries, err := d.List(context.Background(), "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -513,14 +513,14 @@ func TestDriverModTimeError(t *testing.T) {
 		return nil, fs.ErrorObjectNotFound
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	if _, err := d.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestDriverModTimeInvalidPath(t *testing.T) {
-	d := &Driver{fs: newFakeFs(), prefix: "root"}
+	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.ModTime(context.Background(), "../escape"); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
@@ -535,7 +535,7 @@ func TestDriverModTimeSuccess(t *testing.T) {
 		}, nil
 	}
 
-	d := &Driver{fs: fake}
+	d := &driver{fs: fake}
 	got, err := d.ModTime(context.Background(), "file.txt")
 	if err != nil {
 		t.Fatalf("ModTime: %v", err)
@@ -726,7 +726,7 @@ func TestInitRcloneInvalidConfigData(t *testing.T) {
 }
 
 func TestDriverStripPrefixEmpty(t *testing.T) {
-	d := &Driver{prefix: ""}
+	d := &driver{prefix: ""}
 	if got := d.stripPrefix("file.txt"); got != "file.txt" {
 		t.Fatalf("stripPrefix returned %q", got)
 	}

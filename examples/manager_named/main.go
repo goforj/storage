@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/goforj/storage"
-	localstorage "github.com/goforj/storage/driver/localstorage"
+	"github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {

@@ -1,0 +1,20 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"fmt"
+	"github.com/goforj/storage/driver/rclonestorage"
+)
+
+func main() {
+	// RenderLocal returns ini-formatted rclone config for a local backend.
+
+	// Example: render a local remote
+	cfg, _ := rclonestorage.RenderLocal(rclonestorage.LocalRemote{Name: "local"})
+	fmt.Println(cfg)
+	// Output:
+	// [local]
+	// type = local
+}

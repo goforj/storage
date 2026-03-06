@@ -17,7 +17,7 @@ type errNotFound struct{}
 func (errNotFound) Error() string { return "not_found/.." }
 
 func TestDropboxPrefixHelpers(t *testing.T) {
-	d := &Driver{prefix: "pre"}
+	d := &driver{prefix: "pre"}
 	fp, err := d.fullPath("file.txt")
 	if err != nil {
 		t.Fatalf("fullPath err: %v", err)
@@ -102,7 +102,7 @@ func TestDropboxStorageOperations(t *testing.T) {
 			},
 		},
 	}
-	d := &Driver{client: client, prefix: "pre"}
+	d := &driver{client: client, prefix: "pre"}
 
 	if _, err := d.Get(context.Background(), "file.txt"); err != nil {
 		t.Fatalf("Get err: %v", err)

@@ -1,0 +1,22 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"github.com/goforj/storage"
+	"github.com/goforj/storage/driver/localstorage"
+)
+
+func main() {
+	// Config defines named disks using typed driver configs.
+
+	// Example: define manager config
+	cfg := storage.Config{
+		Default: "local",
+		Disks: map[storage.DiskName]storage.DriverConfig{
+			"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+		},
+	}
+	_ = cfg
+}

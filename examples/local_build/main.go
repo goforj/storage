@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	localstorage "github.com/goforj/storage/driver/localstorage"
+	"github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {

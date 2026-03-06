@@ -5,7 +5,18 @@ import (
 	"fmt"
 )
 
-// Manager holds the disk registry.
+// Manager holds named storage disks.
+// @group Manager
+//
+// Example: keep a manager for later disk lookups
+//
+//	mgr, _ := storage.New(storage.Config{
+//		Default: "local",
+//		Disks: map[storage.DiskName]storage.DriverConfig{
+//			"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+//		},
+//	})
+//	_ = mgr
 type Manager struct {
 	defaultDisk DiskName
 	disks       map[DiskName]Storage
@@ -13,6 +24,17 @@ type Manager struct {
 
 // New constructs a Manager and eagerly initializes all disks.
 // @group Manager
+//
+// Example: build a manager with named disks
+//
+//	mgr, _ := storage.New(storage.Config{
+//		Default: "local",
+//		Disks: map[storage.DiskName]storage.DriverConfig{
+//			"local":  localstorage.Config{Remote: "/tmp/storage-local"},
+//			"assets": localstorage.Config{Remote: "/tmp/storage-assets", Prefix: "public"},
+//		},
+//	})
+//	_ = mgr
 func New(cfg Config) (*Manager, error) {
 	if cfg.Default == "" {
 		return nil, fmt.Errorf("storage: default disk is required")
@@ -46,6 +68,19 @@ func New(cfg Config) (*Manager, error) {
 
 // Default returns the default disk or panics if misconfigured.
 // @group Manager
+//
+// Example: get the default disk
+//
+//	mgr, _ := storage.New(storage.Config{
+//		Default: "local",
+//		Disks: map[storage.DiskName]storage.DriverConfig{
+//			"local": localstorage.Config{Remote: "/tmp/storage-default"},
+//		},
+//	})
+//
+//	fs := mgr.Default()
+//	fmt.Println(fs != nil)
+//	// Output: true
 func (m *Manager) Default() Storage {
 	d, ok := m.disks[m.defaultDisk]
 	if !ok {
@@ -56,6 +91,20 @@ func (m *Manager) Default() Storage {
 
 // Disk returns a named disk or an error if it does not exist.
 // @group Manager
+//
+// Example: get a named disk
+//
+//	mgr, _ := storage.New(storage.Config{
+//		Default: "local",
+//		Disks: map[storage.DiskName]storage.DriverConfig{
+//			"local":   localstorage.Config{Remote: "/tmp/storage-default"},
+//			"uploads": localstorage.Config{Remote: "/tmp/storage-uploads"},
+//		},
+//	})
+//
+//	fs, _ := mgr.Disk("uploads")
+//	fmt.Println(fs != nil)
+//	// Output: true
 func (m *Manager) Disk(name DiskName) (Storage, error) {
 	d, ok := m.disks[name]
 	if !ok {

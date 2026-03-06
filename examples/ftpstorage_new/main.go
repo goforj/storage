@@ -1,0 +1,21 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"context"
+	"github.com/goforj/storage/driver/ftpstorage"
+)
+
+func main() {
+	// New constructs FTP-backed storage using jlaffaye/ftp.
+
+	// Example: ftp storage
+	fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{
+		Host:     "127.0.0.1",
+		User:     "demo",
+		Password: "secret",
+	})
+	_ = fs
+}

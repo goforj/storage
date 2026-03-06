@@ -22,11 +22,22 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	client *sftp.Client
 	prefix string
 }
 
+// Config defines an SFTP-backed storage disk.
+// @group Drivers
+//
+// Example: define sftp storage config
+//
+//	cfg := sftpstorage.Config{
+//		Host:     "127.0.0.1",
+//		User:     "demo",
+//		Password: "secret",
+//	}
+//	_ = cfg
 type Config struct {
 	Host                  string
 	Port                  int
@@ -59,7 +70,12 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: sftp storage
 //
-//	fs, _ := sftpstorage.New(context.Background(), sftpstorage.Config{Host: "localhost", User: "user", Password: "pass"})
+//	fs, _ := sftpstorage.New(context.Background(), sftpstorage.Config{
+//		Host:     "127.0.0.1",
+//		User:     "demo",
+//		Password: "secret",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -110,7 +126,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 		return nil, err
 	}
 
-	return &Driver{
+	return &driver{
 		client: client,
 		prefix: prefix,
 	}, nil
@@ -149,7 +165,7 @@ func buildHostKeyCallback(cfg storage.ResolvedConfig) (ssh.HostKeyCallback, erro
 	return ssh.InsecureIgnoreHostKey(), nil
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -169,7 +185,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -191,7 +207,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -205,7 +221,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -226,7 +242,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -251,11 +267,11 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *Driver) URL(_ context.Context, _ string) (string, error) {
+func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for sftp", storage.ErrUnsupported)
 }
 
-func (d *Driver) fullPath(p string) (string, error) {
+func (d *driver) fullPath(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -263,7 +279,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
-func (d *Driver) stripPrefix(p string) string {
+func (d *driver) stripPrefix(p string) string {
 	if d.prefix == "" {
 		return p
 	}

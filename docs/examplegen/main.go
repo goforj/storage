@@ -41,35 +41,26 @@ func run() error {
 		return err
 	}
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, root, nil, parser.ParseComments)
-	if err != nil {
-		return err
-	}
-
-	pkgName, err := selectPackage(pkgs)
-	if err != nil {
-		return err
-	}
-
-	pkg, ok := pkgs[pkgName]
-	if !ok {
-		return fmt.Errorf(`package %q not found in %s`, pkgName, root)
-	}
-
 	funcs := map[string]*FuncDoc{}
-
-	for filename, file := range pkg.Files {
-		if strings.Contains(filename, "_test.go") {
-			continue
+	if err := collectExamplesFromDir(funcs, root, modPath, ""); err != nil {
+		return err
+	}
+	for _, rel := range []string{
+		"driver/localstorage",
+		"driver/s3storage",
+		"driver/gcsstorage",
+		"driver/sftpstorage",
+		"driver/ftpstorage",
+		"driver/dropboxstorage",
+		"driver/rclonestorage",
+	} {
+		dir := filepath.Join(root, rel)
+		driverModPath, err := modulePath(dir)
+		if err != nil {
+			return err
 		}
-
-		for name, fd := range extractFuncDocs(fset, filename, file) {
-			if existing, ok := funcs[name]; ok {
-				existing.Examples = append(existing.Examples, fd.Examples...)
-			} else {
-				funcs[name] = fd
-			}
+		if err := collectExamplesFromDir(funcs, dir, driverModPath, ""); err != nil {
+			return err
 		}
 	}
 
@@ -77,13 +68,9 @@ func run() error {
 		sort.Slice(fd.Examples, func(i, j int) bool {
 			return fd.Examples[i].Line < fd.Examples[j].Line
 		})
-
-		if err := writeMain(examplesDir, fd, modPath); err != nil {
+		if err := writeMain(examplesDir, fd, fd.ImportPath); err != nil {
 			return err
 		}
-
-		// Debug / inspection hook (optional)
-		//env.Dump(fd)
 	}
 
 	return nil
@@ -91,12 +78,11 @@ func run() error {
 
 func findRoot() (string, error) {
 	wd, _ := os.Getwd()
-	if fileExists(filepath.Join(wd, "go.mod")) {
-		return wd, nil
-	}
-	parent := filepath.Join(wd, "..")
-	if fileExists(filepath.Join(parent, "go.mod")) {
-		return filepath.Clean(parent), nil
+	for _, c := range []string{wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", "..")} {
+		c = filepath.Clean(c)
+		if fileExists(filepath.Join(c, "go.mod")) && fileExists(filepath.Join(c, "README.md")) && fileExists(filepath.Join(c, "storage.go")) {
+			return c, nil
+		}
 	}
 	return "", fmt.Errorf("could not find project root")
 }
@@ -108,25 +94,19 @@ func modulePath(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "module ") {
 			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
 		}
 	}
-
 	return "", fmt.Errorf("module path not found in go.mod")
 }
 
-//
-// ------------------------------------------------------------
-// Data models
-// ------------------------------------------------------------
-//
-
 type FuncDoc struct {
 	Name        string
+	Slug        string
+	ImportPath  string
 	Group       string
 	Description string
 	Examples    []Example
@@ -140,29 +120,103 @@ type Example struct {
 	Code     string
 }
 
-//
-// ------------------------------------------------------------
-// Example extraction
-// ------------------------------------------------------------
-//
-
 var exampleHeader = regexp.MustCompile(`(?i)^\s*Example:\s*(.*)$`)
 var groupHeader = regexp.MustCompile(`(?i)^\s*@group\s+(.+)$`)
+
+type importPattern struct {
+	re  *regexp.Regexp
+	imp string
+}
 
 type docLine struct {
 	text string
 	pos  token.Pos
 }
 
-func extractFuncDocs(
-	fset *token.FileSet,
-	filename string,
-	file *ast.File,
-) map[string]*FuncDoc {
+func collectExamplesFromDir(funcs map[string]*FuncDoc, dir, importPath, slugPrefix string) error {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
+	if err != nil {
+		return err
+	}
 
+	pkgName, err := selectPackage(pkgs)
+	if err != nil {
+		return err
+	}
+	pkg, ok := pkgs[pkgName]
+	if !ok {
+		return fmt.Errorf(`package %q not found in %s`, pkgName, dir)
+	}
+
+	prefix := slugPrefix
+	if prefix == "" && pkgName != "storage" {
+		prefix = pkgName + "_"
+	}
+
+	for filename, file := range pkg.Files {
+		if strings.Contains(filename, "_test.go") {
+			continue
+		}
+		for name, fd := range extractFuncDocs(fset, filename, file) {
+			fd.ImportPath = importPath
+			if prefix != "" {
+				fd.Slug = prefix + strings.ToLower(fd.Slug)
+				name = fd.Slug
+			}
+			if existing, ok := funcs[name]; ok {
+				existing.Examples = append(existing.Examples, fd.Examples...)
+			} else {
+				funcs[name] = fd
+			}
+		}
+	}
+
+	return nil
+}
+
+func extractFuncDocs(fset *token.FileSet, filename string, file *ast.File) map[string]*FuncDoc {
 	out := map[string]*FuncDoc{}
 
 	for _, decl := range file.Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Doc != nil && gen.Tok == token.TYPE {
+			for _, spec := range gen.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok || !ast.IsExported(ts.Name.Name) {
+					continue
+				}
+				fd := &FuncDoc{
+					Name:        ts.Name.Name,
+					Slug:        ts.Name.Name,
+					Group:       extractGroup(gen.Doc),
+					Description: extractFuncDescription(gen.Doc),
+					Examples:    extractExamplesFromGroup(fset, filename, ts.Name.Name, gen.Doc),
+				}
+				out[fd.Slug] = fd
+
+				if iface, ok := ts.Type.(*ast.InterfaceType); ok {
+					typeGroup := extractGroup(gen.Doc)
+					for _, field := range iface.Methods.List {
+						if len(field.Names) == 0 || field.Doc == nil {
+							continue
+						}
+						name := field.Names[0].Name
+						if !ast.IsExported(name) {
+							continue
+						}
+						slug := ts.Name.Name + "_" + name
+						out[slug] = &FuncDoc{
+							Name:        name,
+							Slug:        slug,
+							Group:       extractGroupWithDefault(field.Doc, typeGroup),
+							Description: extractFuncDescription(field.Doc),
+							Examples:    extractExamplesFromGroup(fset, filename, name, field.Doc),
+						}
+					}
+				}
+			}
+		}
+
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Doc == nil {
 			continue
@@ -172,29 +226,74 @@ func extractFuncDocs(
 		if !ast.IsExported(name) {
 			continue
 		}
+		if fn.Recv != nil && len(fn.Recv.List) > 0 {
+			if recv := recvTypeName(fn.Recv.List[0].Type); recv != "" && !ast.IsExported(recv) {
+				continue
+			}
+		}
 
-		out[name] = &FuncDoc{
+		slug := funcSlug(fn)
+		out[slug] = &FuncDoc{
 			Name:        name,
+			Slug:        slug,
 			Group:       extractGroup(fn.Doc),
 			Description: extractFuncDescription(fn.Doc),
-			Examples:    extractBlocks(fset, filename, name, fn),
+			Examples:    extractExamplesFromGroup(fset, filename, name, fn.Doc),
 		}
 	}
 
 	return out
 }
 
+func funcSlug(fn *ast.FuncDecl) string {
+	name := fn.Name.Name
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return name
+	}
+	recv := recvTypeName(fn.Recv.List[0].Type)
+	if recv == "" {
+		return name
+	}
+	return recv + "_" + name
+}
+
+func recvTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return recvTypeName(t.X)
+	case *ast.IndexExpr:
+		return recvTypeName(t.X)
+	case *ast.IndexListExpr:
+		return recvTypeName(t.X)
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	default:
+		return ""
+	}
+}
+
 func extractGroup(group *ast.CommentGroup) string {
 	lines := docLines(group)
-
 	for _, dl := range lines {
-		trimmed := strings.TrimSpace(dl.text)
-		if m := groupHeader.FindStringSubmatch(trimmed); m != nil {
+		if m := groupHeader.FindStringSubmatch(strings.TrimSpace(dl.text)); m != nil {
 			return strings.TrimSpace(m[1])
 		}
 	}
-
 	return "Other"
+}
+
+func extractGroupWithDefault(group *ast.CommentGroup, fallback string) string {
+	if group == nil {
+		return fallback
+	}
+	for _, dl := range docLines(group) {
+		if m := groupHeader.FindStringSubmatch(strings.TrimSpace(dl.text)); m != nil {
+			return strings.TrimSpace(m[1])
+		}
+	}
+	return fallback
 }
 
 func extractFuncDescription(group *ast.CommentGroup) string {
@@ -203,16 +302,12 @@ func extractFuncDescription(group *ast.CommentGroup) string {
 
 	for _, dl := range lines {
 		trimmed := strings.TrimSpace(dl.text)
-
-		// Stop before Example or @group
 		if exampleHeader.MatchString(trimmed) || groupHeader.MatchString(trimmed) {
 			break
 		}
-
 		if len(desc) == 0 && trimmed == "" {
 			continue
 		}
-
 		desc = append(desc, dl.text)
 	}
 
@@ -225,10 +320,8 @@ func extractFuncDescription(group *ast.CommentGroup) string {
 
 func docLines(group *ast.CommentGroup) []docLine {
 	var lines []docLine
-
 	for _, c := range group.List {
 		text := c.Text
-
 		if strings.HasPrefix(text, "//") {
 			line := strings.TrimPrefix(text, "//")
 			if strings.HasPrefix(line, " ") {
@@ -237,24 +330,15 @@ func docLines(group *ast.CommentGroup) []docLine {
 			if strings.HasPrefix(line, "\t") {
 				line = line[1:]
 			}
-			lines = append(lines, docLine{
-				text: line,
-				pos:  c.Slash,
-			})
+			lines = append(lines, docLine{text: line, pos: c.Slash})
 		}
 	}
-
 	return lines
 }
 
-func extractBlocks(
-	fset *token.FileSet,
-	filename, funcName string,
-	fn *ast.FuncDecl,
-) []Example {
-
+func extractExamplesFromGroup(fset *token.FileSet, filename, funcName string, group *ast.CommentGroup) []Example {
 	var out []Example
-	lines := docLines(fn.Doc)
+	lines := docLines(group)
 
 	var label string
 	var collected []string
@@ -265,7 +349,6 @@ func extractBlocks(
 		if len(collected) == 0 {
 			return
 		}
-
 		out = append(out, Example{
 			FuncName: funcName,
 			File:     filename,
@@ -273,7 +356,6 @@ func extractBlocks(
 			Line:     startLine,
 			Code:     strings.Join(collected, "\n"),
 		})
-
 		collected = nil
 		label = ""
 		inExample = false
@@ -290,11 +372,9 @@ func extractBlocks(
 			startLine = fset.Position(dl.pos).Line
 			continue
 		}
-
 		if !inExample {
 			continue
 		}
-
 		collected = append(collected, raw)
 	}
 
@@ -302,16 +382,10 @@ func extractBlocks(
 	return out
 }
 
-// selectPackage picks the primary package to document.
-// Strategy:
-//  1. If only one package exists, use it.
-//  2. Prefer the non-"main" package with the most files.
-//  3. Fall back to the first package alphabetically.
 func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 	if len(pkgs) == 0 {
 		return "", fmt.Errorf("no packages found")
 	}
-
 	if len(pkgs) == 1 {
 		for name := range pkgs {
 			return name, nil
@@ -322,99 +396,77 @@ func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 		name  string
 		count int
 	}
-
 	candidates := make([]candidate, 0, len(pkgs))
 	for name, pkg := range pkgs {
-		candidates = append(candidates, candidate{
-			name:  name,
-			count: len(pkg.Files),
-		})
+		candidates = append(candidates, candidate{name: name, count: len(pkg.Files)})
 	}
-
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].count == candidates[j].count {
 			return candidates[i].name < candidates[j].name
 		}
 		return candidates[i].count > candidates[j].count
 	})
-
 	for _, cand := range candidates {
 		if cand.name != "main" {
 			return cand.name, nil
 		}
 	}
-
 	return candidates[0].name, nil
 }
-
-//
-// ------------------------------------------------------------
-// Write ./examples/<func>/main.go
-// ------------------------------------------------------------
-//
 
 func writeMain(base string, fd *FuncDoc, importPath string) error {
 	if len(fd.Examples) == 0 {
 		return nil
 	}
-
 	if importPath == "" {
 		return fmt.Errorf("import path cannot be empty")
 	}
 
-	dir := filepath.Join(base, strings.ToLower(fd.Name))
+	dir := filepath.Join(base, strings.ToLower(fd.Slug))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 
 	var buf bytes.Buffer
-
-	// Build tag
 	buf.WriteString("//go:build ignore\n")
 	buf.WriteString("// +build ignore\n\n")
-
 	buf.WriteString("package main\n\n")
 
-	imports := map[string]bool{
-		importPath: true,
+	imports := map[string]bool{importPath: true}
+	patternImports := []importPattern{
+		{re: regexp.MustCompile(`\bfmt\.`), imp: "fmt"},
+		{re: regexp.MustCompile(`\bbytes\.`), imp: "bytes"},
+		{re: regexp.MustCompile(`\berrors\.`), imp: "errors"},
+		{re: regexp.MustCompile(`\bstrings\.`), imp: "strings"},
+		{re: regexp.MustCompile(`\bio\.`), imp: "io"},
+		{re: regexp.MustCompile(`\bos\.`), imp: "os"},
+		{re: regexp.MustCompile(`\bhttp\.`), imp: "net/http"},
+		{re: regexp.MustCompile(`\bhttptest\.`), imp: "net/http/httptest"},
+		{re: regexp.MustCompile(`\bcontext\.`), imp: "context"},
+		{re: regexp.MustCompile(`\bregexp\.`), imp: "regexp"},
+		{re: regexp.MustCompile(`\btime\.`), imp: "time"},
+		{re: regexp.MustCompile(`\bfilepath\.`), imp: "path/filepath"},
+		{re: regexp.MustCompile(`\blocalstorage\.`), imp: "github.com/goforj/storage/driver/localstorage"},
+		{re: regexp.MustCompile(`\bs3storage\.`), imp: "github.com/goforj/storage/driver/s3storage"},
+		{re: regexp.MustCompile(`\bgcsstorage\.`), imp: "github.com/goforj/storage/driver/gcsstorage"},
+		{re: regexp.MustCompile(`\bsftpstorage\.`), imp: "github.com/goforj/storage/driver/sftpstorage"},
+		{re: regexp.MustCompile(`\bftpstorage\.`), imp: "github.com/goforj/storage/driver/ftpstorage"},
+		{re: regexp.MustCompile(`\bdropboxstorage\.`), imp: "github.com/goforj/storage/driver/dropboxstorage"},
+		{re: regexp.MustCompile(`\brclonestorage\.`), imp: "github.com/goforj/storage/driver/rclonestorage"},
+		{re: regexp.MustCompile(`\bstorage\.`), imp: "github.com/goforj/storage"},
 	}
-
-	patternImports := map[string]string{
-		"fmt.":      "fmt",
-		"bytes.":    "bytes",
-		"errors.":   "errors",
-		"strings.":  "strings",
-		"io.":       "io",
-		"os.":       "os",
-		"http.":     "net/http",
-		"httptest.": "net/http/httptest",
-		"context.":  "context",
-		"regexp.":   "regexp",
-		"redis.":    "github.com/redis/go-redis/v9",
-		"time.":     "time",
-		"gocron":    "github.com/go-co-op/gocron/v2",
-		"scheduler": "github.com/goforj/scheduler",
-		"filepath.": "path/filepath",
-		"godump.":   "github.com/goforj/godump",
-		"req.":      "github.com/imroc/req/v3",
-		"rand.":     "crypto/rand",
-		"base64.":   "encoding/base64",
-	}
-
 	for _, ex := range fd.Examples {
-		for pattern, imp := range patternImports {
-			if strings.Contains(ex.Code, pattern) {
-				imports[imp] = true
+		for _, pattern := range patternImports {
+			if pattern.re.MatchString(ex.Code) {
+				imports[pattern.imp] = true
 			}
 		}
 	}
 
 	if len(imports) == 1 {
-		buf.WriteString("import ")
 		for imp := range imports {
-			buf.WriteString(fmt.Sprintf("%q", imp))
+			buf.WriteString("import " + fmt.Sprintf("%q", imp) + "\n\n")
 		}
-		buf.WriteString("\n\n")
 	} else {
 		buf.WriteString("import (\n")
 		keys := make([]string, 0, len(imports))
@@ -429,24 +481,17 @@ func writeMain(base string, fd *FuncDoc, importPath string) error {
 	}
 
 	buf.WriteString("func main() {\n")
-
-	// Description
 	if fd.Description != "" {
 		for _, line := range strings.Split(fd.Description, "\n") {
 			buf.WriteString("\t// " + line + "\n")
 		}
 		buf.WriteString("\n")
 	}
-
-	// Examples
 	for _, ex := range fd.Examples {
 		if ex.Label != "" {
 			buf.WriteString("\t// Example: " + ex.Label + "\n")
 		}
-
-		ex.Code = strings.TrimLeft(ex.Code, "\n")
-
-		for _, line := range strings.Split(ex.Code, "\n") {
+		for _, line := range strings.Split(strings.TrimLeft(ex.Code, "\n"), "\n") {
 			if strings.TrimSpace(line) == "" {
 				buf.WriteString("\n")
 			} else {
@@ -454,13 +499,11 @@ func writeMain(base string, fd *FuncDoc, importPath string) error {
 			}
 		}
 	}
-
 	buf.WriteString("}\n")
 
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		return fmt.Errorf("format example file: %w", err)
 	}
-
 	return os.WriteFile(filepath.Join(dir, "main.go"), formatted, 0o644)
 }

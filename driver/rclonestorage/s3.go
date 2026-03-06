@@ -6,6 +6,18 @@ import (
 )
 
 // S3Remote defines parameters for constructing an rclone S3 remote.
+// @group Config
+//
+// Example: define an s3 remote
+//
+//	remote := rclonestorage.S3Remote{
+//		Name:            "assets",
+//		Region:          "us-east-1",
+//		AccessKeyID:     "key",
+//		SecretAccessKey: "secret",
+//	}
+//	fmt.Println(remote.Name)
+//	// Output: assets
 type S3Remote struct {
 	Name               string
 	Endpoint           string
@@ -20,6 +32,23 @@ type S3Remote struct {
 
 // RenderS3 returns ini-formatted rclone config content for a single S3 remote.
 // @group Config
+//
+// Example: render an s3 remote
+//
+//	cfg, _ := rclonestorage.RenderS3(rclonestorage.S3Remote{
+//		Name:            "assets",
+//		Region:          "us-east-1",
+//		AccessKeyID:     "key",
+//		SecretAccessKey: "secret",
+//	})
+//	fmt.Println(cfg)
+//	// Output:
+//	// [assets]
+//	// type = s3
+//	// provider = AWS
+//	// access_key_id = key
+//	// secret_access_key = secret
+//	// region = us-east-1
 func RenderS3(opts S3Remote) (string, error) {
 	if opts.Name == "" {
 		return "", fmt.Errorf("rclone: remote name is required")
@@ -61,6 +90,23 @@ func RenderS3(opts S3Remote) (string, error) {
 
 // MustRenderS3 panics on error.
 // @group Config
+//
+// Example: render an s3 remote without handling the error
+//
+//	cfg := rclonestorage.MustRenderS3(rclonestorage.S3Remote{
+//		Name:            "assets",
+//		Region:          "us-east-1",
+//		AccessKeyID:     "key",
+//		SecretAccessKey: "secret",
+//	})
+//	fmt.Println(cfg)
+//	// Output:
+//	// [assets]
+//	// type = s3
+//	// provider = AWS
+//	// access_key_id = key
+//	// secret_access_key = secret
+//	// region = us-east-1
 func MustRenderS3(opts S3Remote) string {
 	s, err := RenderS3(opts)
 	if err != nil {

@@ -19,11 +19,21 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	root   string
 	prefix string
 }
 
+// Config defines local storage rooted at a filesystem path.
+// @group Drivers
+//
+// Example: define local storage config
+//
+//	cfg := localstorage.Config{
+//		Remote: "/tmp/storage-local",
+//		Prefix: "sandbox",
+//	}
+//	_ = cfg
 type Config struct {
 	Remote string
 	Prefix string
@@ -44,7 +54,11 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: local storage
 //
-//	fs, _ := localstorage.New(context.Background(), localstorage.Config{Remote: "/tmp", Prefix: "sandbox"})
+//	fs, _ := localstorage.New(context.Background(), localstorage.Config{
+//		Remote: "/tmp/storage-local",
+//		Prefix: "sandbox",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -63,13 +77,13 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 		return nil, fmt.Errorf("storage: resolve local root: %w", err)
 	}
 
-	return &Driver{
+	return &driver{
 		root:   root,
 		prefix: cleanPrefix,
 	}, nil
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -84,7 +98,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -102,7 +116,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -116,7 +130,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -137,7 +151,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -173,12 +187,12 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return result, nil
 }
 
-func (d *Driver) URL(_ context.Context, _ string) (string, error) {
+func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for local driver", storage.ErrUnsupported)
 }
 
-// ModTime returns the file modification time. This is a test helper and not part of the public API.
-func (d *Driver) ModTime(_ context.Context, p string) (time.Time, error) {
+// modTime returns the file modification time. This is a test helper and not part of the public API.
+func (d *driver) modTime(_ context.Context, p string) (time.Time, error) {
 	target, err := d.fullPath(p)
 	if err != nil {
 		return time.Time{}, err
@@ -190,12 +204,12 @@ func (d *Driver) ModTime(_ context.Context, p string) (time.Time, error) {
 	return info.ModTime().UTC(), nil
 }
 
-// ResolvePath exposes the concrete path for testing prefix isolation.
-func (d *Driver) ResolvePath(p string) (string, error) {
+// resolvePath exposes the concrete path for testing prefix isolation.
+func (d *driver) resolvePath(p string) (string, error) {
 	return d.fullPath(p)
 }
 
-func (d *Driver) fullPath(p string) (string, error) {
+func (d *driver) fullPath(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -211,7 +225,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 	return joined, nil
 }
 
-func (d *Driver) userRelative(target string) (string, error) {
+func (d *driver) userRelative(target string) (string, error) {
 	rel, err := filepath.Rel(d.root, target)
 	if err != nil {
 		return "", fmt.Errorf("storage: compute relative path: %w", err)

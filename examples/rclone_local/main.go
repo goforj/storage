@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/goforj/storage"
-	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
+	"github.com/goforj/storage/driver/rclonestorage"
 )
 
 const inlineConfig = `

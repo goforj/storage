@@ -24,9 +24,9 @@ func TestWrapLocalError(t *testing.T) {
 }
 
 func TestResolvePathAndTraversal(t *testing.T) {
-	d := &Driver{root: "/tmp/root", prefix: "pre"}
+	d := &driver{root: "/tmp/root", prefix: "pre"}
 	// valid path
-	got, err := d.ResolvePath("file.txt")
+	got, err := d.resolvePath("file.txt")
 	if err != nil {
 		t.Fatalf("ResolvePath error: %v", err)
 	}
@@ -34,13 +34,13 @@ func TestResolvePathAndTraversal(t *testing.T) {
 		t.Fatalf("expected path, got empty")
 	}
 	// traversal rejection
-	if _, err := d.ResolvePath("../etc/passwd"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.resolvePath("../etc/passwd"); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden for traversal, got %v", err)
 	}
 }
 
 func TestLocalURLUnsupported(t *testing.T) {
-	d := &Driver{}
+	d := &driver{}
 	if _, err := d.URL(context.Background(), "x"); !errors.Is(err, storage.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}

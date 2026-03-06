@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,16 +19,26 @@ jobs:
         with:
           go-version: "stable"
 
-      - name: Install dependencies
-        run: go mod tidy
+      - name: Download dependencies
+        run: |
+          go mod download
+          cd examples
+          GOWORK=off go mod download
 
       - name: Run tests
         run: go test ./... -v
+
+      - name: Verify generated examples compile
+        run: |
+          cd examples
+          GOWORK=off go test ./... -run TestExamplesBuild -count=1 -v
 
       - name: Run tests with coverage
         run: go test -coverprofile=coverage.txt
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v5
+        with:
+          files: coverage.txt
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

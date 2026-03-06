@@ -8,7 +8,7 @@ import (
 )
 
 func TestFTPPrefixHelpers(t *testing.T) {
-	d := &Driver{prefix: "pre"}
+	d := &driver{prefix: "pre"}
 	if got := d.stripPrefix("pre/path/to"); got != "path/to" {
 		t.Fatalf("stripPrefix got %q", got)
 	}

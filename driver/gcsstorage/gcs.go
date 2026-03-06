@@ -26,13 +26,22 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	client   *gcsapi.Client
 	bucket   string
 	prefix   string
 	emulator bool
 }
 
+// Config defines a GCS-backed storage disk.
+// @group Drivers
+//
+// Example: define gcs storage config
+//
+//	cfg := gcsstorage.Config{
+//		Bucket: "uploads",
+//	}
+//	_ = cfg
 type Config struct {
 	Bucket          string
 	CredentialsJSON string
@@ -57,7 +66,10 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: gcs storage
 //
-//	fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{Bucket: "bucket"})
+//	fs, _ := gcsstorage.New(context.Background(), gcsstorage.Config{
+//		Bucket: "uploads",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -75,7 +87,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	if err != nil {
 		return nil, err
 	}
-	return &Driver{
+	return &driver{
 		client:   client,
 		bucket:   cfg.GCSBucket,
 		prefix:   prefix,
@@ -104,7 +116,7 @@ func newClient(ctx context.Context, cfg storage.ResolvedConfig) (*gcsapi.Client,
 	return gcsapi.NewClient(ctx, opts...)
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -124,7 +136,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -144,7 +156,7 @@ func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -158,7 +170,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -176,7 +188,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -221,7 +233,7 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *Driver) URL(ctx context.Context, p string) (string, error) {
+func (d *driver) URL(ctx context.Context, p string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -242,7 +254,7 @@ func (d *Driver) URL(ctx context.Context, p string) (string, error) {
 	return url, nil
 }
 
-func (d *Driver) key(p string) (string, error) {
+func (d *driver) key(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -250,7 +262,7 @@ func (d *Driver) key(p string) (string, error) {
 	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
-func (d *Driver) stripPrefix(k string) string {
+func (d *driver) stripPrefix(k string) string {
 	if d.prefix == "" {
 		return k
 	}

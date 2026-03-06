@@ -1,0 +1,18 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"context"
+	"github.com/goforj/storage"
+)
+
+func main() {
+	// RegisterDriver makes a driver available to the Manager. It panics on duplicate registrations.
+
+	// Example: register a custom driver
+	storage.RegisterDriver("memory", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+		return nil, nil
+	})
+}

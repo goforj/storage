@@ -22,7 +22,7 @@ func init() {
 	})
 }
 
-type Driver struct {
+type driver struct {
 	addr     string
 	user     string
 	pass     string
@@ -31,6 +31,17 @@ type Driver struct {
 	insecure bool
 }
 
+// Config defines an FTP-backed storage disk.
+// @group Drivers
+//
+// Example: define ftp storage config
+//
+//	cfg := ftpstorage.Config{
+//		Host:     "127.0.0.1",
+//		User:     "demo",
+//		Password: "secret",
+//	}
+//	_ = cfg
 type Config struct {
 	Host               string
 	Port               int
@@ -61,7 +72,12 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //
 // Example: ftp storage
 //
-//	fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{Host: "127.0.0.1", User: "anonymous"})
+//	fs, _ := ftpstorage.New(context.Background(), ftpstorage.Config{
+//		Host:     "127.0.0.1",
+//		User:     "demo",
+//		Password: "secret",
+//	})
+//	_ = fs
 func New(ctx context.Context, cfg Config) (storage.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
@@ -82,7 +98,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.FTPHost, port)
 
-	return &Driver{
+	return &driver{
 		addr:     addr,
 		user:     user,
 		pass:     pass,
@@ -92,7 +108,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 	}, nil
 }
 
-func (d *Driver) dial() (*ftp.ServerConn, error) {
+func (d *driver) dial() (*ftp.ServerConn, error) {
 	opts := []ftp.DialOption{
 		ftp.DialWithTimeout(10 * time.Second),
 		ftp.DialWithDisabledEPSV(true),
@@ -103,7 +119,7 @@ func (d *Driver) dial() (*ftp.ServerConn, error) {
 	return ftp.Dial(d.addr, opts...)
 }
 
-func (d *Driver) withConn(fn func(*ftp.ServerConn) error) error {
+func (d *driver) withConn(fn func(*ftp.ServerConn) error) error {
 	conn, err := d.dial()
 	if err != nil {
 		return err
@@ -117,7 +133,7 @@ func (d *Driver) withConn(fn func(*ftp.ServerConn) error) error {
 	return fn(conn)
 }
 
-func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
+func (d *driver) Get(ctx context.Context, p string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -141,7 +157,7 @@ func (d *Driver) Get(ctx context.Context, p string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *Driver) Put(ctx context.Context, p string, contents []byte) error {
+func (d *driver) Put(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -171,7 +187,7 @@ func ensureDirs(c *ftp.ServerConn, dir string) error {
 	return nil
 }
 
-func (d *Driver) Delete(ctx context.Context, p string) error {
+func (d *driver) Delete(ctx context.Context, p string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -184,7 +200,7 @@ func (d *Driver) Delete(ctx context.Context, p string) error {
 	}))
 }
 
-func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
+func (d *driver) Exists(ctx context.Context, p string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -206,7 +222,7 @@ func (d *Driver) Exists(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -239,11 +255,11 @@ func (d *Driver) List(ctx context.Context, p string) ([]storage.Entry, error) {
 	return entries, nil
 }
 
-func (d *Driver) URL(_ context.Context, _ string) (string, error) {
+func (d *driver) URL(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("%w: public URL not supported for ftp", storage.ErrUnsupported)
 }
 
-func (d *Driver) fullPath(p string) (string, error) {
+func (d *driver) fullPath(p string) (string, error) {
 	normalized, err := storage.NormalizePath(p)
 	if err != nil {
 		return "", err
@@ -251,7 +267,7 @@ func (d *Driver) fullPath(p string) (string, error) {
 	return storage.JoinPrefix(d.prefix, normalized), nil
 }
 
-func (d *Driver) stripPrefix(p string) string {
+func (d *driver) stripPrefix(p string) string {
 	if d.prefix == "" {
 		return p
 	}

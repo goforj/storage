@@ -9,7 +9,7 @@ import (
 )
 
 func TestSFTPPrefixHelpers(t *testing.T) {
-	d := &Driver{prefix: "pre"}
+	d := &driver{prefix: "pre"}
 	fp, err := d.fullPath("file.txt")
 	if err != nil {
 		t.Fatalf("fullPath err: %v", err)

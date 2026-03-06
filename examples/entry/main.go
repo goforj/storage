@@ -1,0 +1,26 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"fmt"
+	"github.com/goforj/storage"
+)
+
+func main() {
+	// Entry represents an item returned by List.
+	//
+	// Path is relative to the storage namespace, not an OS-native path.
+	// Directory-like entries are listing artifacts, not a promise of POSIX-style
+	// storage semantics.
+
+	// Example: inspect a listed entry
+	entry := storage.Entry{
+		Path:  "docs/readme.txt",
+		Size:  5,
+		IsDir: false,
+	}
+	fmt.Println(entry.Path, entry.IsDir)
+	// Output: docs/readme.txt false
+}

@@ -1,0 +1,20 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"context"
+	"github.com/goforj/storage/driver/rclonestorage"
+)
+
+func main() {
+	// New constructs an rclone-backed storage. All disks share a single config path.
+
+	// Example: rclone storage
+	fs, _ := rclonestorage.New(context.Background(), rclonestorage.Config{
+		Remote: "local:",
+		Prefix: "sandbox",
+	})
+	_ = fs
+}

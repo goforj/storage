@@ -72,7 +72,7 @@ func (f fakePresign) PresignGetObject(ctx context.Context, in *s3.GetObjectInput
 func TestS3StorageOperations(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeS3{headOK: true, getBody: "data"}
-	d := &Driver{
+	d := &driver{
 		client:  client,
 		presign: fakePresign{url: "http://signed"},
 		bucket:  "b",
@@ -105,7 +105,7 @@ func TestS3StorageOperations(t *testing.T) {
 }
 
 func TestS3KeyAndPrefixHelpers(t *testing.T) {
-	d := &Driver{prefix: "pre"}
+	d := &driver{prefix: "pre"}
 	k, err := d.key("file.txt")
 	if err != nil {
 		t.Fatalf("key error: %v", err)

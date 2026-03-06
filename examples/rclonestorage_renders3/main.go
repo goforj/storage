@@ -1,0 +1,29 @@
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"fmt"
+	"github.com/goforj/storage/driver/rclonestorage"
+)
+
+func main() {
+	// RenderS3 returns ini-formatted rclone config content for a single S3 remote.
+
+	// Example: render an s3 remote
+	cfg, _ := rclonestorage.RenderS3(rclonestorage.S3Remote{
+		Name:            "assets",
+		Region:          "us-east-1",
+		AccessKeyID:     "key",
+		SecretAccessKey: "secret",
+	})
+	fmt.Println(cfg)
+	// Output:
+	// [assets]
+	// type = s3
+	// provider = AWS
+	// access_key_id = key
+	// secret_access_key = secret
+	// region = us-east-1
+}

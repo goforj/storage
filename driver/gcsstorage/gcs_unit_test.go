@@ -10,7 +10,7 @@ import (
 )
 
 func TestGCSKeyAndPrefixHelpers(t *testing.T) {
-	d := &Driver{prefix: "pre"}
+	d := &driver{prefix: "pre"}
 	k, err := d.key("file.txt")
 	if err != nil {
 		t.Fatalf("key err: %v", err)
