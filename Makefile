@@ -43,7 +43,7 @@ help: ##@other Show this help.
 #----------------------
 # Dev helpers
 #----------------------
-.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render
+.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render tag-modules
 
 #----------------------
 # Go helpers
@@ -76,3 +76,7 @@ bench: ##@go Run benchmark suites in ./docs/bench
 
 bench-render: ##@go Render benchmark artifacts and update README benchmark embeds
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd docs/bench && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v
+
+tag-modules: ##@release Tag all Go modules: make tag-modules v0.1.0 [-- --dry-run]
+	test -n "$(RUN_ARGS)" || (echo "usage: make tag-modules <version> [-- --dry-run|--push|--exclude <dir>]" && exit 1)
+	bash scripts/tag-all-modules.sh $(RUN_ARGS)
