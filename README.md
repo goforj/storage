@@ -100,6 +100,7 @@ import (
 )
 
 func main() {
+    // Build a manager with multiple named disks.
     mgr, err := storage.New(storage.Config{
         Default: "assets",
         Disks: map[storage.DiskName]storage.DriverConfig{
@@ -122,14 +123,24 @@ func main() {
         log.Fatal(err)
     }
 
+    // Resolve a disk by name.
     disk, err := mgr.Disk("assets")
     if err != nil {
         log.Fatal(err)
     }
 
+    // Put a file into the disk.
     if err := disk.Put(context.Background(), "hello.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
+
+    // Read the file back.
+    data, err := disk.Get(context.Background(), "hello.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = data // []byte("hello")
 }
 ```
 
@@ -147,6 +158,7 @@ import (
 )
 
 func main() {
+    // Build a single storage disk from typed config.
     disk, err := storage.Build(context.Background(), localdriver.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
@@ -155,9 +167,18 @@ func main() {
         log.Fatal(err)
     }
 
+    // Put a file.
     if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
+
+    // List files at the disk root.
+    entries, err := disk.List(context.Background(), "")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = entries // build.txt
 }
 ```
 
@@ -174,6 +195,7 @@ import (
 )
 
 func main() {
+    // Construct a driver directly.
     disk, err := localdriver.New(context.Background(), localdriver.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
@@ -182,9 +204,18 @@ func main() {
         log.Fatal(err)
     }
 
+    // Put a file.
     if err := disk.Put(context.Background(), "build.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
+
+    // Read the file back.
+    data, err := disk.Get(context.Background(), "build.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = data // []byte("hello")
 }
 ```
 
@@ -208,6 +239,7 @@ type = local
 `
 
 func main() {
+    // Build an rclone-backed disk from inline rclone config.
     disk, err := rclonedriver.New(context.Background(), rclonedriver.Config{
         Remote:           "localdisk:/tmp/storage",
         Prefix:           "sandbox",
@@ -217,9 +249,18 @@ func main() {
         log.Fatal(err)
     }
 
+    // Put a file through rclone.
     if err := disk.Put(context.Background(), "rclone.txt", []byte("hello")); err != nil {
         log.Fatal(err)
     }
+
+    // List files from the disk root.
+    entries, err := disk.List(context.Background(), "")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _ = entries // rclone.txt
 }
 ```
 
@@ -273,14 +314,3 @@ make examples-test
 make integration
 make integration-driver gcs
 ```
-
-## Status
-
-Current repository direction:
-- `storage` is the canonical root module and package name
-- drivers are separate modules in the same repository
-- `rclone` is supported as an in-repo driver module
-- `examples` is its own module
-- centralized integration coverage currently exercises `local`, `gcs`, `ftp`, `s3`, `sftp`, and representative `rclone` usage
-
-The detailed refactor plan and tracker live in [`STORAGE_REFACTOR_PROPOSAL.md`](./STORAGE_REFACTOR_PROPOSAL.md).
