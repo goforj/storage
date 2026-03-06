@@ -3,17 +3,13 @@
 </p>
 
 <p align="center">
-  A small, testable storage abstraction for Go with explicit drivers and shared contracts.
-</p>
-
-<p align="center">
-  Small surface area. Explicit drivers. Shared contract tests.
+  One storage API for local disks, object stores, and remote filesystems.
 </p>
 
 <p align="center">
   <a href="https://pkg.go.dev/github.com/goforj/storage"><img src="https://pkg.go.dev/badge/github.com/goforj/storage.svg" alt="Go Reference"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://github.com/goforj/storage/actions"><img src="https://github.com/goforj/storage/actions/workflows/test.yml/badge.svg" alt="Go Test"></a>
+  <a href="https://github.com/goforj/filesystem/actions/workflows/test.yml"><img src="https://github.com/goforj/filesystem/actions/workflows/test.yml/badge.svg" alt="Go Test"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24+-blue?logo=go" alt="Go version"></a>
 </p>
 
