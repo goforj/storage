@@ -54,7 +54,7 @@ var (
 type DiskName string
 
 // DriverConfig is implemented by typed driver configs such as local.Config or
-// s3driver.Config. It is the public config boundary for Manager and Build.
+// s3storage.Config. It is the public config boundary for Manager and Build.
 type DriverConfig interface {
 	DriverName() string
 	ResolvedConfig() ResolvedConfig

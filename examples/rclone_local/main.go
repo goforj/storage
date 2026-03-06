@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/goforj/storage"
-	rclonedriver "github.com/goforj/storage/driver/rclone"
+	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
 )
 
 const inlineConfig = `
@@ -26,7 +26,7 @@ func main() {
 	cfg := storage.Config{
 		Default: "rclone",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"rclone": rclonedriver.Config{
+			"rclone": rclonestorage.Config{
 				Remote:           fmt.Sprintf("localfs:%s", root),
 				Prefix:           "sandbox",
 				RcloneConfigData: inlineConfig,

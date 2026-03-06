@@ -51,13 +51,13 @@ go get github.com/goforj/storage
 Then add the driver modules you need, for example:
 
 ```bash
-go get github.com/goforj/storage/driver/local
-go get github.com/goforj/storage/driver/s3
-go get github.com/goforj/storage/driver/gcs
-go get github.com/goforj/storage/driver/sftp
-go get github.com/goforj/storage/driver/ftp
-go get github.com/goforj/storage/driver/dropbox
-go get github.com/goforj/storage/driver/rclone
+go get github.com/goforj/storage/driver/localstorage
+go get github.com/goforj/storage/driver/s3storage
+go get github.com/goforj/storage/driver/gcsstorage
+go get github.com/goforj/storage/driver/sftpstorage
+go get github.com/goforj/storage/driver/ftpstorage
+go get github.com/goforj/storage/driver/dropboxstorage
+go get github.com/goforj/storage/driver/rclonestorage
 ```
 
 ## Driver Matrix
@@ -95,8 +95,8 @@ import (
     "log"
 
     "github.com/goforj/storage"
-    localdriver "github.com/goforj/storage/driver/local"
-    s3driver "github.com/goforj/storage/driver/s3"
+    localstorage "github.com/goforj/storage/driver/localstorage"
+    s3storage "github.com/goforj/storage/driver/s3storage"
 )
 
 func main() {
@@ -104,11 +104,11 @@ func main() {
     mgr, err := storage.New(storage.Config{
         Default: "assets",
         Disks: map[storage.DiskName]storage.DriverConfig{
-            "assets": localdriver.Config{
+            "assets": localstorage.Config{
                 Remote: "/tmp/storage",
                 Prefix: "assets",
             },
-            "uploads": s3driver.Config{
+            "uploads": s3storage.Config{
                 Bucket:          "app-uploads",
                 Region:          "us-east-1",
                 Endpoint:        "http://localhost:9000",
@@ -154,12 +154,12 @@ import (
     "log"
 
     "github.com/goforj/storage"
-    localdriver "github.com/goforj/storage/driver/local"
+    localstorage "github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {
     // Build a single storage disk from typed config.
-    disk, err := storage.Build(context.Background(), localdriver.Config{
+    disk, err := storage.Build(context.Background(), localstorage.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
     })
@@ -191,12 +191,12 @@ import (
     "context"
     "log"
 
-    localdriver "github.com/goforj/storage/driver/local"
+    localstorage "github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {
     // Construct a driver directly.
-    disk, err := localdriver.New(context.Background(), localdriver.Config{
+    disk, err := localstorage.New(context.Background(), localstorage.Config{
         Remote: "/tmp/storage",
         Prefix: "scratch",
     })
@@ -230,7 +230,7 @@ import (
     "context"
     "log"
 
-    rclonedriver "github.com/goforj/storage/driver/rclone"
+    rclonestorage "github.com/goforj/storage/driver/rclonestorage"
 )
 
 const rcloneConfig = `
@@ -240,7 +240,7 @@ type = local
 
 func main() {
     // Build an rclone-backed disk from inline rclone config.
-    disk, err := rclonedriver.New(context.Background(), rclonedriver.Config{
+    disk, err := rclonestorage.New(context.Background(), rclonestorage.Config{
         Remote:           "localdisk:/tmp/storage",
         Prefix:           "sandbox",
         RcloneConfigData: rcloneConfig,

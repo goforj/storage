@@ -39,13 +39,13 @@ Bundled and unit-tested, but not currently covered by the centralized integratio
 
 | Driver | Module | URL | ModTime helper | Centralized integration | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `local` | `github.com/goforj/storage/driver/local` | No | Yes | Yes | Local storage rooted at `Remote` |
-| `s3` | `github.com/goforj/storage/driver/s3` | Yes, presigned GET | No | Yes | Works well with MinIO and S3-compatible endpoints |
-| `gcs` | `github.com/goforj/storage/driver/gcs` | Yes, signed URL. No in emulator mode | No | Yes | Emulator-backed integration uses fake-gcs-server |
-| `sftp` | `github.com/goforj/storage/driver/sftp` | No | No | Yes | Supports password and key auth |
-| `ftp` | `github.com/goforj/storage/driver/ftp` | No | No | Yes | Plain FTP or explicit TLS |
-| `dropbox` | `github.com/goforj/storage/driver/dropbox` | Yes, temporary link | No | No | Current support tier is lower until external integration strategy is settled |
-| `rclone` | `github.com/goforj/storage/driver/rclone` | Backend-dependent via `PublicLink` | Yes | Yes, representative local fixture | Breadth driver, not the baseline quality bar for every backend |
+| `local` | `github.com/goforj/storage/driver/localstorage` | No | Yes | Yes | Local storage rooted at `Remote` |
+| `s3` | `github.com/goforj/storage/driver/s3storage` | Yes, presigned GET | No | Yes | Works well with MinIO and S3-compatible endpoints |
+| `gcs` | `github.com/goforj/storage/driver/gcsstorage` | Yes, signed URL. No in emulator mode | No | Yes | Emulator-backed integration uses fake-gcs-server |
+| `sftp` | `github.com/goforj/storage/driver/sftpstorage` | No | No | Yes | Supports password and key auth |
+| `ftp` | `github.com/goforj/storage/driver/ftpstorage` | No | No | Yes | Plain FTP or explicit TLS |
+| `dropbox` | `github.com/goforj/storage/driver/dropboxstorage` | Yes, temporary link | No | No | Current support tier is lower until external integration strategy is settled |
+| `rclone` | `github.com/goforj/storage/driver/rclonestorage` | Backend-dependent via `PublicLink` | Yes | Yes, representative local fixture | Breadth driver, not the baseline quality bar for every backend |
 
 ## Rclone Positioning
 

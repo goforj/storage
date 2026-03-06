@@ -2,13 +2,13 @@ go 1.24.4
 
 use (
 	.
-	./driver/dropbox
-	./driver/ftp
-	./driver/gcs
-	./driver/local
-	./driver/rclone
-	./driver/s3
-	./driver/sftp
+	./driver/dropboxstorage
+	./driver/ftpstorage
+	./driver/gcsstorage
+	./driver/localstorage
+	./driver/rclonestorage
+	./driver/s3storage
+	./driver/sftpstorage
 	./examples
 	./integration
 	./storagetest

@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	localdriver "github.com/goforj/storage/driver/local"
+	localstorage "github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {
@@ -16,7 +16,7 @@ func main() {
 	}
 	defer os.RemoveAll(root)
 
-	disk, err := localdriver.New(context.Background(), localdriver.Config{
+	disk, err := localstorage.New(context.Background(), localstorage.Config{
 		Remote: root,
 		Prefix: "scratch",
 	})

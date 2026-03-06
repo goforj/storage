@@ -5,12 +5,12 @@ go 1.24.4
 require (
 	github.com/fsouza/fake-gcs-server v1.52.3
 	github.com/goforj/storage v0.0.0
-	github.com/goforj/storage/driver/ftp v0.0.0
-	github.com/goforj/storage/driver/gcs v0.0.0
-	github.com/goforj/storage/driver/local v0.0.0
-	github.com/goforj/storage/driver/rclone v0.0.0
-	github.com/goforj/storage/driver/s3 v0.0.0
-	github.com/goforj/storage/driver/sftp v0.0.0
+	github.com/goforj/storage/driver/ftpstorage v0.0.0
+	github.com/goforj/storage/driver/gcsstorage v0.0.0
+	github.com/goforj/storage/driver/localstorage v0.0.0
+	github.com/goforj/storage/driver/rclonestorage v0.0.0
+	github.com/goforj/storage/driver/s3storage v0.0.0
+	github.com/goforj/storage/driver/sftpstorage v0.0.0
 	github.com/goforj/storage/storagetest v0.0.0
 	github.com/goftp/server v0.0.0-20200708154336-f64f7c2d8a42
 	github.com/testcontainers/testcontainers-go v0.31.0
@@ -276,16 +276,16 @@ require (
 
 replace github.com/goforj/storage => ..
 
-replace github.com/goforj/storage/driver/ftp => ../driver/ftp
+replace github.com/goforj/storage/driver/ftpstorage => ../driver/ftpstorage
 
-replace github.com/goforj/storage/driver/gcs => ../driver/gcs
+replace github.com/goforj/storage/driver/gcsstorage => ../driver/gcsstorage
 
-replace github.com/goforj/storage/driver/local => ../driver/local
+replace github.com/goforj/storage/driver/localstorage => ../driver/localstorage
 
-replace github.com/goforj/storage/driver/rclone => ../driver/rclone
+replace github.com/goforj/storage/driver/rclonestorage => ../driver/rclonestorage
 
-replace github.com/goforj/storage/driver/s3 => ../driver/s3
+replace github.com/goforj/storage/driver/s3storage => ../driver/s3storage
 
-replace github.com/goforj/storage/driver/sftp => ../driver/sftp
+replace github.com/goforj/storage/driver/sftpstorage => ../driver/sftpstorage
 
 replace github.com/goforj/storage/storagetest => ../storagetest

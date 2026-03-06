@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/goforj/storage"
-	localdriver "github.com/goforj/storage/driver/local"
+	localstorage "github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {
@@ -26,8 +26,8 @@ func main() {
 	mgr, err := storage.New(storage.Config{
 		Default: "assets",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"assets":  localdriver.Config{Remote: assetsRoot, Prefix: "assets"},
-			"uploads": localdriver.Config{Remote: uploadsRoot, Prefix: "uploads"},
+			"assets":  localstorage.Config{Remote: assetsRoot, Prefix: "assets"},
+			"uploads": localstorage.Config{Remote: uploadsRoot, Prefix: "uploads"},
 		},
 	})
 	if err != nil {
