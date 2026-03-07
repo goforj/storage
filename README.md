@@ -292,7 +292,7 @@ import (
     "testing"
 
     "github.com/goforj/storage"
-    memorystorage "github.com/goforj/storage/driver/memorystorage"
+    "github.com/goforj/storage/driver/memorystorage"
     "github.com/goforj/storage/storagetest"
 )
 

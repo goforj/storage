@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/goforj/storage"
-	memorystorage "github.com/goforj/storage/driver/memorystorage"
+	"github.com/goforj/storage/driver/memorystorage"
 )
 
 // Fake returns an in-memory storage backend for tests.
