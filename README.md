@@ -38,6 +38,7 @@ Each backend has its own API and client library.
 | Driver | Kind | Notes |
 | ---: | --- | --- |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Distributed memory | Good for temporary distributed blob storage with explicit size and durability tradeoffs. |
 | <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
 | <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
@@ -59,6 +60,7 @@ Then add the driver modules you need, for example:
 ```bash
 go get github.com/goforj/storage/driver/localstorage
 go get github.com/goforj/storage/driver/memorystorage
+go get github.com/goforj/storage/driver/redisstorage
 go get github.com/goforj/storage/driver/s3storage
 go get github.com/goforj/storage/driver/gcsstorage
 go get github.com/goforj/storage/driver/sftpstorage

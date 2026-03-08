@@ -350,6 +350,12 @@ type ResolvedConfig struct {
 	GCSBucket          string
 	GCSCredentialsJSON string
 	GCSEndpoint        string
+
+	// redis (native)
+	RedisAddr     string
+	RedisUsername string
+	RedisPassword string
+	RedisDB       int
 }
 
 // NormalizePath cleans a user path, normalizes separators, and rejects attempts

@@ -8,6 +8,7 @@ use (
 	./driver/gcsstorage
 	./driver/localstorage
 	./driver/memorystorage
+	./driver/redisstorage
 	./driver/rclonestorage
 	./driver/s3storage
 	./driver/sftpstorage

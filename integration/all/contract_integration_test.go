@@ -21,6 +21,7 @@ import (
 	localstorage "github.com/goforj/storage/driver/localstorage"
 	memorystorage "github.com/goforj/storage/driver/memorystorage"
 	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
+	redisstorage "github.com/goforj/storage/driver/redisstorage"
 	s3storage "github.com/goforj/storage/driver/s3storage"
 	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
 	"github.com/goforj/storage/storagetest"
@@ -93,6 +94,31 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				}
 				return store, func() {
 					server.Stop()
+				}
+			},
+		})
+	}
+
+	if integrationDriverEnabled("redis") {
+		fixtures = append(fixtures, storageFactory{
+			name: "redis",
+			new: func(t *testing.T) (storage.Storage, func()) {
+				t.Helper()
+				ctx := context.Background()
+				container, addr := startRedisContainer(t, ctx)
+				store, err := storage.Build(redisstorage.Config{
+					Addr:   addr,
+					Prefix: "itest",
+				})
+				if err != nil {
+					shutdownContainer(t, container)
+					t.Fatalf("build redis storage: %v", err)
+				}
+				return store, func() {
+					if closer, ok := store.(interface{ Close() error }); ok {
+						_ = closer.Close()
+					}
+					shutdownContainer(t, container)
 				}
 			},
 		})
@@ -310,6 +336,35 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 		t.Fatalf("sftp mapped port: %v", err)
 	}
 	return container, host, port.Int()
+}
+
+func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
+	t.Helper()
+
+	req := testcontainers.ContainerRequest{
+		Image:        "redis:7-alpine",
+		ExposedPorts: []string{"6379/tcp"},
+		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
+	}
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		t.Fatalf("start redis container: %v", err)
+	}
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		shutdownContainer(t, container)
+		t.Fatalf("redis host: %v", err)
+	}
+	port, err := container.MappedPort(ctx, "6379/tcp")
+	if err != nil {
+		shutdownContainer(t, container)
+		t.Fatalf("redis mapped port: %v", err)
+	}
+	return container, host + ":" + port.Port()
 }
 
 func shutdownContainer(t *testing.T, container testcontainers.Container) {
