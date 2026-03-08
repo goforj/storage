@@ -18,7 +18,6 @@
   <img src="https://img.shields.io/badge/unit_tests-26-brightgreen" alt="Unit tests (executed count)">
   <img src="https://img.shields.io/badge/integration_tests-78-blue" alt="Integration tests (executed count)">
 <!-- test-count:embed:end -->
-  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/goforj/storage">
 </p>
 
 ## Why
