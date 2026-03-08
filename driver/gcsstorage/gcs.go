@@ -28,10 +28,51 @@ func init() {
 }
 
 type driver struct {
-	client   *gcsapi.Client
+	client   gcsClient
 	bucket   string
 	prefix   string
 	emulator bool
+}
+
+type gcsClient interface {
+	Bucket(name string) gcsBucketHandle
+}
+
+type gcsBucketHandle interface {
+	Object(name string) gcsObjectHandle
+	Objects(ctx context.Context, q *gcsapi.Query) gcsObjectIterator
+	SignedURL(name string, opts *gcsapi.SignedURLOptions) (string, error)
+}
+
+type gcsObjectHandle interface {
+	NewReader(ctx context.Context) (io.ReadCloser, error)
+	NewWriter(ctx context.Context) gcsWriter
+	Delete(ctx context.Context) error
+	Attrs(ctx context.Context) (*gcsapi.ObjectAttrs, error)
+}
+
+type gcsWriter interface {
+	io.WriteCloser
+}
+
+type gcsObjectIterator interface {
+	Next() (*gcsapi.ObjectAttrs, error)
+}
+
+type realGCSClient struct {
+	client *gcsapi.Client
+}
+
+type realGCSBucket struct {
+	bucket *gcsapi.BucketHandle
+}
+
+type realGCSObject struct {
+	object *gcsapi.ObjectHandle
+}
+
+type realGCSObjectIterator struct {
+	iterator *gcsapi.ObjectIterator
 }
 
 // Config defines a GCS-backed storage disk.
@@ -110,7 +151,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	}, nil
 }
 
-func newClient(ctx context.Context, cfg storage.ResolvedConfig) (*gcsapi.Client, error) {
+func newClient(ctx context.Context, cfg storage.ResolvedConfig) (gcsClient, error) {
 	var opts []option.ClientOption
 	if cfg.GCSCredentialsJSON != "" {
 		opts = append(opts, option.WithCredentialsJSON([]byte(cfg.GCSCredentialsJSON)))
@@ -128,7 +169,11 @@ func newClient(ctx context.Context, cfg storage.ResolvedConfig) (*gcsapi.Client,
 		}
 		_ = os.Setenv("STORAGE_EMULATOR_HOST", cfg.GCSEndpoint)
 	}
-	return gcsapi.NewClient(ctx, opts...)
+	client, err := gcsapi.NewClient(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return realGCSClient{client: client}, nil
 }
 
 func (d *driver) Get(p string) ([]byte, error) {
@@ -168,7 +213,6 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		return err
 	}
 	w := d.client.Bucket(d.bucket).Object(key).NewWriter(ctx)
-	w.ChunkSize = 0
 	if _, err := io.Copy(w, bytes.NewReader(contents)); err != nil {
 		_ = w.Close()
 		return wrapError(err)
@@ -446,4 +490,42 @@ func isNotFound(err error) bool {
 	}
 	var apiErr *googleapi.Error
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
+}
+
+func (c realGCSClient) Bucket(name string) gcsBucketHandle {
+	return realGCSBucket{bucket: c.client.Bucket(name)}
+}
+
+func (b realGCSBucket) Object(name string) gcsObjectHandle {
+	return realGCSObject{object: b.bucket.Object(name)}
+}
+
+func (b realGCSBucket) Objects(ctx context.Context, q *gcsapi.Query) gcsObjectIterator {
+	return realGCSObjectIterator{iterator: b.bucket.Objects(ctx, q)}
+}
+
+func (b realGCSBucket) SignedURL(name string, opts *gcsapi.SignedURLOptions) (string, error) {
+	return b.bucket.SignedURL(name, opts)
+}
+
+func (o realGCSObject) NewReader(ctx context.Context) (io.ReadCloser, error) {
+	return o.object.NewReader(ctx)
+}
+
+func (o realGCSObject) NewWriter(ctx context.Context) gcsWriter {
+	w := o.object.NewWriter(ctx)
+	w.ChunkSize = 0
+	return w
+}
+
+func (o realGCSObject) Delete(ctx context.Context) error {
+	return o.object.Delete(ctx)
+}
+
+func (o realGCSObject) Attrs(ctx context.Context) (*gcsapi.ObjectAttrs, error) {
+	return o.object.Attrs(ctx)
+}
+
+func (it realGCSObjectIterator) Next() (*gcsapi.ObjectAttrs, error) {
+	return it.iterator.Next()
 }

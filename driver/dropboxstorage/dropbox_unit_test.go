@@ -51,6 +51,9 @@ func TestDropboxPrefixHelpers(t *testing.T) {
 	if got := d.stripPrefix("/pre/path/to"); got != "path/to" {
 		t.Fatalf("stripPrefix got %q", got)
 	}
+	if got := (&driver{}).stripPrefix("/path/to"); got != "path/to" {
+		t.Fatalf("stripPrefix without prefix got %q", got)
+	}
 }
 
 func TestDropboxWrapError(t *testing.T) {
@@ -271,6 +274,15 @@ func TestDropboxWrappersAndErrors(t *testing.T) {
 	if _, err := d.URLContext(context.Background(), "file.txt"); err == nil {
 		t.Fatal("URLContext returned nil error")
 	}
+	if _, err := d.ExistsContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("ExistsContext invalid path error = %v", err)
+	}
+	if _, err := d.ListContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("ListContext invalid path error = %v", err)
+	}
+	if err := d.WalkContext(context.Background(), "../bad", func(storage.Entry) error { return nil }); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("WalkContext invalid path error = %v", err)
+	}
 }
 
 func TestDropboxStatBranches(t *testing.T) {
@@ -329,6 +341,11 @@ func TestDropboxCopyAndMove(t *testing.T) {
 		t.Fatalf("Move: %v", err)
 	}
 
+	client.delErr = errors.New("delete boom")
+	if err := d.MoveContext(context.Background(), "src.txt", "broken.txt"); err == nil {
+		t.Fatal("MoveContext returned nil error")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := d.CopyContext(ctx, "src.txt", "dst.txt"); !errors.Is(err, context.Canceled) {
@@ -337,7 +354,8 @@ func TestDropboxCopyAndMove(t *testing.T) {
 }
 
 func TestDropboxListAndWalkErrors(t *testing.T) {
-	d := &driver{client: &fakeDropbox{listErr: errors.New("boom")}, prefix: "pre"}
+	client := &fakeDropbox{listErr: errors.New("boom")}
+	d := &driver{client: client, prefix: "pre"}
 	if _, err := d.ListContext(context.Background(), "folder"); err == nil {
 		t.Fatal("ListContext returned nil error")
 	}
@@ -345,7 +363,20 @@ func TestDropboxListAndWalkErrors(t *testing.T) {
 		t.Fatal("walkPage returned nil error")
 	}
 
-	client := &fakeDropbox{
+	client = &fakeDropbox{continueOut: nil, listOut: &files.ListFolderResult{HasMore: true, Cursor: "cursor"}}
+	d = &driver{client: client, prefix: "pre"}
+	if err := d.WalkContext(context.Background(), "", func(storage.Entry) error { return nil }); err != nil {
+		t.Fatalf("WalkContext empty continue: %v", err)
+	}
+
+	client = &fakeDropbox{}
+	d = &driver{client: client, prefix: "pre"}
+	var entries []storage.Entry
+	if err := d.listContinue(context.Background(), files.NewListFolderContinueArg("cursor"), &entries); err != nil {
+		t.Fatalf("listContinue empty: %v", err)
+	}
+
+	client = &fakeDropbox{
 		continueSeq: []*files.ListFolderResult{
 			{
 				Entries: []files.IsMetadata{
@@ -362,7 +393,7 @@ func TestDropboxListAndWalkErrors(t *testing.T) {
 		},
 	}
 	d = &driver{client: client, prefix: "pre"}
-	var entries []storage.Entry
+	entries = nil
 	if err := d.listContinue(context.Background(), files.NewListFolderContinueArg("cursor"), &entries); err != nil {
 		t.Fatalf("listContinue recursive: %v", err)
 	}
@@ -378,6 +409,14 @@ func TestDropboxGetContextReadFailure(t *testing.T) {
 	d := &driver{client: client, prefix: "pre"}
 	if _, err := d.GetContext(context.Background(), "file.txt"); err == nil {
 		t.Fatal("GetContext returned nil error")
+	}
+}
+
+func TestDropboxExistsFalseOnNotFound(t *testing.T) {
+	d := &driver{client: &fakeDropbox{metaErr: errNotFound{}}, prefix: "pre"}
+	ok, err := d.Exists("missing.txt")
+	if err != nil || ok {
+		t.Fatalf("Exists missing = %v err=%v", ok, err)
 	}
 }
 

@@ -18,60 +18,34 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		path := "dir1/file.txt"
 		payload := []byte("hello world")
 
-		if err := fsys.Put(path, payload); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
+		requireNoError(t, fsys.Put(path, payload), "Put")
 
 		exists, err := fsys.Exists(path)
-		if err != nil {
-			t.Fatalf("Exists: %v", err)
-		}
-		if !exists {
-			t.Fatalf("Exists: expected true")
-		}
+		requireNoError(t, err, "Exists")
+		requireTrue(t, exists, "Exists: expected true")
 
 		got, err := fsys.Get(path)
-		if err != nil {
-			t.Fatalf("Get: %v", err)
-		}
-		if string(got) != string(payload) {
-			t.Fatalf("Get: expected %q got %q", payload, got)
-		}
+		requireNoError(t, err, "Get")
+		requireEqual(t, string(payload), string(got), "Get")
 
-		if err := fsys.Delete(path); err != nil {
-			t.Fatalf("Delete: %v", err)
-		}
+		requireNoError(t, fsys.Delete(path), "Delete")
 
 		exists, err = fsys.Exists(path)
-		if err != nil {
-			t.Fatalf("Exists after delete: %v", err)
-		}
-		if exists {
-			t.Fatalf("Exists after delete: expected false")
-		}
+		requireNoError(t, err, "Exists after delete")
+		requireFalse(t, exists, "Exists after delete: expected false")
 	})
 
 	t.Run("stat", func(t *testing.T) {
 		path := "stat/file.txt"
 		payload := []byte("hello world")
 
-		if err := fsys.Put(path, payload); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
+		requireNoError(t, fsys.Put(path, payload), "Put")
 
 		entry, err := fsys.Stat(path)
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
-		if entry.Path != path {
-			t.Fatalf("Stat path: expected %q got %q", path, entry.Path)
-		}
-		if entry.Size != int64(len(payload)) {
-			t.Fatalf("Stat size: expected %d got %d", len(payload), entry.Size)
-		}
-		if entry.IsDir {
-			t.Fatalf("Stat: expected object entry")
-		}
+		requireNoError(t, err, "Stat")
+		requireEqual(t, path, entry.Path, "Stat path")
+		requireEqual(t, int64(len(payload)), entry.Size, "Stat size")
+		requireFalse(t, entry.IsDir, "Stat: expected object entry")
 	})
 
 	t.Run("listing-and-prefix", func(t *testing.T) {
@@ -81,33 +55,23 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			"folder2/fileC.txt",
 		}
 		for _, f := range files {
-			if err := fsys.Put(f, []byte(f)); err != nil {
-				t.Fatalf("Put %q: %v", f, err)
-			}
+			requireNoError(t, fsys.Put(f, []byte(f)), "Put "+f)
 		}
 
 		rootEntries, err := fsys.List("")
-		if err != nil {
-			t.Fatalf("List root: %v", err)
-		}
+		requireNoError(t, err, "List root")
 		paths := extractPaths(rootEntries)
 		expectRoot := []string{"folder1", "folder2"}
 		for _, expect := range expectRoot {
-			if !slices.Contains(paths, expect) {
-				t.Fatalf("List root missing %q; got %v", expect, paths)
-			}
+			requireContains(t, paths, expect, "List root")
 		}
 
 		subEntries, err := fsys.List("folder1")
-		if err != nil {
-			t.Fatalf("List folder1: %v", err)
-		}
+		requireNoError(t, err, "List folder1")
 		subPaths := extractPaths(subEntries)
 		expectSub := []string{"folder1/fileA.txt", "folder1/sub"}
 		for _, expect := range expectSub {
-			if !slices.Contains(subPaths, expect) {
-				t.Fatalf("List folder1 missing %q; got %v", expect, subPaths)
-			}
+			requireContains(t, subPaths, expect, "List folder1")
 		}
 	})
 
@@ -119,9 +83,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			"folder2/fileC.txt",
 		}
 		for _, f := range files {
-			if err := fsys.Put(f, []byte(f)); err != nil {
-				t.Fatalf("Put %q: %v", f, err)
-			}
+			requireNoError(t, fsys.Put(f, []byte(f)), "Put "+f)
 		}
 
 		var walked []string
@@ -135,9 +97,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			t.Fatalf("Walk: %v", err)
 		}
 		for _, expect := range files {
-			if !slices.Contains(walked, expect) {
-				t.Fatalf("Walk missing %q; got %v", expect, walked)
-			}
+			requireContains(t, walked, expect, "Walk")
 		}
 	})
 
@@ -146,28 +106,16 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		dst := "copy/dest.txt"
 		payload := []byte("copied")
 
-		if err := fsys.Put(src, payload); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
-		if err := fsys.Copy(src, dst); err != nil {
-			t.Fatalf("Copy: %v", err)
-		}
+		requireNoError(t, fsys.Put(src, payload), "Put")
+		requireNoError(t, fsys.Copy(src, dst), "Copy")
 
 		got, err := fsys.Get(dst)
-		if err != nil {
-			t.Fatalf("Get copied object: %v", err)
-		}
-		if string(got) != string(payload) {
-			t.Fatalf("Get copied object: expected %q got %q", payload, got)
-		}
+		requireNoError(t, err, "Get copied object")
+		requireEqual(t, string(payload), string(got), "Get copied object")
 
 		exists, err := fsys.Exists(src)
-		if err != nil {
-			t.Fatalf("Exists source after copy: %v", err)
-		}
-		if !exists {
-			t.Fatalf("Exists source after copy: expected true")
-		}
+		requireNoError(t, err, "Exists source after copy")
+		requireTrue(t, exists, "Exists source after copy: expected true")
 	})
 
 	t.Run("move", func(t *testing.T) {
@@ -175,35 +123,21 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		dst := "move/dest.txt"
 		payload := []byte("moved")
 
-		if err := fsys.Put(src, payload); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
-		if err := fsys.Move(src, dst); err != nil {
-			t.Fatalf("Move: %v", err)
-		}
+		requireNoError(t, fsys.Put(src, payload), "Put")
+		requireNoError(t, fsys.Move(src, dst), "Move")
 
 		exists, err := fsys.Exists(src)
-		if err != nil {
-			t.Fatalf("Exists source after move: %v", err)
-		}
-		if exists {
-			t.Fatalf("Exists source after move: expected false")
-		}
+		requireNoError(t, err, "Exists source after move")
+		requireFalse(t, exists, "Exists source after move: expected false")
 
 		got, err := fsys.Get(dst)
-		if err != nil {
-			t.Fatalf("Get moved object: %v", err)
-		}
-		if string(got) != string(payload) {
-			t.Fatalf("Get moved object: expected %q got %q", payload, got)
-		}
+		requireNoError(t, err, "Get moved object")
+		requireEqual(t, string(payload), string(got), "Get moved object")
 	})
 
 	t.Run("url-behavior", func(t *testing.T) {
 		path := "url/file.txt"
-		if err := fsys.Put(path, []byte("url")); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
+		requireNoError(t, fsys.Put(path, []byte("url")), "Put")
 		url, err := fsys.URL(path)
 		if err != nil {
 			if !errors.Is(err, storage.ErrUnsupported) {
@@ -211,21 +145,15 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			}
 			return
 		}
-		if url == "" {
-			t.Fatalf("URL returned empty string")
-		}
+		requireTrue(t, url != "", "URL returned empty string")
 	})
 
 	t.Run("error-classification", func(t *testing.T) {
 		_, err := fsys.Get("missing/file.txt")
-		if err == nil || !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("expected ErrNotFound wrapping, got: %v", err)
-		}
+		requireErrorIs(t, err, storage.ErrNotFound, "expected ErrNotFound wrapping")
 
 		err = fsys.Put("../escape.txt", []byte("nope"))
-		if err == nil || !errors.Is(err, storage.ErrForbidden) {
-			t.Fatalf("expected ErrForbidden for path traversal, got: %v", err)
-		}
+		requireErrorIs(t, err, storage.ErrForbidden, "expected ErrForbidden for path traversal")
 	})
 
 	t.Run("context-handling", func(t *testing.T) {
@@ -235,17 +163,35 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 		canceled, cancel := context.WithCancel(context.Background())
 		cancel()
+		if _, err := csys.GetContext(canceled, "ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from GetContext")
+		}
 		if err := csys.PutContext(canceled, "ctx/file.txt", []byte("x")); err == nil {
 			t.Fatalf("expected context cancellation")
 		}
+		if err := csys.DeleteContext(canceled, "ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from DeleteContext")
+		}
 		if _, err := csys.StatContext(canceled, "ctx/file.txt"); err == nil {
 			t.Fatalf("expected context cancellation from StatContext")
+		}
+		if _, err := csys.ExistsContext(canceled, "ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from ExistsContext")
+		}
+		if _, err := csys.ListContext(canceled, "ctx"); err == nil {
+			t.Fatalf("expected context cancellation from ListContext")
+		}
+		if err := csys.WalkContext(canceled, "ctx", func(storage.Entry) error { return nil }); err == nil {
+			t.Fatalf("expected context cancellation from WalkContext")
 		}
 		if err := csys.CopyContext(canceled, "ctx/file.txt", "ctx/file-copy.txt"); err == nil {
 			t.Fatalf("expected context cancellation from CopyContext")
 		}
 		if err := csys.MoveContext(canceled, "ctx/file.txt", "ctx/file-move.txt"); err == nil {
 			t.Fatalf("expected context cancellation from MoveContext")
+		}
+		if _, err := csys.URLContext(canceled, "ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from URLContext")
 		}
 	})
 
@@ -259,13 +205,9 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 
 		now := time.Now().UTC()
 		path := "modtime/file.txt"
-		if err := fsys.Put(path, []byte("modtime")); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
+		requireNoError(t, fsys.Put(path, []byte("modtime")), "Put")
 		ts, err := mt.ModTime(context.Background(), path)
-		if err != nil {
-			t.Fatalf("ModTime: %v", err)
-		}
+		requireNoError(t, err, "ModTime")
 		if delta := ts.Sub(now); delta < -2*time.Second || delta > 2*time.Second {
 			t.Fatalf("modtime out of expected range: got %v, now %v", ts, now)
 		}
@@ -278,4 +220,46 @@ func extractPaths(entries []storage.Entry) []string {
 		paths = append(paths, e.Path)
 	}
 	return paths
+}
+
+func requireNoError(t *testing.T, err error, msg string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", msg, err)
+	}
+}
+
+func requireTrue(t *testing.T, cond bool, msg string) {
+	t.Helper()
+	if !cond {
+		t.Fatal(msg)
+	}
+}
+
+func requireFalse(t *testing.T, cond bool, msg string) {
+	t.Helper()
+	if cond {
+		t.Fatal(msg)
+	}
+}
+
+func requireEqual[T comparable](t *testing.T, want, got T, msg string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: expected %v got %v", msg, want, got)
+	}
+}
+
+func requireContains(t *testing.T, values []string, want string, msg string) {
+	t.Helper()
+	if !slices.Contains(values, want) {
+		t.Fatalf("%s missing %q; got %v", msg, want, values)
+	}
+}
+
+func requireErrorIs(t *testing.T, err error, target error, msg string) {
+	t.Helper()
+	if err == nil || !errors.Is(err, target) {
+		t.Fatalf("%s, got: %v", msg, err)
+	}
 }

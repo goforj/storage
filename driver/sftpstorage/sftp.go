@@ -16,6 +16,16 @@ import (
 	"github.com/goforj/storage"
 )
 
+var sshDial = ssh.Dial
+
+var newSFTPClient = func(sshClient *ssh.Client) (sftpClient, error) {
+	client, err := sftp.NewClient(sshClient)
+	if err != nil {
+		return nil, err
+	}
+	return realSFTPClient{client: client}, nil
+}
+
 func init() {
 	storage.RegisterDriver("sftp", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
@@ -23,8 +33,22 @@ func init() {
 }
 
 type driver struct {
-	client *sftp.Client
+	client sftpClient
 	prefix string
+}
+
+type sftpClient interface {
+	Open(path string) (io.ReadCloser, error)
+	OpenFile(path string, flags int) (io.WriteCloser, error)
+	MkdirAll(path string) error
+	Remove(path string) error
+	Stat(path string) (os.FileInfo, error)
+	ReadDir(path string) ([]os.FileInfo, error)
+	Close() error
+}
+
+type realSFTPClient struct {
+	client *sftp.Client
 }
 
 // Config defines an SFTP-backed storage disk.
@@ -129,11 +153,11 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.SFTPHost, port)
-	sshClient, err := ssh.Dial("tcp", addr, sshCfg)
+	sshClient, err := sshDial("tcp", addr, sshCfg)
 	if err != nil {
 		return nil, fmt.Errorf("storage: sftp dial: %w", err)
 	}
-	client, err := sftp.NewClient(sshClient)
+	client, err := newSFTPClient(sshClient)
 	if err != nil {
 		return nil, fmt.Errorf("storage: sftp client: %w", err)
 	}
@@ -435,4 +459,32 @@ func wrapError(err error) error {
 		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
 	}
 	return err
+}
+
+func (c realSFTPClient) Open(path string) (io.ReadCloser, error) {
+	return c.client.Open(path)
+}
+
+func (c realSFTPClient) OpenFile(path string, flags int) (io.WriteCloser, error) {
+	return c.client.OpenFile(path, flags)
+}
+
+func (c realSFTPClient) MkdirAll(path string) error {
+	return c.client.MkdirAll(path)
+}
+
+func (c realSFTPClient) Remove(path string) error {
+	return c.client.Remove(path)
+}
+
+func (c realSFTPClient) Stat(path string) (os.FileInfo, error) {
+	return c.client.Stat(path)
+}
+
+func (c realSFTPClient) ReadDir(path string) ([]os.FileInfo, error) {
+	return c.client.ReadDir(path)
+}
+
+func (c realSFTPClient) Close() error {
+	return c.client.Close()
 }

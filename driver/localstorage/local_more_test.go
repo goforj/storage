@@ -34,6 +34,9 @@ func TestLocalCRUDBranches(t *testing.T) {
 	if _, err := d.GetContext(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("GetContext missing error = %v", err)
 	}
+	if _, err := d.GetContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("GetContext invalid path error = %v", err)
+	}
 
 	if err := os.MkdirAll(filepath.Join(root, "pre", "folder"), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -111,6 +114,15 @@ func TestLocalCRUDBranches(t *testing.T) {
 	if err := d.Delete("folder/file.txt"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("Delete missing error = %v", err)
 	}
+	if err := d.DeleteContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("DeleteContext invalid path error = %v", err)
+	}
+	if _, err := d.ListContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("ListContext invalid path error = %v", err)
+	}
+	if err := d.WalkContext(context.Background(), "missing", func(storage.Entry) error { return nil }); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("WalkContext missing error = %v", err)
+	}
 }
 
 func TestLocalCopyAndMoveBranches(t *testing.T) {
@@ -153,6 +165,12 @@ func TestLocalCopyAndMoveBranches(t *testing.T) {
 	}
 	if err := d.Move("missing.txt", "x"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("Move missing error = %v", err)
+	}
+	if err := d.Copy("src.txt", "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("Copy invalid dst error = %v", err)
+	}
+	if err := d.Move("src.txt", "../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("Move invalid dst error = %v", err)
 	}
 }
 

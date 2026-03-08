@@ -28,13 +28,29 @@ func init() {
 
 type driver struct {
 	mu       sync.Mutex
-	conn     *ftp.ServerConn
+	conn     ftpConn
 	addr     string
 	user     string
 	pass     string
 	prefix   string
 	tls      bool
 	insecure bool
+	dialFn   func() (ftpConn, error)
+}
+
+type ftpConn interface {
+	Login(user, password string) error
+	Quit() error
+	Retr(path string) (io.ReadCloser, error)
+	Stor(path string, reader io.Reader) error
+	Delete(path string) error
+	List(path string) ([]*ftp.Entry, error)
+	FileSize(path string) (int64, error)
+	MakeDir(path string) error
+}
+
+type realFTPConn struct {
+	conn *ftp.ServerConn
 }
 
 // Config defines an FTP-backed storage disk.
@@ -128,10 +144,14 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 		prefix:   prefix,
 		tls:      cfg.FTPTLS,
 		insecure: cfg.FTPInsecureSkipVerify,
+		dialFn:   nil,
 	}, nil
 }
 
-func (d *driver) dial() (*ftp.ServerConn, error) {
+func (d *driver) dial() (ftpConn, error) {
+	if d.dialFn != nil {
+		return d.dialFn()
+	}
 	opts := []ftp.DialOption{
 		ftp.DialWithTimeout(10 * time.Second),
 		ftp.DialWithDisabledEPSV(true),
@@ -139,10 +159,14 @@ func (d *driver) dial() (*ftp.ServerConn, error) {
 	if d.tls {
 		opts = append(opts, ftp.DialWithExplicitTLS(&tls.Config{InsecureSkipVerify: d.insecure}))
 	}
-	return ftp.Dial(d.addr, opts...)
+	conn, err := ftp.Dial(d.addr, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return realFTPConn{conn: conn}, nil
 }
 
-func (d *driver) withConn(fn func(*ftp.ServerConn) error) error {
+func (d *driver) withConn(fn func(ftpConn) error) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -166,14 +190,14 @@ func (d *driver) withConn(fn func(*ftp.ServerConn) error) error {
 	return nil
 }
 
-func (d *driver) runConnLocked(fn func(*ftp.ServerConn) error) error {
+func (d *driver) runConnLocked(fn func(ftpConn) error) error {
 	if d.conn == nil {
 		return fmt.Errorf("storage: ftp connection unavailable")
 	}
 	return fn(d.conn)
 }
 
-func (d *driver) ensureConnLocked() (*ftp.ServerConn, error) {
+func (d *driver) ensureConnLocked() (ftpConn, error) {
 	if d.conn != nil {
 		return d.conn, nil
 	}
@@ -219,7 +243,7 @@ func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 		return nil, err
 	}
 	var data []byte
-	err = d.withConn(func(c *ftp.ServerConn) error {
+	err = d.withConn(func(c ftpConn) error {
 		r, err := c.Retr(fp)
 		if err != nil {
 			return err
@@ -246,7 +270,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	if err != nil {
 		return err
 	}
-	return wrapError(d.withConn(func(c *ftp.ServerConn) error {
+	return wrapError(d.withConn(func(c ftpConn) error {
 		dir := path.Dir(fp)
 		if dir != "" && dir != "." {
 			_ = ensureDirs(c, dir)
@@ -255,7 +279,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	}))
 }
 
-func ensureDirs(c *ftp.ServerConn, dir string) error {
+func ensureDirs(c ftpConn, dir string) error {
 	parts := strings.Split(dir, "/")
 	var cur string
 	for _, p := range parts {
@@ -280,7 +304,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
-	return wrapError(d.withConn(func(c *ftp.ServerConn) error {
+	return wrapError(d.withConn(func(c ftpConn) error {
 		return c.Delete(fp)
 	}))
 }
@@ -298,7 +322,7 @@ func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, erro
 		return storage.Entry{}, err
 	}
 	var entry storage.Entry
-	err = d.withConn(func(c *ftp.ServerConn) error {
+	err = d.withConn(func(c ftpConn) error {
 		parent := path.Dir(fp)
 		if parent == "." {
 			parent = ""
@@ -340,7 +364,7 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = d.withConn(func(c *ftp.ServerConn) error {
+	err = d.withConn(func(c ftpConn) error {
 		_, err := c.FileSize(fp)
 		return err
 	})
@@ -367,7 +391,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		return nil, err
 	}
 	var entries []storage.Entry
-	err = d.withConn(func(c *ftp.ServerConn) error {
+	err = d.withConn(func(c ftpConn) error {
 		l, err := c.List(fp)
 		if err != nil {
 			return err
@@ -403,7 +427,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 	if err != nil {
 		return err
 	}
-	return wrapError(d.withConn(func(c *ftp.ServerConn) error {
+	return wrapError(d.withConn(func(c ftpConn) error {
 		if err := d.walkDir(ctx, c, fp, fn); err == nil {
 			return nil
 		} else if wrapped := wrapError(err); !errors.Is(wrapped, storage.ErrNotFound) {
@@ -469,7 +493,7 @@ func (d *driver) stripPrefix(p string) string {
 	return trimmed
 }
 
-func (d *driver) walkDir(ctx context.Context, c *ftp.ServerConn, dir string, fn func(storage.Entry) error) error {
+func (d *driver) walkDir(ctx context.Context, c ftpConn, dir string, fn func(storage.Entry) error) error {
 	entries, err := c.List(dir)
 	if err != nil {
 		return err
@@ -542,4 +566,36 @@ func shouldReconnectFTP(err error) bool {
 		strings.Contains(msg, "timed out") ||
 		strings.Contains(msg, "unexpected eof") ||
 		strings.Contains(msg, "use of closed network connection")
+}
+
+func (c realFTPConn) Login(user, password string) error {
+	return c.conn.Login(user, password)
+}
+
+func (c realFTPConn) Quit() error {
+	return c.conn.Quit()
+}
+
+func (c realFTPConn) Retr(path string) (io.ReadCloser, error) {
+	return c.conn.Retr(path)
+}
+
+func (c realFTPConn) Stor(path string, reader io.Reader) error {
+	return c.conn.Stor(path, reader)
+}
+
+func (c realFTPConn) Delete(path string) error {
+	return c.conn.Delete(path)
+}
+
+func (c realFTPConn) List(path string) ([]*ftp.Entry, error) {
+	return c.conn.List(path)
+}
+
+func (c realFTPConn) FileSize(path string) (int64, error) {
+	return c.conn.FileSize(path)
+}
+
+func (c realFTPConn) MakeDir(path string) error {
+	return c.conn.MakeDir(path)
 }

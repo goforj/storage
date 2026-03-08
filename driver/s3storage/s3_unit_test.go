@@ -144,6 +144,45 @@ func TestS3Constructors(t *testing.T) {
 			t.Fatalf("ResolvedConfig = %+v", resolved)
 		}
 	})
+
+	t.Run("invalid prefix", func(t *testing.T) {
+		_, err := New(Config{Bucket: "bucket", Region: "us-east-1", Prefix: "../bad"})
+		if !errors.Is(err, storage.ErrForbidden) {
+			t.Fatalf("New invalid prefix error = %v", err)
+		}
+	})
+
+	t.Run("load aws config", func(t *testing.T) {
+		cfg, err := loadAWSConfig(context.Background(), storage.ResolvedConfig{
+			S3Region:          "us-east-1",
+			S3Endpoint:        "http://localhost:9000",
+			S3AccessKeyID:     "access",
+			S3SecretAccessKey: "secret",
+		})
+		if err != nil {
+			t.Fatalf("loadAWSConfig: %v", err)
+		}
+		if cfg.Region != "us-east-1" {
+			t.Fatalf("aws config region = %q", cfg.Region)
+		}
+	})
+
+	t.Run("new from disk success and build error", func(t *testing.T) {
+		origBuild := buildS3Clients
+		t.Cleanup(func() { buildS3Clients = origBuild })
+
+		buildS3Clients = func(cfg aws.Config, resolved storage.ResolvedConfig) (s3API, s3PresignAPI) {
+			return &fakeS3{}, fakePresign{url: "http://signed"}
+		}
+		store, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+			S3Bucket: "bucket",
+			S3Region: "us-east-1",
+			Prefix:   "pre",
+		})
+		if err != nil || store == nil {
+			t.Fatalf("newFromDiskConfig success err=%v store=%v", err, store)
+		}
+	})
 }
 
 func TestS3ContextCancellation(t *testing.T) {
@@ -339,6 +378,9 @@ func TestS3MoreBranches(t *testing.T) {
 		}
 		if err := d.Move("src.txt", "moved.txt"); err != nil {
 			t.Fatalf("Move: %v", err)
+		}
+		if err := d.Delete("moved.txt"); err != nil {
+			t.Fatalf("Delete: %v", err)
 		}
 	})
 

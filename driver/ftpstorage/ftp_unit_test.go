@@ -1,6 +1,7 @@
 package ftpstorage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/goforj/storage"
+	"github.com/jlaffaye/ftp"
 )
 
 func TestFTPConstructors(t *testing.T) {
@@ -124,4 +126,175 @@ func TestShouldReconnectFTP(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeFTPConn struct {
+	loginErr    error
+	quitErr     error
+	retrData    string
+	retrReader  io.ReadCloser
+	retrErr     error
+	stored      bytes.Buffer
+	storErr     error
+	deleteErr   error
+	listEntries []*ftp.Entry
+	listErr     error
+	fileSize    int64
+	fileSizeErr error
+	makeDirErr  error
+}
+
+func (f *fakeFTPConn) Login(string, string) error        { return f.loginErr }
+func (f *fakeFTPConn) Quit() error                       { return f.quitErr }
+func (f *fakeFTPConn) Delete(string) error               { return f.deleteErr }
+func (f *fakeFTPConn) FileSize(string) (int64, error)    { return f.fileSize, f.fileSizeErr }
+func (f *fakeFTPConn) MakeDir(string) error              { return f.makeDirErr }
+func (f *fakeFTPConn) List(string) ([]*ftp.Entry, error) { return f.listEntries, f.listErr }
+func (f *fakeFTPConn) Retr(string) (io.ReadCloser, error) {
+	if f.retrErr != nil {
+		return nil, f.retrErr
+	}
+	if f.retrReader != nil {
+		return f.retrReader, nil
+	}
+	return io.NopCloser(bytes.NewBufferString(f.retrData)), nil
+}
+func (f *fakeFTPConn) Stor(_ string, r io.Reader) error {
+	if f.storErr != nil {
+		return f.storErr
+	}
+	_, err := io.Copy(&f.stored, r)
+	return err
+}
+
+func TestFTPFakeBackedOperations(t *testing.T) {
+	conn := &fakeFTPConn{
+		retrData: "hello",
+		fileSize: 5,
+		listEntries: []*ftp.Entry{
+			{Name: "file.txt", Size: 5, Type: ftp.EntryTypeFile},
+			{Name: "dir", Type: ftp.EntryTypeFolder},
+		},
+	}
+	d := &driver{
+		prefix: "pre",
+		conn:   conn,
+		dialFn: func() (ftpConn, error) { return conn, nil },
+	}
+
+	data, err := d.Get("file.txt")
+	if err != nil || string(data) != "hello" {
+		t.Fatalf("Get = %q err=%v", data, err)
+	}
+	if err := d.Put("dir/file.txt", []byte("payload")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if got := conn.stored.String(); got != "payload" {
+		t.Fatalf("stored payload = %q", got)
+	}
+	if err := d.Delete("file.txt"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	entry, err := d.Stat("file.txt")
+	if err != nil || entry.Path != "file.txt" || entry.Size != 5 {
+		t.Fatalf("Stat = %+v err=%v", entry, err)
+	}
+	ok, err := d.Exists("file.txt")
+	if err != nil || !ok {
+		t.Fatalf("Exists = %v err=%v", ok, err)
+	}
+	entries, err := d.List("")
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("List = %+v err=%v", entries, err)
+	}
+}
+
+func TestFTPFakeWalkAndErrors(t *testing.T) {
+	t.Run("walk file path fallback", func(t *testing.T) {
+		conn := &fakeFTPConn{
+			listErr:     &textproto.Error{Code: 550, Msg: "not found"},
+			fileSize:    4,
+			fileSizeErr: nil,
+		}
+		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
+		var got []storage.Entry
+		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+			got = append(got, entry)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if len(got) != 1 || got[0].Path != "file.txt" {
+			t.Fatalf("Walk entries = %+v", got)
+		}
+	})
+
+	t.Run("walk recursive callback error", func(t *testing.T) {
+		conn := &fakeFTPConn{
+			listEntries: []*ftp.Entry{
+				{Name: "sub", Type: ftp.EntryTypeFolder},
+				{Name: "file.txt", Size: 1, Type: ftp.EntryTypeFile},
+			},
+		}
+		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
+		stop := errors.New("stop")
+		err := d.Walk("", func(entry storage.Entry) error {
+			if entry.Path == "sub" {
+				return stop
+			}
+			return nil
+		})
+		if !errors.Is(err, stop) {
+			t.Fatalf("Walk callback error = %v", err)
+		}
+	})
+
+	t.Run("operation errors", func(t *testing.T) {
+		conn := &fakeFTPConn{
+			retrErr:     errors.New("550 missing"),
+			storErr:     errors.New("stor boom"),
+			deleteErr:   errors.New("delete boom"),
+			listErr:     errors.New("list boom"),
+			fileSizeErr: errors.New("size boom"),
+		}
+		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
+		if _, err := d.Get("file.txt"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("Get error = %v", err)
+		}
+		if err := d.Put("file.txt", []byte("x")); err == nil {
+			t.Fatal("Put returned nil error")
+		}
+		if err := d.Delete("file.txt"); err == nil {
+			t.Fatal("Delete returned nil error")
+		}
+		if _, err := d.Stat("file.txt"); err == nil {
+			t.Fatal("Stat returned nil error")
+		}
+		if _, err := d.Exists("file.txt"); err == nil {
+			t.Fatal("Exists returned nil error")
+		}
+		if _, err := d.List("file.txt"); err == nil {
+			t.Fatal("List returned nil error")
+		}
+	})
+
+	t.Run("read failure and reconnect", func(t *testing.T) {
+		first := &fakeFTPConn{retrErr: io.EOF}
+		second := &fakeFTPConn{retrData: "recovered"}
+		calls := 0
+		d := &driver{
+			prefix: "pre",
+			dialFn: func() (ftpConn, error) {
+				calls++
+				if calls == 1 {
+					return first, nil
+				}
+				return second, nil
+			},
+		}
+		data, err := d.Get("file.txt")
+		if err != nil || string(data) != "recovered" {
+			t.Fatalf("Get recovered = %q err=%v", data, err)
+		}
+	})
 }

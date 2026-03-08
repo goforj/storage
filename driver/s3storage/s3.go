@@ -45,6 +45,13 @@ type s3PresignAPI interface {
 	PresignGetObject(context.Context, *s3.GetObjectInput, ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
+var buildS3Clients = func(cfg aws.Config, resolved storage.ResolvedConfig) (s3API, s3PresignAPI) {
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = resolved.S3UsePathStyle
+	})
+	return client, s3.NewPresignClient(client)
+}
+
 // Config defines an S3-backed storage disk.
 // @group Driver Config
 //
@@ -131,10 +138,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	if err != nil {
 		return nil, fmt.Errorf("storage: load aws config: %w", err)
 	}
-	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-		o.UsePathStyle = cfg.S3UsePathStyle
-	})
-	presign := s3.NewPresignClient(client)
+	client, presign := buildS3Clients(awsCfg, cfg)
 
 	return &driver{
 		client:  client,
