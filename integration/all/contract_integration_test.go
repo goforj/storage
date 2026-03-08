@@ -43,7 +43,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 			name: "local",
 			new: func(t *testing.T) (storage.Storage, func()) {
 				t.Helper()
-				store, err := storage.Build(localstorage.Config{Remote: t.TempDir(), Prefix: "itest"})
+				store, err := storage.Build(localstorage.Config{Root: t.TempDir(), Prefix: "itest"})
 				if err != nil {
 					t.Fatalf("build local storage: %v", err)
 				}

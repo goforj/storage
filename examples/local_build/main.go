@@ -16,7 +16,7 @@ func main() {
 	defer os.RemoveAll(root)
 
 	disk, err := localstorage.New(localstorage.Config{
-		Remote: root,
+		Root:   root,
 		Prefix: "scratch",
 	})
 	if err != nil {

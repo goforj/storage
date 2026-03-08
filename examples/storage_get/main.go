@@ -13,7 +13,7 @@ func main() {
 
 	// Example: read an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-get",
+		Root: "/tmp/storage-get",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 

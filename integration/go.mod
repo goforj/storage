@@ -9,8 +9,8 @@ require (
 	github.com/goforj/storage/driver/gcsstorage v0.0.0
 	github.com/goforj/storage/driver/localstorage v0.0.0
 	github.com/goforj/storage/driver/memorystorage v0.0.0
-	github.com/goforj/storage/driver/redisstorage v0.0.0
 	github.com/goforj/storage/driver/rclonestorage v0.0.0
+	github.com/goforj/storage/driver/redisstorage v0.0.0
 	github.com/goforj/storage/driver/s3storage v0.0.0
 	github.com/goforj/storage/driver/sftpstorage v0.0.0
 	github.com/goforj/storage/storagetest v0.0.0
@@ -103,6 +103,7 @@ require (
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/cronokirby/saferith v0.33.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/diskfs/go-diskfs v1.7.0 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/docker v25.0.5+incompatible // indirect
@@ -207,6 +208,7 @@ require (
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/putdotio/go-putio/putio v0.0.0-20200123120452-16d982cac2b8 // indirect
 	github.com/rclone/rclone v1.72.1 // indirect
+	github.com/redis/go-redis/v9 v9.7.1 // indirect
 	github.com/relvacode/iso8601 v1.7.0 // indirect
 	github.com/rfjakob/eme v1.1.2 // indirect
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06 // indirect

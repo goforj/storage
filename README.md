@@ -94,7 +94,7 @@ import (
 
 func main() {
     disk, err := storage.Build(localstorage.Config{
-        Remote: "/tmp/storage",
+        Root: "/tmp/storage",
     })
     if err != nil {
         log.Fatal(err)
@@ -163,7 +163,7 @@ import (
 func main() {
     // Build one disk through the shared storage API.
     built, err := storage.Build(localstorage.Config{
-        Remote: "/tmp/storage",
+        Root: "/tmp/storage",
         Prefix: "scratch",
     })
     if err != nil {
@@ -172,7 +172,7 @@ func main() {
 
     // Or construct the driver directly.
     direct, err := localstorage.New(localstorage.Config{
-        Remote: "/tmp/storage",
+        Root: "/tmp/storage",
         Prefix: "scratch",
     })
     if err != nil {
@@ -202,7 +202,7 @@ func main() {
         Default: "assets",
         Disks: map[storage.DiskName]storage.DriverConfig{
             "assets": localstorage.Config{
-                Remote: "/tmp/storage",
+                Root: "/tmp/storage",
                 Prefix: "assets",
             },
             "uploads": s3storage.Config{
@@ -524,7 +524,7 @@ a Manager.
 
 ```go
 fs, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-example",
+	Root: "/tmp/storage-example",
 	Prefix: "assets",
 })
 ```
@@ -536,7 +536,7 @@ s3storage.Config. It is the public config boundary for Manager and Build.
 
 ```go
 var cfg storage.DriverConfig = localstorage.Config{
-	Remote: "/tmp/storage-config",
+	Root: "/tmp/storage-config",
 }
 ```
 
@@ -596,7 +596,7 @@ GetContext reads the object at path using the caller-provided context.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-get-context",
+	Root: "/tmp/storage-get-context",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 
@@ -680,7 +680,7 @@ Semantics:
 ```go
 var disk storage.Storage
 disk, _ = storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-interface",
+	Root: "/tmp/storage-interface",
 })
 ```
 
@@ -690,7 +690,7 @@ Copy copies the object at src to dst.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-copy",
+	Root: "/tmp/storage-copy",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 _ = disk.Copy("docs/readme.txt", "docs/copy.txt")
@@ -706,7 +706,7 @@ Delete removes the object at path.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-delete",
+	Root: "/tmp/storage-delete",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 _ = disk.Delete("docs/readme.txt")
@@ -722,7 +722,7 @@ Exists reports whether an object exists at path.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-exists",
+	Root: "/tmp/storage-exists",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 
@@ -737,7 +737,7 @@ Get reads the object at path.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-get",
+	Root: "/tmp/storage-get",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 
@@ -752,7 +752,7 @@ List returns the immediate children under path.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-list",
+	Root: "/tmp/storage-list",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 
@@ -767,7 +767,7 @@ Move moves the object at src to dst.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-move",
+	Root: "/tmp/storage-move",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 _ = disk.Move("docs/readme.txt", "docs/archive.txt")
@@ -783,7 +783,7 @@ Put writes an object at path, overwriting any existing object.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-put",
+	Root: "/tmp/storage-put",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 fmt.Println("stored")
@@ -796,7 +796,7 @@ Stat returns the entry at path.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-stat",
+	Root: "/tmp/storage-stat",
 })
 _ = disk.Put("docs/readme.txt", []byte("hello"))
 
@@ -824,7 +824,7 @@ _Example: handle unsupported url generation_
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-url",
+	Root: "/tmp/storage-url",
 })
 
 _, err := disk.URL("docs/readme.txt")
@@ -838,7 +838,7 @@ Walk visits entries recursively when the backend supports it.
 
 ```go
 disk, _ := storage.Build(localstorage.Config{
-	Remote: "/tmp/storage-walk",
+	Root: "/tmp/storage-walk",
 })
 
 err := disk.Walk("", func(entry storage.Entry) error {
@@ -931,7 +931,7 @@ _Example: define local storage config_
 
 ```go
 cfg := localstorage.Config{
-	Remote: "/tmp/storage-local",
+	Root: "/tmp/storage-local",
 	Prefix: "sandbox",
 }
 ```
@@ -940,7 +940,7 @@ _Example: define local storage config with all fields_
 
 ```go
 cfg := localstorage.Config{
-	Remote: "/tmp/storage-local",
+	Root: "/tmp/storage-local",
 	Prefix: "sandbox", // default: ""
 }
 ```
@@ -1080,11 +1080,11 @@ fs, _ := gcsstorage.New(gcsstorage.Config{
 
 ### <a id="localstorage-new"></a>localstorage.New
 
-New constructs local storage rooted at cfg.Remote with an optional prefix.
+New constructs local storage rooted at cfg.Root with an optional prefix.
 
 ```go
 fs, _ := localstorage.New(localstorage.Config{
-	Remote: "/tmp/storage-local",
+	Root: "/tmp/storage-local",
 	Prefix: "sandbox",
 })
 ```
@@ -1159,7 +1159,7 @@ Config defines named disks using typed driver configs.
 cfg := storage.Config{
 	Default: "local",
 	Disks: map[storage.DiskName]storage.DriverConfig{
-		"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+		"local": localstorage.Config{Root: "/tmp/storage-manager"},
 	},
 }
 ```
@@ -1172,7 +1172,7 @@ Manager holds named storage disks.
 mgr, _ := storage.New(storage.Config{
 	Default: "local",
 	Disks: map[storage.DiskName]storage.DriverConfig{
-		"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+		"local": localstorage.Config{Root: "/tmp/storage-manager"},
 	},
 })
 ```
@@ -1185,7 +1185,7 @@ Default returns the default disk or panics if misconfigured.
 mgr, _ := storage.New(storage.Config{
 	Default: "local",
 	Disks: map[storage.DiskName]storage.DriverConfig{
-		"local": localstorage.Config{Remote: "/tmp/storage-default"},
+		"local": localstorage.Config{Root: "/tmp/storage-default"},
 	},
 })
 
@@ -1202,8 +1202,8 @@ Disk returns a named disk or an error if it does not exist.
 mgr, _ := storage.New(storage.Config{
 	Default: "local",
 	Disks: map[storage.DiskName]storage.DriverConfig{
-		"local":   localstorage.Config{Remote: "/tmp/storage-default"},
-		"uploads": localstorage.Config{Remote: "/tmp/storage-uploads"},
+		"local":   localstorage.Config{Root: "/tmp/storage-default"},
+		"uploads": localstorage.Config{Root: "/tmp/storage-uploads"},
 	},
 })
 
@@ -1220,8 +1220,8 @@ New constructs a Manager and eagerly initializes all disks.
 mgr, _ := storage.New(storage.Config{
 	Default: "local",
 	Disks: map[storage.DiskName]storage.DriverConfig{
-		"local":  localstorage.Config{Remote: "/tmp/storage-local"},
-		"assets": localstorage.Config{Remote: "/tmp/storage-assets", Prefix: "public"},
+		"local":  localstorage.Config{Root: "/tmp/storage-local"},
+		"assets": localstorage.Config{Root: "/tmp/storage-assets", Prefix: "public"},
 	},
 })
 ```

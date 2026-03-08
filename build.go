@@ -9,7 +9,7 @@ import "context"
 // Example: build a single disk
 //
 //	fs, _ := storage.Build(localstorage.Config{
-//		Remote: "/tmp/storage-example",
+//		Root: "/tmp/storage-example",
 //		Prefix: "assets",
 //	})
 //	_ = fs

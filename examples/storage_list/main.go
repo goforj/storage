@@ -13,7 +13,7 @@ func main() {
 
 	// Example: list a directory
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-list",
+		Root: "/tmp/storage-list",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 

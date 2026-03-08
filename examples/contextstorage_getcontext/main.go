@@ -15,7 +15,7 @@ func main() {
 
 	// Example: read an object with a timeout
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-get-context",
+		Root: "/tmp/storage-get-context",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 

@@ -5,11 +5,11 @@ package main
 import "github.com/goforj/storage/driver/localstorage"
 
 func main() {
-	// New constructs local storage rooted at cfg.Remote with an optional prefix.
+	// New constructs local storage rooted at cfg.Root with an optional prefix.
 
 	// Example: local storage
 	fs, _ := localstorage.New(localstorage.Config{
-		Remote: "/tmp/storage-local",
+		Root:   "/tmp/storage-local",
 		Prefix: "sandbox",
 	})
 	_ = fs

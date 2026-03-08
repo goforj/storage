@@ -14,7 +14,7 @@ func main() {
 
 	// Example: walk a backend when supported
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-walk",
+		Root: "/tmp/storage-walk",
 	})
 
 	err := disk.Walk("", func(entry storage.Entry) error {

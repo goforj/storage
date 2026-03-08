@@ -13,7 +13,7 @@ func main() {
 
 	// Example: stat an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-stat",
+		Root: "/tmp/storage-stat",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 

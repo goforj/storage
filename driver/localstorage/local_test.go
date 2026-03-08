@@ -14,7 +14,7 @@ func TestLocalStorageContract(t *testing.T) {
 	cfg := storage.Config{
 		Default: "local",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": Config{Remote: root, Prefix: "sandbox"},
+			"local": Config{Root: root, Prefix: "sandbox"},
 		},
 	}
 
@@ -37,7 +37,7 @@ func TestLocalPrefixIsolation(t *testing.T) {
 	cfg := storage.Config{
 		Default: "local",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": Config{Remote: root, Prefix: "sandbox"},
+			"local": Config{Root: root, Prefix: "sandbox"},
 		},
 	}
 	manager, err := storage.New(cfg)

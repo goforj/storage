@@ -15,7 +15,7 @@ func main() {
 	mgr, _ := storage.New(storage.Config{
 		Default: "local",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": localstorage.Config{Remote: "/tmp/storage-default"},
+			"local": localstorage.Config{Root: "/tmp/storage-default"},
 		},
 	})
 

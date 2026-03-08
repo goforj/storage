@@ -143,7 +143,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		}
 		return &benchmarkFixture{
 			newStore: func(context.Context) (storage.Storage, func(), error) {
-				store, err := storage.Build(localstorage.Config{Remote: root, Prefix: "bench"})
+				store, err := storage.Build(localstorage.Config{Root: root, Prefix: "bench"})
 				return store, func() {}, err
 			},
 			cleanup: func() { _ = os.RemoveAll(root) },

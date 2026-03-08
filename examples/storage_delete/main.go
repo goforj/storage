@@ -13,7 +13,7 @@ func main() {
 
 	// Example: delete an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-delete",
+		Root: "/tmp/storage-delete",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	_ = disk.Delete("docs/readme.txt")

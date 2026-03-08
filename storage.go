@@ -26,7 +26,7 @@ import (
 //
 //	var disk storage.Storage
 //	disk, _ = storage.Build(localstorage.Config{
-//		Remote: "/tmp/storage-interface",
+//		Root: "/tmp/storage-interface",
 //	})
 //	_ = disk
 type Storage interface {
@@ -35,7 +35,7 @@ type Storage interface {
 	// Example: read an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-get",
+	//		Root: "/tmp/storage-get",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
@@ -49,7 +49,7 @@ type Storage interface {
 	// Example: write an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-put",
+	//		Root: "/tmp/storage-put",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//	fmt.Println("stored")
@@ -61,7 +61,7 @@ type Storage interface {
 	// Example: delete an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-delete",
+	//		Root: "/tmp/storage-delete",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//	_ = disk.Delete("docs/readme.txt")
@@ -76,7 +76,7 @@ type Storage interface {
 	// Example: stat an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-stat",
+	//		Root: "/tmp/storage-stat",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
@@ -90,7 +90,7 @@ type Storage interface {
 	// Example: check for an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-exists",
+	//		Root: "/tmp/storage-exists",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
@@ -104,7 +104,7 @@ type Storage interface {
 	// Example: list a directory
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-list",
+	//		Root: "/tmp/storage-list",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
@@ -118,7 +118,7 @@ type Storage interface {
 	// Example: walk a backend when supported
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-walk",
+	//		Root: "/tmp/storage-walk",
 	//	})
 	//
 	//	err := disk.Walk("", func(entry storage.Entry) error {
@@ -134,7 +134,7 @@ type Storage interface {
 	// Example: copy an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-copy",
+	//		Root: "/tmp/storage-copy",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//	_ = disk.Copy("docs/readme.txt", "docs/copy.txt")
@@ -149,7 +149,7 @@ type Storage interface {
 	// Example: move an object
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-move",
+	//		Root: "/tmp/storage-move",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//	_ = disk.Move("docs/readme.txt", "docs/archive.txt")
@@ -174,7 +174,7 @@ type Storage interface {
 	// Example: handle unsupported url generation
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-url",
+	//		Root: "/tmp/storage-url",
 	//	})
 	//
 	//	_, err := disk.URL("docs/readme.txt")
@@ -192,7 +192,7 @@ type ContextStorage interface {
 	// Example: read an object with a timeout
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
-	//		Remote: "/tmp/storage-get-context",
+	//		Root: "/tmp/storage-get-context",
 	//	})
 	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
@@ -269,7 +269,7 @@ type DiskName string
 // Example: pass a typed driver config
 //
 //	var cfg storage.DriverConfig = localstorage.Config{
-//		Remote: "/tmp/storage-config",
+//		Root: "/tmp/storage-config",
 //	}
 //	_ = cfg
 type DriverConfig interface {
@@ -285,7 +285,7 @@ type DriverConfig interface {
 //	cfg := storage.Config{
 //		Default: "local",
 //		Disks: map[storage.DiskName]storage.DriverConfig{
-//			"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+//			"local": localstorage.Config{Root: "/tmp/storage-manager"},
 //		},
 //	}
 //	_ = cfg

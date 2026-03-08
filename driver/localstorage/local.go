@@ -31,7 +31,7 @@ type driver struct {
 // Example: define local storage config
 //
 //	cfg := localstorage.Config{
-//		Remote: "/tmp/storage-local",
+//		Root:   "/tmp/storage-local",
 //		Prefix: "sandbox",
 //	}
 //	_ = cfg
@@ -39,12 +39,12 @@ type driver struct {
 // Example: define local storage config with all fields
 //
 //	cfg := localstorage.Config{
-//		Remote: "/tmp/storage-local",
+//		Root:   "/tmp/storage-local",
 //		Prefix: "sandbox", // default: ""
 //	}
 //	_ = cfg
 type Config struct {
-	Remote string
+	Root   string
 	Prefix string
 }
 
@@ -53,18 +53,18 @@ func (Config) DriverName() string { return "local" }
 func (c Config) ResolvedConfig() storage.ResolvedConfig {
 	return storage.ResolvedConfig{
 		Driver: "local",
-		Remote: c.Remote,
+		Remote: c.Root,
 		Prefix: c.Prefix,
 	}
 }
 
-// New constructs local storage rooted at cfg.Remote with an optional prefix.
+// New constructs local storage rooted at cfg.Root with an optional prefix.
 // @group Driver Constructors
 //
 // Example: local storage
 //
 //	fs, _ := localstorage.New(localstorage.Config{
-//		Remote: "/tmp/storage-local",
+//		Root:   "/tmp/storage-local",
 //		Prefix: "sandbox",
 //	})
 //	_ = fs
@@ -78,7 +78,7 @@ func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
 	if cfg.Remote == "" {
-		return nil, fmt.Errorf("storage: local storage requires remote path")
+		return nil, fmt.Errorf("storage: local storage requires root path")
 	}
 	cleanPrefix, err := storage.NormalizePath(cfg.Prefix)
 	if err != nil {

@@ -14,7 +14,7 @@ func main() {
 
 	// Example: handle unsupported url generation
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-url",
+		Root: "/tmp/storage-url",
 	})
 
 	_, err := disk.URL("docs/readme.txt")

@@ -13,7 +13,7 @@ import (
 //	mgr, _ := storage.New(storage.Config{
 //		Default: "local",
 //		Disks: map[storage.DiskName]storage.DriverConfig{
-//			"local": localstorage.Config{Remote: "/tmp/storage-manager"},
+//			"local": localstorage.Config{Root: "/tmp/storage-manager"},
 //		},
 //	})
 //	_ = mgr
@@ -30,8 +30,8 @@ type Manager struct {
 //	mgr, _ := storage.New(storage.Config{
 //		Default: "local",
 //		Disks: map[storage.DiskName]storage.DriverConfig{
-//			"local":  localstorage.Config{Remote: "/tmp/storage-local"},
-//			"assets": localstorage.Config{Remote: "/tmp/storage-assets", Prefix: "public"},
+//			"local":  localstorage.Config{Root: "/tmp/storage-local"},
+//			"assets": localstorage.Config{Root: "/tmp/storage-assets", Prefix: "public"},
 //		},
 //	})
 //	_ = mgr
@@ -74,7 +74,7 @@ func New(cfg Config) (*Manager, error) {
 //	mgr, _ := storage.New(storage.Config{
 //		Default: "local",
 //		Disks: map[storage.DiskName]storage.DriverConfig{
-//			"local": localstorage.Config{Remote: "/tmp/storage-default"},
+//			"local": localstorage.Config{Root: "/tmp/storage-default"},
 //		},
 //	})
 //
@@ -97,8 +97,8 @@ func (m *Manager) Default() Storage {
 //	mgr, _ := storage.New(storage.Config{
 //		Default: "local",
 //		Disks: map[storage.DiskName]storage.DriverConfig{
-//			"local":   localstorage.Config{Remote: "/tmp/storage-default"},
-//			"uploads": localstorage.Config{Remote: "/tmp/storage-uploads"},
+//			"local":   localstorage.Config{Root: "/tmp/storage-default"},
+//			"uploads": localstorage.Config{Root: "/tmp/storage-uploads"},
 //		},
 //	})
 //

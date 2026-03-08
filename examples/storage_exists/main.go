@@ -13,7 +13,7 @@ func main() {
 
 	// Example: check for an object
 	disk, _ := storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-exists",
+		Root: "/tmp/storage-exists",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 

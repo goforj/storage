@@ -9,7 +9,7 @@ func main() {
 
 	// Example: define local storage config with all fields
 	cfg := localstorage.Config{
-		Remote: "/tmp/storage-local",
+		Root:   "/tmp/storage-local",
 		Prefix: "sandbox", // default: ""
 	}
 	_ = cfg

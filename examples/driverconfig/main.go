@@ -13,7 +13,7 @@ func main() {
 
 	// Example: pass a typed driver config
 	var cfg storage.DriverConfig = localstorage.Config{
-		Remote: "/tmp/storage-config",
+		Root: "/tmp/storage-config",
 	}
 	_ = cfg
 }

@@ -21,7 +21,7 @@ func TestLocalConstructors(t *testing.T) {
 
 	t.Run("new context success", func(t *testing.T) {
 		root := t.TempDir()
-		got, err := NewContext(context.Background(), Config{Remote: root, Prefix: "pre"})
+		got, err := NewContext(context.Background(), Config{Root: root, Prefix: "pre"})
 		if err != nil {
 			t.Fatalf("NewContext: %v", err)
 		}

@@ -23,7 +23,7 @@ func main() {
 	// Example: use the storage interface
 	var disk storage.Storage
 	disk, _ = storage.Build(localstorage.Config{
-		Remote: "/tmp/storage-interface",
+		Root: "/tmp/storage-interface",
 	})
 	_ = disk
 }
