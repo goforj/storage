@@ -154,7 +154,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		"data":    string(contents),
 		"modtime": modTime,
 	})
-	pipe.SAdd(ctx, d.indexKey(), key)
+	d.indexPut(pipe, key)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("storage: redis put: %w", err)
 	}
@@ -180,7 +180,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if deleted == 0 {
 		return fmt.Errorf("%w: object not found", storage.ErrNotFound)
 	}
-	if err := d.client.SRem(ctx, d.indexKey(), key).Err(); err != nil {
+	if err := d.unindexDelete(ctx, key); err != nil {
 		return fmt.Errorf("storage: redis delete: %w", err)
 	}
 	return nil
@@ -206,11 +206,11 @@ func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, erro
 		return storage.Entry{Path: d.stripPrefix(key), Size: size, IsDir: false}, nil
 	}
 
-	keys, err := d.keys(ctx)
+	ok, err := d.dirExists(ctx, key)
 	if err != nil {
 		return storage.Entry{}, err
 	}
-	if hasChildren(keys, key) {
+	if ok {
 		return storage.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
 	}
 	return storage.Entry{}, fmt.Errorf("%w: object not found", storage.ErrNotFound)
@@ -247,11 +247,14 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	if err != nil {
 		return nil, err
 	}
-	keys, err := d.keys(ctx)
+	children, err := d.children(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	entries := d.listEntries(keys, key)
+	entries, err := d.listEntries(ctx, children)
+	if err != nil {
+		return nil, err
+	}
 	if key != "" && len(entries) == 0 {
 		size, err := d.objectSize(ctx, key)
 		if err != nil {
@@ -260,7 +263,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		if size >= 0 {
 			return nil, fmt.Errorf("%w: path is not a directory", storage.ErrNotFound)
 		}
-		if !hasChildren(keys, key) {
+		ok, err := d.dirExists(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			return nil, fmt.Errorf("%w: object not found", storage.ErrNotFound)
 		}
 	}
@@ -279,7 +286,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 	if err != nil {
 		return err
 	}
-	keys, err := d.keys(ctx)
+	keys, err := d.descendants(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -330,7 +337,7 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 		"data":    data,
 		"modtime": time.Now().UTC().UnixNano(),
 	})
-	pipe.SAdd(ctx, d.indexKey(), dstKey)
+	d.indexPut(pipe, dstKey)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("storage: redis copy: %w", err)
 	}
@@ -366,11 +373,12 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 		"data":    data,
 		"modtime": time.Now().UTC().UnixNano(),
 	})
-	pipe.SAdd(ctx, d.indexKey(), dstKey)
-	pipe.Del(ctx, d.objectKey(srcKey))
-	pipe.SRem(ctx, d.indexKey(), srcKey)
+	d.indexPut(pipe, dstKey)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("storage: redis move: %w", err)
+	}
+	if err := d.DeleteContext(ctx, src); err != nil {
+		return err
 	}
 	return nil
 }
@@ -428,8 +436,12 @@ func (d *driver) objectKey(key string) string {
 	return d.namespace + ":obj:" + key
 }
 
-func (d *driver) indexKey() string {
-	return d.namespace + ":index"
+func (d *driver) dirChildrenKey(key string) string {
+	return d.namespace + ":dir:" + key + ":children"
+}
+
+func (d *driver) dirObjectsKey(key string) string {
+	return d.namespace + ":dir:" + key + ":objects"
 }
 
 func (d *driver) stripPrefix(key string) string {
@@ -451,54 +463,39 @@ func (d *driver) objectSize(ctx context.Context, key string) (int64, error) {
 	return int64(len(data)), nil
 }
 
-func (d *driver) keys(ctx context.Context) ([]string, error) {
-	keys, err := d.client.SMembers(ctx, d.indexKey()).Result()
+func (d *driver) children(ctx context.Context, key string) ([]string, error) {
+	children, err := d.client.SMembers(ctx, d.dirChildrenKey(key)).Result()
 	if err != nil {
 		return nil, fmt.Errorf("storage: redis list: %w", err)
 	}
-	slices.Sort(keys)
-	return keys, nil
+	slices.Sort(children)
+	return children, nil
 }
 
-func (d *driver) listEntries(keys []string, key string) []storage.Entry {
-	prefix := key
-	if prefix != "" {
-		prefix += "/"
-	}
-	seenDirs := map[string]struct{}{}
-	entries := make([]storage.Entry, 0, len(keys))
-	for _, existing := range keys {
-		if key != "" && !strings.HasPrefix(existing, prefix) {
-			continue
+func (d *driver) listEntries(ctx context.Context, children []string) ([]storage.Entry, error) {
+	entries := make([]storage.Entry, 0, len(children))
+	for _, child := range children {
+		isDir, key, err := parseChildEntry(child)
+		if err != nil {
+			return nil, err
 		}
-		rest := existing
-		if prefix != "" {
-			rest = strings.TrimPrefix(existing, prefix)
+		entry := storage.Entry{Path: d.stripPrefix(key), IsDir: isDir}
+		if !isDir {
+			size, err := d.objectSize(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			if size < 0 {
+				continue
+			}
+			entry.Size = size
 		}
-		parts := strings.Split(rest, "/")
-		if len(parts) == 1 {
-			entries = append(entries, storage.Entry{
-				Path:  d.stripPrefix(existing),
-				Size:  0,
-				IsDir: false,
-			})
-			continue
-		}
-		child := parts[0]
-		dirPath := child
-		if key != "" {
-			dirPath = key + "/" + child
-		}
-		if _, ok := seenDirs[dirPath]; ok {
-			continue
-		}
-		seenDirs[dirPath] = struct{}{}
-		entries = append(entries, storage.Entry{Path: d.stripPrefix(dirPath), IsDir: true})
+		entries = append(entries, entry)
 	}
 	slices.SortFunc(entries, func(a, b storage.Entry) int {
 		return strings.Compare(a.Path, b.Path)
 	})
-	return entries
+	return entries, nil
 }
 
 func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]storage.Entry, bool, error) {
@@ -509,20 +506,13 @@ func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]
 	if size >= 0 {
 		return []storage.Entry{{Path: d.stripPrefix(key), Size: size, IsDir: false}}, true, nil
 	}
-	if key != "" && !hasChildren(keys, key) {
+	if key != "" && len(keys) == 0 {
 		return nil, false, nil
 	}
 
-	prefix := key
-	if prefix != "" {
-		prefix += "/"
-	}
 	seenDirs := map[string]struct{}{}
 	entries := make([]storage.Entry, 0, len(keys))
 	for _, existing := range keys {
-		if key != "" && !strings.HasPrefix(existing, prefix) {
-			continue
-		}
 		for _, dir := range recursiveParentDirs(d.stripPrefix(existing)) {
 			fullDir := storage.JoinPrefix(d.prefix, dir)
 			if _, ok := seenDirs[fullDir]; ok {
@@ -550,17 +540,70 @@ func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]
 	return entries, true, nil
 }
 
-func hasChildren(keys []string, key string) bool {
-	prefix := key
-	if prefix != "" {
-		prefix += "/"
+func (d *driver) descendants(ctx context.Context, key string) ([]string, error) {
+	keys, err := d.client.SMembers(ctx, d.dirObjectsKey(key)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("storage: redis walk: %w", err)
 	}
-	for _, existing := range keys {
-		if key == "" || strings.HasPrefix(existing, prefix) {
-			return true
+	slices.Sort(keys)
+	return keys, nil
+}
+
+func (d *driver) dirExists(ctx context.Context, key string) (bool, error) {
+	count, err := d.client.SCard(ctx, d.dirObjectsKey(key)).Result()
+	if err != nil {
+		return false, fmt.Errorf("storage: redis stat: %w", err)
+	}
+	return count > 0, nil
+}
+
+func (d *driver) indexPut(pipe redis.Pipeliner, key string) {
+	dirs := objectDirs(key)
+	pipe.SAdd(context.Background(), d.dirObjectsKey(""), key)
+	if len(dirs) == 0 {
+		pipe.SAdd(context.Background(), d.dirChildrenKey(""), encodeFileChild(key))
+		return
+	}
+	for _, dir := range dirs {
+		pipe.SAdd(context.Background(), d.dirObjectsKey(dir), key)
+	}
+	pipe.SAdd(context.Background(), d.dirChildrenKey(""), encodeDirChild(dirs[0]))
+	for i := 0; i < len(dirs)-1; i++ {
+		pipe.SAdd(context.Background(), d.dirChildrenKey(dirs[i]), encodeDirChild(dirs[i+1]))
+	}
+	pipe.SAdd(context.Background(), d.dirChildrenKey(dirs[len(dirs)-1]), encodeFileChild(key))
+}
+
+func (d *driver) unindexDelete(ctx context.Context, key string) error {
+	dirs := objectDirs(key)
+	pipe := d.client.TxPipeline()
+	pipe.SRem(ctx, d.dirObjectsKey(""), key)
+	pipe.SRem(ctx, d.dirChildrenKey(parentDir(key)), encodeFileChild(key))
+	for _, dir := range dirs {
+		pipe.SRem(ctx, d.dirObjectsKey(dir), key)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+	for i := len(dirs) - 1; i >= 0; i-- {
+		dir := dirs[i]
+		count, err := d.client.SCard(ctx, d.dirObjectsKey(dir)).Result()
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			break
+		}
+		parent := parentDir(dir)
+		pipe := d.client.TxPipeline()
+		pipe.Del(ctx, d.dirObjectsKey(dir))
+		pipe.Del(ctx, d.dirChildrenKey(dir))
+		pipe.SRem(ctx, d.dirChildrenKey(parent), encodeDirChild(dir))
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
 		}
 	}
-	return false
+	return nil
 }
 
 func recursiveParentDirs(p string) []string {
@@ -576,6 +619,48 @@ func recursiveParentDirs(p string) []string {
 		out = append(out, strings.Join(parts[:i+1], "/"))
 	}
 	return out
+}
+
+func objectDirs(key string) []string {
+	parts := strings.Split(key, "/")
+	if len(parts) <= 1 {
+		return nil
+	}
+	out := make([]string, 0, len(parts)-1)
+	for i := range parts[:len(parts)-1] {
+		out = append(out, strings.Join(parts[:i+1], "/"))
+	}
+	return out
+}
+
+func parentDir(key string) string {
+	if key == "" {
+		return ""
+	}
+	idx := strings.LastIndexByte(key, '/')
+	if idx == -1 {
+		return ""
+	}
+	return key[:idx]
+}
+
+func encodeFileChild(key string) string {
+	return "f:" + key
+}
+
+func encodeDirChild(key string) string {
+	return "d:" + key
+}
+
+func parseChildEntry(child string) (bool, string, error) {
+	switch {
+	case strings.HasPrefix(child, "f:"):
+		return false, strings.TrimPrefix(child, "f:"), nil
+	case strings.HasPrefix(child, "d:"):
+		return true, strings.TrimPrefix(child, "d:"), nil
+	default:
+		return false, "", fmt.Errorf("storage: redis invalid child entry %q", child)
+	}
 }
 
 func redisNamespace(cfg storage.ResolvedConfig) string {

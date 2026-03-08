@@ -426,7 +426,7 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
-				break
+				continue
 			}
 			results[op.name] = append(results[op.name], benchRow{
 				Driver:   bc.name,

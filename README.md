@@ -40,7 +40,7 @@ Each backend has its own API and client library.
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Distributed memory | Good for temporary distributed blob storage with explicit size and durability tradeoffs. |
 | <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
 | <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
@@ -340,19 +340,19 @@ Notes:
 
 ### Latency (ns/op)
 
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=1773000899)
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=1773001729)
 
 ### Iterations (N)
 
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=1773000899)
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=1773001729)
 
 ### Allocated Bytes (B/op)
 
-![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=1773000899)
+![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=1773001729)
 
 ### Allocations (allocs/op)
 
-![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=1773000899)
+![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=1773001729)
 <!-- bench:embed:end -->
 
 ## Capability Matrix
@@ -362,7 +362,7 @@ Notes:
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
 | <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
