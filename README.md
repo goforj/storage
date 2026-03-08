@@ -39,13 +39,13 @@ Each driver is thoroughly tested against the shared test suite using [testcontai
 
 | Driver | Kind | Notes |
 | ---: | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Distributed memory | Good for temporary distributed blob storage with explicit size and durability tradeoffs. |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Returns temporary links; external integration strategy still open. |
 | <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Depends on the underlying rclone remote; see the [rclone storage systems overview](https://rclone.org/overview/). |
 
@@ -63,10 +63,10 @@ Then add the driver modules you need, for example:
 go get github.com/goforj/storage/driver/localstorage
 go get github.com/goforj/storage/driver/memorystorage
 go get github.com/goforj/storage/driver/redisstorage
+go get github.com/goforj/storage/driver/ftpstorage
+go get github.com/goforj/storage/driver/sftpstorage
 go get github.com/goforj/storage/driver/s3storage
 go get github.com/goforj/storage/driver/gcsstorage
-go get github.com/goforj/storage/driver/sftpstorage
-go get github.com/goforj/storage/driver/ftpstorage
 go get github.com/goforj/storage/driver/dropboxstorage
 go get github.com/goforj/storage/driver/rclonestorage
 ```
@@ -361,13 +361,13 @@ Notes:
 
 | Driver | Stat | Copy | Move | Walk | URL | Context |
 | ---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
 
