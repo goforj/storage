@@ -13,6 +13,10 @@ import (
 )
 
 func TestFTPConstructors(t *testing.T) {
+	if got := (Config{}).DriverName(); got != "ftp" {
+		t.Fatalf("DriverName = %q", got)
+	}
+
 	t.Run("new missing host", func(t *testing.T) {
 		_, err := New(Config{})
 		if err == nil {
@@ -36,6 +40,12 @@ func TestFTPPrefixHelpers(t *testing.T) {
 	if got := d.stripPrefix("pre/path/to"); got != "path/to" {
 		t.Fatalf("stripPrefix got %q", got)
 	}
+	if got := (&driver{}).stripPrefix("plain/path"); got != "plain/path" {
+		t.Fatalf("stripPrefix without prefix got %q", got)
+	}
+	if _, err := d.fullPath("../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("fullPath invalid error = %v", err)
+	}
 }
 
 func TestFTPWrapError(t *testing.T) {
@@ -44,6 +54,12 @@ func TestFTPWrapError(t *testing.T) {
 	}
 	if err := wrapError(errors.New("File not available")); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for case-insensitive match")
+	}
+	if err := wrapError(nil); err != nil {
+		t.Fatalf("wrapError(nil) = %v", err)
+	}
+	if err := wrapError(errors.New("boom")); errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("wrapError should preserve unrelated errors")
 	}
 }
 
@@ -69,6 +85,18 @@ func TestFTPContextCancellation(t *testing.T) {
 	}
 	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
+	}
+	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CopyContext error = %v", err)
+	}
+	if err := d.MoveContext(ctx, "file.txt", "moved.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("MoveContext error = %v", err)
+	}
+	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrUnsupported) {
+		t.Fatalf("URL error = %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close error = %v", err)
 	}
 }
 

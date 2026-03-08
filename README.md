@@ -35,6 +35,8 @@ Each backend has its own API and client library.
 
 ## Driver Matrix
 
+Each driver is thoroughly tested against the shared test suite using [testcontainers](https://testcontainers.com/) or emulators where appropriate. 
+
 | Driver | Kind | Notes |
 | ---: | --- | --- |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |

@@ -13,6 +13,9 @@ import (
 
 func TestConfigResolvedConfig(t *testing.T) {
 	cfg := memorystorage.Config{Prefix: "sandbox"}
+	if got := cfg.DriverName(); got != "memory" {
+		t.Fatalf("DriverName = %q", got)
+	}
 	resolved := cfg.ResolvedConfig()
 	if resolved.Driver != "memory" {
 		t.Fatalf("Driver = %q", resolved.Driver)
@@ -123,5 +126,112 @@ func TestModTime(t *testing.T) {
 	}
 	if time.Since(got) > time.Minute {
 		t.Fatalf("ModTime too old: %v", got)
+	}
+
+	if _, err := mt.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("ModTime missing error = %v", err)
+	}
+}
+
+func TestMemoryStorageEdgeCases(t *testing.T) {
+	store, err := memorystorage.New(memorystorage.Config{Prefix: "pre"})
+	if err != nil {
+		t.Fatalf("memorystorage.New: %v", err)
+	}
+
+	if _, err := memorystorage.New(memorystorage.Config{Prefix: "../bad"}); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("New invalid prefix error = %v", err)
+	}
+	if _, err := store.Get("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Get missing error = %v", err)
+	}
+	if err := store.Delete("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Delete missing error = %v", err)
+	}
+	if _, err := store.Stat("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Stat missing error = %v", err)
+	}
+	if _, err := store.List("missing"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("List missing error = %v", err)
+	}
+	if err := store.Walk("missing", func(storage.Entry) error { return nil }); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Walk missing error = %v", err)
+	}
+	if _, err := store.URL("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("URL missing error = %v", err)
+	}
+	if err := store.Copy("missing.txt", "copy.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Copy missing error = %v", err)
+	}
+	if err := store.Move("missing.txt", "move.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Move missing error = %v", err)
+	}
+}
+
+func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
+	store, err := memorystorage.New(memorystorage.Config{})
+	if err != nil {
+		t.Fatalf("memorystorage.New: %v", err)
+	}
+
+	payload := []byte("hello")
+	if err := store.Put("dir/sub/file.txt", payload); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	payload[0] = 'x'
+	got, err := store.Get("dir/sub/file.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("Get cloned payload = %q", got)
+	}
+	got[0] = 'y'
+	got2, err := store.Get("dir/sub/file.txt")
+	if err != nil {
+		t.Fatalf("Get second: %v", err)
+	}
+	if string(got2) != "hello" {
+		t.Fatalf("Get second payload = %q", got2)
+	}
+
+	entries, err := store.List("dir/sub/file.txt")
+	if err == nil || !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("List file error = %v entries=%v", err, entries)
+	}
+
+	var walked []string
+	stop := errors.New("stop")
+	err = store.Walk("dir", func(entry storage.Entry) error {
+		walked = append(walked, entry.Path)
+		if entry.Path == "dir/sub/file.txt" {
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) {
+		t.Fatalf("Walk callback error = %v", err)
+	}
+	if len(walked) == 0 {
+		t.Fatal("Walk returned no entries")
+	}
+
+	if err := store.Copy("dir/sub/file.txt", "copy.txt"); err != nil {
+		t.Fatalf("Copy: %v", err)
+	}
+	copyData, err := store.Get("copy.txt")
+	if err != nil || string(copyData) != "hello" {
+		t.Fatalf("Get copy = %q err=%v", copyData, err)
+	}
+
+	if err := store.Move("copy.txt", "moved.txt"); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if exists, err := store.Exists("copy.txt"); err != nil || exists {
+		t.Fatalf("Exists old copy = %v err=%v", exists, err)
+	}
+
+	if _, err := store.URL("moved.txt"); !errors.Is(err, storage.ErrUnsupported) {
+		t.Fatalf("URL moved error = %v", err)
 	}
 }

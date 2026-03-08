@@ -110,6 +110,10 @@ func TestS3StorageOperations(t *testing.T) {
 }
 
 func TestS3Constructors(t *testing.T) {
+	if got := (Config{}).DriverName(); got != "s3" {
+		t.Fatalf("DriverName = %q", got)
+	}
+
 	t.Run("missing bucket", func(t *testing.T) {
 		_, err := New(Config{Region: "us-east-1"})
 		if err == nil {
@@ -121,6 +125,23 @@ func TestS3Constructors(t *testing.T) {
 		_, err := New(Config{Bucket: "bucket"})
 		if err == nil {
 			t.Fatal("New returned nil error")
+		}
+	})
+
+	t.Run("resolved config", func(t *testing.T) {
+		cfg := Config{
+			Bucket:          "bucket",
+			Endpoint:        "http://localhost:9000",
+			Region:          "us-east-1",
+			AccessKeyID:     "access",
+			SecretAccessKey: "secret",
+			UsePathStyle:    true,
+			UnsignedPayload: true,
+			Prefix:          "pre",
+		}
+		resolved := cfg.ResolvedConfig()
+		if resolved.Driver != "s3" || resolved.S3Bucket != "bucket" || !resolved.S3UsePathStyle || !resolved.S3UnsignedPayload || resolved.Prefix != "pre" {
+			t.Fatalf("ResolvedConfig = %+v", resolved)
 		}
 	})
 }
@@ -147,6 +168,12 @@ func TestS3ContextCancellation(t *testing.T) {
 	}
 	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
+	}
+	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CopyContext error = %v", err)
+	}
+	if err := d.MoveContext(ctx, "file.txt", "move.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("MoveContext error = %v", err)
 	}
 	if _, err := d.URLContext(ctx, "file.txt"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("URLContext error = %v", err)
@@ -177,6 +204,12 @@ func TestS3WrapError(t *testing.T) {
 	if !isNotFound(&types.NotFound{}) || !isNotFound(&types.NoSuchKey{}) {
 		t.Fatalf("isNotFound should detect known errors")
 	}
+	if err := wrapError(errors.New("boom")); errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("wrapError should preserve unrelated errors")
+	}
+	if isNotFound(errors.New("boom")) {
+		t.Fatalf("isNotFound should ignore unrelated errors")
+	}
 }
 
 func TestS3WalkAndURLBranches(t *testing.T) {
@@ -205,7 +238,7 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 		client := &fakeS3{
 			listSeq: []*s3.ListObjectsV2Output{
 				{
-					Contents: []types.Object{{Key: aws.String("pre/folder/file-a.txt"), Size: aws.Int64(1)}},
+					Contents:              []types.Object{{Key: aws.String("pre/folder/file-a.txt"), Size: aws.Int64(1)}},
 					IsTruncated:           aws.Bool(true),
 					NextContinuationToken: aws.String("next"),
 				},
@@ -242,6 +275,86 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 		}
 		if _, err := d.URL("file.txt"); err == nil {
 			t.Fatal("URL returned nil error")
+		}
+	})
+
+	t.Run("walk head error", func(t *testing.T) {
+		d := &driver{
+			client: &fakeS3{headErr: errors.New("boom")},
+			bucket: "b",
+			prefix: "pre",
+		}
+		if err := d.Walk("file.txt", func(storage.Entry) error { return nil }); err == nil {
+			t.Fatal("Walk returned nil error")
+		}
+	})
+}
+
+func TestS3MoreBranches(t *testing.T) {
+	t.Run("stat and exists not found", func(t *testing.T) {
+		d := &driver{client: &fakeS3{}, bucket: "b", prefix: "pre"}
+		if _, err := d.Stat("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("Stat missing error = %v", err)
+		}
+		ok, err := d.Exists("missing.txt")
+		if err != nil || ok {
+			t.Fatalf("Exists missing = %v err=%v", ok, err)
+		}
+	})
+
+	t.Run("list pagination and callback error", func(t *testing.T) {
+		client := &fakeS3{
+			listSeq: []*s3.ListObjectsV2Output{
+				{
+					CommonPrefixes:        []types.CommonPrefix{{Prefix: aws.String("pre/dir/")}},
+					Contents:              []types.Object{{Key: aws.String("pre/dir/file-a.txt"), Size: aws.Int64(1)}},
+					IsTruncated:           aws.Bool(true),
+					NextContinuationToken: aws.String("next"),
+				},
+				{
+					Contents: []types.Object{
+						{Key: aws.String("pre/dir/file-b.txt"), Size: aws.Int64(2)},
+						{Key: aws.String("pre/")},
+					},
+				},
+			},
+		}
+		d := &driver{client: client, bucket: "b", prefix: "pre"}
+		entries, err := d.List("")
+		if err != nil || len(entries) != 3 {
+			t.Fatalf("List pagination entries=%v err=%v", entries, err)
+		}
+	})
+
+	t.Run("copy and move happy path", func(t *testing.T) {
+		client := &fakeS3{headOK: true, getBody: "payload"}
+		d := &driver{
+			client:  client,
+			presign: fakePresign{url: "http://signed"},
+			bucket:  "b",
+			prefix:  "pre",
+		}
+		if err := d.Copy("src.txt", "dst.txt"); err != nil {
+			t.Fatalf("Copy: %v", err)
+		}
+		if err := d.Move("src.txt", "moved.txt"); err != nil {
+			t.Fatalf("Move: %v", err)
+		}
+	})
+
+	t.Run("key and recursive helpers", func(t *testing.T) {
+		d := &driver{}
+		if _, err := d.key("../bad"); !errors.Is(err, storage.ErrForbidden) {
+			t.Fatalf("key invalid error = %v", err)
+		}
+		if got := d.stripPrefix("plain/path"); got != "plain/path" {
+			t.Fatalf("stripPrefix without prefix = %q", got)
+		}
+		if dirs := recursiveParentDirs("file.txt"); dirs != nil {
+			t.Fatalf("recursiveParentDirs file = %v", dirs)
+		}
+		if dirs := recursiveParentDirs("a/b/file.txt"); len(dirs) != 2 || dirs[0] != "a" || dirs[1] != "a/b" {
+			t.Fatalf("recursiveParentDirs nested = %v", dirs)
 		}
 	})
 }

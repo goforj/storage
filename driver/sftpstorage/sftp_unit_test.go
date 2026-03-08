@@ -10,6 +10,10 @@ import (
 )
 
 func TestSFTPConstructorsAndAuth(t *testing.T) {
+	if got := (Config{}).DriverName(); got != "sftp" {
+		t.Fatalf("DriverName = %q", got)
+	}
+
 	t.Run("new missing host", func(t *testing.T) {
 		_, err := New(Config{})
 		if err == nil {
@@ -44,6 +48,23 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 			t.Fatal("buildHostKeyCallback returned nil callback")
 		}
 	})
+
+	t.Run("build auth password", func(t *testing.T) {
+		methods, err := buildAuth(storage.ResolvedConfig{SFTPPassword: "secret"})
+		if err != nil {
+			t.Fatalf("buildAuth password: %v", err)
+		}
+		if len(methods) != 1 {
+			t.Fatalf("buildAuth methods = %d", len(methods))
+		}
+	})
+
+	t.Run("build host key callback invalid known hosts", func(t *testing.T) {
+		_, err := buildHostKeyCallback(storage.ResolvedConfig{SFTPKnownHostsPath: t.TempDir() + "/missing"})
+		if err == nil {
+			t.Fatal("buildHostKeyCallback returned nil error")
+		}
+	})
 }
 
 func TestSFTPPrefixHelpers(t *testing.T) {
@@ -66,6 +87,9 @@ func TestSFTPWrapError(t *testing.T) {
 	}
 	if err := wrapError(os.ErrPermission); !errors.Is(err, storage.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden")
+	}
+	if err := wrapError(errors.New("other")); errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("wrapError should preserve unrelated errors")
 	}
 }
 
@@ -91,5 +115,39 @@ func TestSFTPContextCancellation(t *testing.T) {
 	}
 	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
+	}
+	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CopyContext error = %v", err)
+	}
+	if err := d.MoveContext(ctx, "file.txt", "moved.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("MoveContext error = %v", err)
+	}
+	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrUnsupported) {
+		t.Fatalf("URL error = %v", err)
+	}
+}
+
+func TestSFTPResolvedConfigAndHelpers(t *testing.T) {
+	cfg := Config{
+		Host:                  "127.0.0.1",
+		Port:                  2022,
+		User:                  "demo",
+		Password:              "secret",
+		KeyPath:               "/tmp/key",
+		KnownHostsPath:        "/tmp/known_hosts",
+		InsecureIgnoreHostKey: true,
+		Prefix:                "pre",
+	}
+	resolved := cfg.ResolvedConfig()
+	if resolved.Driver != "sftp" || resolved.SFTPHost != "127.0.0.1" || resolved.Prefix != "pre" || !resolved.SFTPInsecureIgnoreHostKey {
+		t.Fatalf("ResolvedConfig = %+v", resolved)
+	}
+
+	d := &driver{}
+	if got := d.stripPrefix("plain/path"); got != "plain/path" {
+		t.Fatalf("stripPrefix without prefix = %q", got)
+	}
+	if _, err := d.fullPath("../bad"); !errors.Is(err, storage.ErrForbidden) {
+		t.Fatalf("fullPath invalid error = %v", err)
 	}
 }
