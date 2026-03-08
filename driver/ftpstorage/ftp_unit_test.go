@@ -3,6 +3,10 @@ package ftpstorage
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
+	"net/textproto"
+	"syscall"
 	"testing"
 
 	"github.com/goforj/storage"
@@ -65,5 +69,31 @@ func TestFTPContextCancellation(t *testing.T) {
 	}
 	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
+	}
+}
+
+func TestShouldReconnectFTP(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "not found", err: storage.ErrNotFound, want: false},
+		{name: "context canceled", err: context.Canceled, want: false},
+		{name: "eof", err: io.EOF, want: true},
+		{name: "net closed", err: net.ErrClosed, want: true},
+		{name: "broken pipe", err: syscall.EPIPE, want: true},
+		{name: "ftp 421", err: &textproto.Error{Code: 421, Msg: "service not available"}, want: true},
+		{name: "ftp 550", err: &textproto.Error{Code: 550, Msg: "not found"}, want: false},
+		{name: "closed network", err: errors.New("use of closed network connection"), want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldReconnectFTP(tt.err); got != tt.want {
+				t.Fatalf("shouldReconnectFTP(%v) = %v want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

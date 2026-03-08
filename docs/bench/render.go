@@ -26,6 +26,7 @@ import (
 	localstorage "github.com/goforj/storage/driver/localstorage"
 	memorystorage "github.com/goforj/storage/driver/memorystorage"
 	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
+	redisstorage "github.com/goforj/storage/driver/redisstorage"
 	s3storage "github.com/goforj/storage/driver/s3storage"
 	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
 	"github.com/goforj/storage/storagetest"
@@ -248,6 +249,30 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		}, nil
 	})
 
+	if withDocker || include("redis") {
+		addForced("redis", func(ctx context.Context) (*benchmarkFixture, error) {
+			container, host, port, err := startRedisContainer(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &benchmarkFixture{
+				newStore: func(context.Context) (storage.Storage, func(), error) {
+					store, err := storage.Build(redisstorage.Config{
+						Addr:   net.JoinHostPort(host, strconv.Itoa(port)),
+						Prefix: "bench",
+					})
+					cleanup := func() {
+						if closer, ok := store.(interface{ Close() error }); ok {
+							_ = closer.Close()
+						}
+					}
+					return store, cleanup, err
+				},
+				cleanup: func() { _ = container.Terminate(context.Background()) },
+			}, nil
+		})
+	}
+
 	if withDocker || include("s3") {
 		addForced("s3", func(ctx context.Context) (*benchmarkFixture, error) {
 			container, endpoint, err := startMinioContainer(ctx)
@@ -430,6 +455,7 @@ func renderOp(ctx context.Context, driver string, store storage.Storage, op benc
 	if duration <= 0 {
 		duration = 250 * time.Millisecond
 	}
+	opTimeout := benchOpTimeout()
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -437,13 +463,13 @@ func renderOp(ctx context.Context, driver string, store storage.Storage, op benc
 	deadline := start.Add(duration)
 	var ops int64
 	for time.Now().Before(deadline) {
-		if err := op.run(ctx, store); err != nil {
+		if err := runRenderOpWithTimeout(ctx, store, op.run, opTimeout); err != nil {
 			return 0, 0, 0, 0, fmt.Errorf("render op %s/%s failed: %w", driver, op.name, err)
 		}
 		ops++
 	}
 	if ops == 0 {
-		if err := op.run(ctx, store); err != nil {
+		if err := runRenderOpWithTimeout(ctx, store, op.run, opTimeout); err != nil {
 			return 0, 0, 0, 0, fmt.Errorf("render op %s/%s failed: %w", driver, op.name, err)
 		}
 		ops = 1
@@ -454,6 +480,25 @@ func renderOp(ctx context.Context, driver string, store storage.Storage, op benc
 	bytesPerOp := float64(after.TotalAlloc-before.TotalAlloc) / float64(ops)
 	allocsPerOp := float64(after.Mallocs-before.Mallocs) / float64(ops)
 	return float64(total.Nanoseconds()) / float64(ops), bytesPerOp, allocsPerOp, ops, nil
+}
+
+func runRenderOpWithTimeout(
+	ctx context.Context,
+	store storage.Storage,
+	run func(context.Context, storage.Storage) error,
+	timeout time.Duration,
+) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, store)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out after %s", timeout.Round(time.Millisecond))
+	}
 }
 
 func benchmarkOps() []benchmarkOp {
@@ -635,13 +680,22 @@ func renderDurationForDriver(driver string) time.Duration {
 	switch strings.ToLower(driver) {
 	case "memory", "local":
 		return 250 * time.Millisecond
-	case "gcs", "rclone_local", "ftp":
+	case "gcs", "rclone_local", "ftp", "redis":
 		return 350 * time.Millisecond
 	case "s3", "sftp", "rclone_s3":
 		return 500 * time.Millisecond
 	default:
 		return 350 * time.Millisecond
 	}
+}
+
+func benchOpTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("BENCH_OP_TIMEOUT_MS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return 5 * time.Second
 }
 
 func saveBenchmarkRows(path string, rows map[string][]benchRow) error {
@@ -678,8 +732,8 @@ func renderReadmeSection(cacheBuster int64) string {
 		"Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.\n\n" +
 		"Notes:\n\n" +
 		"- `gcs` uses fake-gcs-server.\n" +
-		"- `ftp` is excluded by default because the current driver opens a fresh connection per operation; include it with `BENCH_DRIVER=ftp`.\n" +
-		"- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
+		"- `ftp` is included by default and now reuses a logged-in control connection per storage instance during the benchmark run.\n" +
+		"- `redis`, `s3`, and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
 		"- `rclone_local` measures rclone overhead on top of a local filesystem remote.\n\n" +
 		"### Latency (ns/op)\n\n" +
 		fmt.Sprintf("![Storage benchmark latency chart](%s)\n\n", chartPath("benchmarks_ns.svg")) +
@@ -899,7 +953,35 @@ func orderedDrivers(rows map[string][]benchRow) []string {
 			}
 		}
 	}
-	sort.Strings(drivers)
+	order := []string{
+		"local",
+		"memory",
+		"rclone_local",
+		"ftp",
+		"sftp",
+		"redis",
+		"gcs",
+		"s3",
+		"rclone_s3",
+	}
+	rank := make(map[string]int, len(order))
+	for i, name := range order {
+		rank[name] = i
+	}
+	sort.Slice(drivers, func(i, j int) bool {
+		ri, iok := rank[drivers[i]]
+		rj, jok := rank[drivers[j]]
+		switch {
+		case iok && jok:
+			return ri < rj
+		case iok:
+			return true
+		case jok:
+			return false
+		default:
+			return drivers[i] < drivers[j]
+		}
+	})
 	return drivers
 }
 
@@ -1097,6 +1179,37 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 		return nil, "", err
 	}
 	return container, fmt.Sprintf("http://%s:%s", host, port.Port()), nil
+}
+
+func startRedisContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
+	req := testcontainers.ContainerRequest{
+		Image:        "redis:7-alpine",
+		ExposedPorts: []string{"6379/tcp"},
+		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
+	}
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, "", 0, err
+	}
+	host, err := container.Host(ctx)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, "", 0, err
+	}
+	port, err := container.MappedPort(ctx, nat.Port("6379/tcp"))
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, "", 0, err
+	}
+	parsed, err := strconv.Atoi(port.Port())
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, "", 0, err
+	}
+	return container, host, parsed, nil
 }
 
 func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, int, error) {

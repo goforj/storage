@@ -334,25 +334,25 @@ Each chart sample uses a fixed measurement window per driver, so the ops chart r
 Notes:
 
 - `gcs` uses fake-gcs-server.
-- `ftp` is excluded by default because the current driver opens a fresh connection per operation; include it with `BENCH_DRIVER=ftp`.
-- `s3` and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.
+- `ftp` is included by default and now reuses a logged-in control connection per storage instance during the benchmark run.
+- `redis`, `s3`, and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.
 - `rclone_local` measures rclone overhead on top of a local filesystem remote.
 
 ### Latency (ns/op)
 
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=1772793177)
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=1773000899)
 
 ### Iterations (N)
 
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=1772793177)
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=1773000899)
 
 ### Allocated Bytes (B/op)
 
-![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=1772793177)
+![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=1773000899)
 
 ### Allocations (allocs/op)
 
-![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=1772793177)
+![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=1773000899)
 <!-- bench:embed:end -->
 
 ## Capability Matrix
@@ -360,6 +360,7 @@ Notes:
 | Driver | Stat | Copy | Move | Walk | URL | Context |
 | ---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | <img src="https://img.shields.io/badge/s3-569A31?logo=amazons3&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |

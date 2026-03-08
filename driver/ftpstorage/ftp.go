@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/textproto"
 	"path"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jlaffaye/ftp"
@@ -24,6 +27,8 @@ func init() {
 }
 
 type driver struct {
+	mu       sync.Mutex
+	conn     *ftp.ServerConn
 	addr     string
 	user     string
 	pass     string
@@ -138,17 +143,67 @@ func (d *driver) dial() (*ftp.ServerConn, error) {
 }
 
 func (d *driver) withConn(fn func(*ftp.ServerConn) error) error {
-	conn, err := d.dial()
-	if err != nil {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, err := d.ensureConnLocked(); err != nil {
 		return err
 	}
-	defer conn.Quit()
-	if d.user != "" || d.pass != "" {
-		if err := conn.Login(d.user, d.pass); err != nil {
+	if err := d.runConnLocked(fn); err != nil {
+		if !shouldReconnectFTP(err) {
+			d.closeConnLocked()
 			return err
 		}
+		d.closeConnLocked()
+		if _, retryErr := d.ensureConnLocked(); retryErr != nil {
+			return retryErr
+		}
+		if retryErr := d.runConnLocked(fn); retryErr != nil {
+			d.closeConnLocked()
+			return retryErr
+		}
 	}
-	return fn(conn)
+	return nil
+}
+
+func (d *driver) runConnLocked(fn func(*ftp.ServerConn) error) error {
+	if d.conn == nil {
+		return fmt.Errorf("storage: ftp connection unavailable")
+	}
+	return fn(d.conn)
+}
+
+func (d *driver) ensureConnLocked() (*ftp.ServerConn, error) {
+	if d.conn != nil {
+		return d.conn, nil
+	}
+	conn, err := d.dial()
+	if err != nil {
+		return nil, err
+	}
+	if d.user != "" || d.pass != "" {
+		if err := conn.Login(d.user, d.pass); err != nil {
+			_ = conn.Quit()
+			return nil, err
+		}
+	}
+	d.conn = conn
+	return conn, nil
+}
+
+func (d *driver) closeConnLocked() {
+	if d.conn == nil {
+		return
+	}
+	_ = d.conn.Quit()
+	d.conn = nil
+}
+
+func (d *driver) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closeConnLocked()
+	return nil
 }
 
 func (d *driver) Get(p string) ([]byte, error) {
@@ -456,4 +511,35 @@ func wrapError(err error) error {
 		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
 	}
 	return err
+}
+
+func shouldReconnectFTP(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, storage.ErrNotFound) {
+		return false
+	}
+	var protoErr *textproto.Error
+	if errors.As(err, &protoErr) {
+		return protoErr.Code == 421 || protoErr.Code == 425 || protoErr.Code == 426
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "closed network connection") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "connection aborted") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "unexpected eof") ||
+		strings.Contains(msg, "use of closed network connection")
 }
