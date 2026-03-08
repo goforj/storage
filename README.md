@@ -12,6 +12,8 @@
   <a href="https://github.com/goforj/storage/actions/workflows/ci.yml"><img src="https://github.com/goforj/storage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24+-blue?logo=go" alt="Go version"></a>
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
+  <img src="https://img.shields.io/github/v/tag/goforj/storage?label=version&sort=semver" alt="Latest tag">
+  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/goforj/storage">
 <!-- test-count:embed:start -->
   <img src="https://img.shields.io/badge/unit_tests-26-brightgreen" alt="Unit tests (executed count)">
   <img src="https://img.shields.io/badge/integration_tests-78-blue" alt="Integration tests (executed count)">
