@@ -9,6 +9,7 @@ require (
 	github.com/goforj/storage/driver/gcsstorage v0.0.0
 	github.com/goforj/storage/driver/localstorage v0.0.0
 	github.com/goforj/storage/driver/memorystorage v0.0.0
+	github.com/goforj/storage/driver/redisstorage v0.0.0
 	github.com/goforj/storage/driver/rclonestorage v0.0.0
 	github.com/goforj/storage/driver/s3storage v0.0.0
 	github.com/goforj/storage/driver/sftpstorage v0.0.0
@@ -25,6 +26,8 @@ replace github.com/goforj/storage/driver/gcsstorage => ../driver/gcsstorage
 replace github.com/goforj/storage/driver/localstorage => ../driver/localstorage
 
 replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage
+
+replace github.com/goforj/storage/driver/redisstorage => ../driver/redisstorage
 
 replace github.com/goforj/storage/driver/rclonestorage => ../driver/rclonestorage
 
