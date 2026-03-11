@@ -52,7 +52,7 @@ for module_dir in "${DRIVER_MODULES[@]}"; do
   echo "==> ${module_name} module coverage"
   (
     cd "$module_dir"
-    GOWORK=off GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
+    GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
     go test -cover ./... -args -test.gocoverdir="$cover_dir"
   )
   merge_inputs+=("$cover_dir")
