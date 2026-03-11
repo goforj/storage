@@ -14,7 +14,6 @@ Examples:
 
 Behavior:
   - Rewrites intra-repo module requirements to the target version
-  - Runs go mod tidy in any module whose sibling requirements changed
   - Verifies published driver manifests
   - Optionally creates a release commit
   - Tags the resulting commit using scripts/tag-all-modules.sh
@@ -217,10 +216,6 @@ if [[ ${#module_dirs[@]} -eq 0 ]]; then
   exit 1
 fi
 
-GOCACHE_DIR="${GOCACHE:-/tmp/storage-gocache}"
-GOMODCACHE_DIR="${GOMODCACHE:-/tmp/storage-gomodcache}"
-mkdir -p "$GOCACHE_DIR" "$GOMODCACHE_DIR"
-
 declare -a changed_modules=()
 declare -a planned_updates=()
 declare -a release_files=()
@@ -251,15 +246,6 @@ for dir in "${module_dirs[@]}"; do
   if [[ "$updated" -eq 1 ]]; then
     changed_modules+=("$dir")
     release_files+=("$dir/go.mod")
-    if [[ "$dry_run" -eq 0 ]]; then
-      (
-        cd "$dir"
-        GOWORK=off GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" go mod tidy
-      )
-    fi
-    if [[ -f "$dir/go.sum" ]]; then
-      release_files+=("$dir/go.sum")
-    fi
   fi
 done
 
@@ -304,15 +290,11 @@ if [[ ${#changed_modules[@]} -eq 0 ]]; then
   echo "no module changes produced"
 else
   if [[ "$commit_release" -eq 1 ]]; then
-    if [[ "$initial_dirty" -eq 1 ]]; then
-      echo "error: refusing to auto-commit release changes on top of an already-dirty tree" >&2
-      exit 1
-    fi
     if [[ -z "$commit_message" ]]; then
       commit_message="chore: release $version"
     fi
     git add -- "${release_files[@]}"
-    git commit -m "$commit_message"
+    git commit -m "$commit_message" -- "${release_files[@]}"
   else
     echo "release files updated but not committed"
     echo "review and commit the changes, then rerun or use --commit"
