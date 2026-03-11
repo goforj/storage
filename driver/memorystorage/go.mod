@@ -2,9 +2,7 @@ module github.com/goforj/storage/driver/memorystorage
 
 go 1.24.4
 
-require (
-	github.com/goforj/storage v0.2.1
-)
+require github.com/goforj/storage v0.2.2
 
 require (
 	cel.dev/expr v0.25.1 // indirect
