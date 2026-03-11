@@ -21,6 +21,8 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
+            storagecore/go.mod
+            driver/*/go.mod
             examples/go.sum
             integration/go.sum
             storagetest/go.sum
@@ -29,10 +31,11 @@ jobs:
       - name: Download dependencies
         run: |
           go mod download
-          cd examples
-          GOWORK=off go mod download
-          cd ../storagetest
-          go mod download
+          for module in examples storagetest integration driver/*; do
+            if [ -f "$module/go.mod" ]; then
+              (cd "$module" && go mod download)
+            fi
+          done
 
       - name: Verify published module manifests
         run: scripts/check-published-modules.sh
@@ -62,6 +65,8 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
+            storagecore/go.mod
+            driver/*/go.mod
             examples/go.sum
             integration/go.sum
             storagetest/go.sum
@@ -74,6 +79,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    needs: unit
 
     steps:
       - name: Checkout
@@ -85,7 +91,10 @@ jobs:
           go-version: "stable"
           cache: true
           cache-dependency-path: |
+            .github/cache-keys/coverage-go.txt
             go.sum
+            storagecore/go.mod
+            driver/*/go.mod
             examples/go.sum
             integration/go.sum
             storagetest/go.sum
