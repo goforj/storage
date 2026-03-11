@@ -16,6 +16,7 @@ Behavior:
   - Rewrites intra-repo module requirements to the target version
   - Verifies published driver manifests
   - Optionally creates a release commit
+  - When --push is set, pushes the current branch before pushing tags
   - Tags the resulting commit using scripts/tag-all-modules.sh
 
 Notes:
@@ -300,6 +301,15 @@ else
     echo "review and commit the changes, then rerun or use --commit"
     exit 0
   fi
+fi
+
+if [[ "$push" -eq 1 ]]; then
+  current_branch="$(git rev-parse --abbrev-ref HEAD)"
+  if [[ "$current_branch" == "HEAD" ]]; then
+    echo "error: cannot push release commit from detached HEAD" >&2
+    exit 1
+  fi
+  git push "$remote" "$current_branch"
 fi
 
 tag_args=("$version")

@@ -88,6 +88,6 @@ release-plan: ##@release Preview version rewrites and tags without changing file
 	test -n "$(RUN_ARGS)" || (echo "usage: make release-plan <version> [-- --exclude <dir>]" && exit 1)
 	bash scripts/release-all-modules.sh $(RUN_ARGS) --dry-run --allow-dirty
 
-release-modules: ##@release Rewrite sibling versions, commit, and push tags: make release-modules v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing]
+release-modules: ##@release Rewrite sibling versions, commit, push the branch, and push tags: make release-modules v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing]
 	test -n "$(RUN_ARGS)" || (echo "usage: make release-modules <version> [-- --remote <name>|--exclude <dir>|--skip-existing]" && exit 1)
 	bash scripts/release-all-modules.sh $(RUN_ARGS) --commit --push --allow-dirty

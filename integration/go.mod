@@ -20,6 +20,24 @@ require (
 
 replace github.com/goforj/storage/storagetest => ../storagetest
 
+replace github.com/goforj/storage => ..
+
+replace github.com/goforj/storage/driver/ftpstorage => ../driver/ftpstorage
+
+replace github.com/goforj/storage/driver/gcsstorage => ../driver/gcsstorage
+
+replace github.com/goforj/storage/driver/localstorage => ../driver/localstorage
+
+replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage
+
+replace github.com/goforj/storage/driver/rclonestorage => ../driver/rclonestorage
+
+replace github.com/goforj/storage/driver/redisstorage => ../driver/redisstorage
+
+replace github.com/goforj/storage/driver/s3storage => ../driver/s3storage
+
+replace github.com/goforj/storage/driver/sftpstorage => ../driver/sftpstorage
+
 require (
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go v0.123.0 // indirect
