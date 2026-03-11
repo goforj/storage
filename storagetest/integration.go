@@ -98,7 +98,6 @@ func EnsureGCSBucket(ctx context.Context, endpoint, bucket string) error {
 		if strings.Contains(err.Error(), "409") {
 			return nil
 		}
-		// As a fallback, attempt a write to force creation on older emulators
 		w := client.Bucket(bucket).Object("healthcheck.txt").NewWriter(ctx)
 		if _, werr := w.Write([]byte("ok")); werr == nil {
 			_ = w.Close()

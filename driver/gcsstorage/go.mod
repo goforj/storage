@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	cloud.google.com/go/storage v1.56.0
 	github.com/fsouza/fake-gcs-server v1.52.3
-	github.com/goforj/storage v0.0.0
+	github.com/goforj/storage v0.2.1
 	google.golang.org/api v0.264.0
 )
 
@@ -62,7 +62,3 @@ require (
 	google.golang.org/grpc v1.79.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/goforj/storage => ../..
-
-replace github.com/goforj/storage/storagetest => ../../storagetest

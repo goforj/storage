@@ -6,10 +6,9 @@ import (
 	"testing"
 
 	"github.com/goforj/storage"
-	storagetest "github.com/goforj/storage/storagetest"
 )
 
-func TestLocalStorageContract(t *testing.T) {
+func TestLocalStorageBuildAndIO(t *testing.T) {
 	root := t.TempDir()
 	cfg := storage.Config{
 		Default: "local",
@@ -24,7 +23,16 @@ func TestLocalStorageContract(t *testing.T) {
 	}
 	fsys := manager.Default()
 
-	storagetest.RunStorageContractTests(t, fsys)
+	if err := fsys.Put("file.txt", []byte("hello")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := fsys.Get("file.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("Get = %q", got)
+	}
 }
 
 func TestLocalPrefixIsolation(t *testing.T) {

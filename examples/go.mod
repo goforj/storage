@@ -3,39 +3,17 @@ module github.com/goforj/storage/examples
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.0.0
-	github.com/goforj/storage/driver/dropboxstorage v0.0.0
-	github.com/goforj/storage/driver/ftpstorage v0.0.0
-	github.com/goforj/storage/driver/gcsstorage v0.0.0
-	github.com/goforj/storage/driver/localstorage v0.0.0
-	github.com/goforj/storage/driver/memorystorage v0.0.0
-	github.com/goforj/storage/driver/redisstorage v0.0.0
-	github.com/goforj/storage/driver/rclonestorage v0.0.0
-	github.com/goforj/storage/driver/s3storage v0.0.0
-	github.com/goforj/storage/driver/sftpstorage v0.0.0
+	github.com/goforj/storage v0.2.1
+	github.com/goforj/storage/driver/dropboxstorage v0.2.1
+	github.com/goforj/storage/driver/ftpstorage v0.2.1
+	github.com/goforj/storage/driver/gcsstorage v0.2.1
+	github.com/goforj/storage/driver/localstorage v0.2.1
+	github.com/goforj/storage/driver/memorystorage v0.2.1
+	github.com/goforj/storage/driver/redisstorage v0.2.1
+	github.com/goforj/storage/driver/rclonestorage v0.2.1
+	github.com/goforj/storage/driver/s3storage v0.2.1
+	github.com/goforj/storage/driver/sftpstorage v0.2.1
 )
-
-replace github.com/goforj/storage => ..
-
-replace github.com/goforj/storage/driver/dropboxstorage => ../driver/dropboxstorage
-
-replace github.com/goforj/storage/driver/ftpstorage => ../driver/ftpstorage
-
-replace github.com/goforj/storage/driver/gcsstorage => ../driver/gcsstorage
-
-replace github.com/goforj/storage/driver/localstorage => ../driver/localstorage
-
-replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage
-
-replace github.com/goforj/storage/driver/redisstorage => ../driver/redisstorage
-
-replace github.com/goforj/storage/driver/rclonestorage => ../driver/rclonestorage
-
-replace github.com/goforj/storage/driver/s3storage => ../driver/s3storage
-
-replace github.com/goforj/storage/driver/sftpstorage => ../driver/sftpstorage
-
-replace github.com/goforj/storage/storagetest => ../storagetest
 
 require (
 	cel.dev/expr v0.25.1 // indirect

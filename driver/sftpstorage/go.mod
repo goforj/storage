@@ -3,8 +3,7 @@ module github.com/goforj/storage/driver/sftpstorage
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.0.0
-	github.com/goforj/storage/storagetest v0.0.0
+	github.com/goforj/storage v0.2.1
 	github.com/pkg/sftp v1.13.10
 	golang.org/x/crypto v0.47.0
 )
@@ -47,7 +46,6 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/goforj/storage/driver/memorystorage v0.0.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.11 // indirect
@@ -77,9 +75,3 @@ require (
 	google.golang.org/grpc v1.79.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/goforj/storage => ../..
-
-replace github.com/goforj/storage/storagetest => ../../storagetest
-
-replace github.com/goforj/storage/driver/memorystorage => ../../driver/memorystorage

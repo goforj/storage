@@ -9,12 +9,11 @@ import (
 	"time"
 
 	"github.com/goforj/storage"
-	"github.com/goforj/storage/storagetest"
 	testcontainers "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestRedisStorageContract(t *testing.T) {
+func TestRedisStorageBuildAndIO(t *testing.T) {
 	ctx := context.Background()
 	container, addr := startRedisContainer(t, ctx)
 	t.Cleanup(func() {
@@ -36,7 +35,16 @@ func TestRedisStorageContract(t *testing.T) {
 		}
 	})
 
-	storagetest.RunStorageContractTests(t, store)
+	if err := store.Put("hello.txt", []byte("redis")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := store.Get("hello.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "redis" {
+		t.Fatalf("Get = %q", got)
+	}
 }
 
 func TestRedisIndexesReflectHierarchy(t *testing.T) {

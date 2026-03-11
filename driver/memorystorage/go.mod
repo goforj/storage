@@ -3,8 +3,7 @@ module github.com/goforj/storage/driver/memorystorage
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.0.0
-	github.com/goforj/storage/storagetest v0.0.0
+	github.com/goforj/storage v0.2.1
 )
 
 require (
@@ -74,7 +73,3 @@ require (
 	google.golang.org/grpc v1.79.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/goforj/storage => ../..
-
-replace github.com/goforj/storage/storagetest => ../../storagetest

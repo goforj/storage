@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/goforj/storage"
-	storagetest "github.com/goforj/storage/storagetest"
 )
 
 func TestS3StorageWithFakeS3(t *testing.T) {
@@ -46,7 +45,10 @@ func TestS3StorageWithFakeS3(t *testing.T) {
 	fs, err := mgr.Disk("s3")
 	require.NoError(t, err)
 
-	storagetest.RunStorageContractTests(t, fs)
+	require.NoError(t, fs.Put("hello.txt", []byte("s3")))
+	got, err := fs.Get("hello.txt")
+	require.NoError(t, err)
+	require.Equal(t, "s3", string(got))
 }
 
 func fakeServer(t *testing.T, fake *gofakes3.GoFakeS3) *httptest.Server {

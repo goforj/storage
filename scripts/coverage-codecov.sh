@@ -39,7 +39,7 @@ go test -cover ./... -args -test.gocoverdir="$ROOT_COVER_DIR"
 echo "==> storagetest module coverage"
 (
   cd storagetest
-  GOWORK=off GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
+  GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
   go test -cover ./... -args -test.gocoverdir="$STORAGETEST_COVER_DIR"
 )
 
@@ -62,7 +62,7 @@ if [[ -d "$INTEGRATION_MODULE_DIR" ]]; then
   echo "==> Integration module coverage ($INTEGRATION_MODULE_DIR)"
   (
     cd "$INTEGRATION_MODULE_DIR"
-    GOWORK=off GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
+    GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
     go test -cover -tags="$INTEGRATION_TAGS" -coverpkg="$INTEGRATION_MODULE_COVERPKG" $INTEGRATION_MODULE_PKGS \
       -args -test.gocoverdir="$INTEGRATION_COVER_DIR"
   )

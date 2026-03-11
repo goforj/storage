@@ -3,8 +3,7 @@ module github.com/goforj/storage/driver/rclonestorage
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.0.0
-	github.com/goforj/storage/storagetest v0.0.0
+	github.com/goforj/storage v0.2.1
 	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
 	github.com/rclone/rclone v1.72.1
 	github.com/unknwon/goconfig v1.0.0
@@ -112,7 +111,6 @@ require (
 	github.com/go-playground/validator/v10 v10.28.0 // indirect
 	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/goforj/storage/driver/memorystorage v0.0.0 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
@@ -246,9 +244,3 @@ require (
 	storj.io/picobuf v0.0.4 // indirect
 	storj.io/uplink v1.13.1 // indirect
 )
-
-replace github.com/goforj/storage => ../..
-
-replace github.com/goforj/storage/storagetest => ../../storagetest
-
-replace github.com/goforj/storage/driver/memorystorage => ../../driver/memorystorage

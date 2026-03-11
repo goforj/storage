@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.0.5
-	github.com/goforj/storage v0.0.0
+	github.com/goforj/storage v0.2.1
 )
 
 require (
@@ -14,5 +14,3 @@ require (
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 )
-
-replace github.com/goforj/storage => ../..

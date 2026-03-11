@@ -8,7 +8,6 @@ import (
 
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/memorystorage"
-	"github.com/goforj/storage/storagetest"
 )
 
 func TestConfigResolvedConfig(t *testing.T) {
@@ -25,12 +24,21 @@ func TestConfigResolvedConfig(t *testing.T) {
 	}
 }
 
-func TestMemoryStorageContract(t *testing.T) {
+func TestMemoryStorageBuildAndIO(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{Prefix: "itest"})
 	if err != nil {
 		t.Fatalf("memorystorage.New: %v", err)
 	}
-	storagetest.RunStorageContractTests(t, store)
+	if err := store.Put("file.txt", []byte("hello")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := store.Get("file.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("Get = %q", got)
+	}
 }
 
 func TestContextCancellation(t *testing.T) {

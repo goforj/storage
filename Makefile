@@ -43,7 +43,7 @@ help: ##@other Show this help.
 #----------------------
 # Dev helpers
 #----------------------
-.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render tag-modules
+.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render check-modules tag-modules release-modules release-plan
 
 #----------------------
 # Go helpers
@@ -64,6 +64,9 @@ examples-test: ##@go Run tests in the examples module
 coverage: ##@go Generate combined unit + integration coverage for Codecov
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE_DIR="$(GOCACHE)" GOMODCACHE_DIR="$(GOMODCACHE)" scripts/coverage-codecov.sh
 
+check-modules: ##@go Verify published module manifests do not rely on local replace wiring
+	scripts/check-published-modules.sh
+
 integration: ##@go Run the centralized integration matrix in ./integration (may require Docker)
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all
 
@@ -80,3 +83,11 @@ bench-render: ##@go Render benchmark artifacts and update README benchmark embed
 tag-modules: ##@release Tag all Go modules: make tag-modules v0.1.0 [-- --dry-run]
 	test -n "$(RUN_ARGS)" || (echo "usage: make tag-modules <version> [-- --dry-run|--push|--exclude <dir>]" && exit 1)
 	bash scripts/tag-all-modules.sh $(RUN_ARGS)
+
+release-plan: ##@release Preview version rewrites and tags without changing files: make release-plan v0.1.0 [-- --exclude <dir>]
+	test -n "$(RUN_ARGS)" || (echo "usage: make release-plan <version> [-- --exclude <dir>]" && exit 1)
+	bash scripts/release-all-modules.sh $(RUN_ARGS) --dry-run --allow-dirty
+
+release-modules: ##@release Rewrite sibling versions, commit, and push tags: make release-modules v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing]
+	test -n "$(RUN_ARGS)" || (echo "usage: make release-modules <version> [-- --remote <name>|--exclude <dir>|--skip-existing]" && exit 1)
+	bash scripts/release-all-modules.sh $(RUN_ARGS) --commit --push

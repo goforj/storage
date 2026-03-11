@@ -13,7 +13,6 @@ import (
 	"github.com/goftp/server"
 
 	"github.com/goforj/storage"
-	storagetest "github.com/goforj/storage/storagetest"
 )
 
 type memFactory struct {
@@ -154,7 +153,16 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("disk: %v", err)
 	}
 
-	storagetest.RunStorageContractTests(t, fs)
+	if err := fs.Put("hello.txt", []byte("world")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := fs.Get("hello.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "world" {
+		t.Fatalf("Get = %q", got)
+	}
 }
 
 func pickPort() int {

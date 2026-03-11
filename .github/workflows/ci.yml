@@ -31,9 +31,17 @@ jobs:
           go mod download
           cd examples
           GOWORK=off go mod download
+          cd ../storagetest
+          go mod download
+
+      - name: Verify published module manifests
+        run: scripts/check-published-modules.sh
 
       - name: Run tests
-        run: go test ./... -v
+        run: |
+          go test ./... -v
+          cd storagetest
+          go test ./... -v
 
       - name: Verify generated examples compile
         run: |

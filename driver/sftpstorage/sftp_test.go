@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/goforj/storage"
-	storagetest "github.com/goforj/storage/storagetest"
 )
 
 func TestSFTPWithEmbeddedServer(t *testing.T) {
@@ -67,7 +66,16 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("disk: %v", err)
 	}
 
-	storagetest.RunStorageContractTests(t, fs)
+	if err := fs.Put("hello.txt", []byte("sftp")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := fs.Get("hello.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "sftp" {
+		t.Fatalf("Get = %q", got)
+	}
 }
 
 func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root string) {

@@ -12,10 +12,9 @@ import (
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 
 	"github.com/goforj/storage"
-	storagetest "github.com/goforj/storage/storagetest"
 )
 
-func TestRcloneStorageContract(t *testing.T) {
+func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 	root := t.TempDir()
 	remoteRoot := filepath.Join(root, "remote")
 	if err := os.MkdirAll(remoteRoot, 0o755); err != nil {
@@ -68,6 +67,10 @@ func TestRcloneStorageContract(t *testing.T) {
 		t.Fatalf("s3 disk: %v", err)
 	}
 
-	storagetest.RunStorageContractTests(t, localFS)
-	storagetest.RunStorageContractTests(t, s3FS)
+	if err := localFS.Put("hello.txt", []byte("local")); err != nil {
+		t.Fatalf("local Put: %v", err)
+	}
+	if err := s3FS.Put("hello.txt", []byte("s3")); err != nil {
+		t.Fatalf("s3 Put: %v", err)
+	}
 }
