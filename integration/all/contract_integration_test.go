@@ -212,17 +212,29 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				t.Helper()
 				ctx := context.Background()
 				container, host, port := startSFTPContainer(t, ctx)
-				store, err := storage.Build(sftpstorage.Config{
+				cfg := sftpstorage.Config{
 					Host:                  host,
 					Port:                  port,
 					User:                  "storage",
 					Password:              "storage",
 					InsecureIgnoreHostKey: true,
 					Prefix:                "upload/itest",
-				})
-				if err != nil {
-					shutdownContainer(t, container)
-					t.Fatalf("build sftp storage: %v", err)
+				}
+				var (
+					store storage.Storage
+					err   error
+				)
+				deadline := time.Now().Add(10 * time.Second)
+				for {
+					store, err = storage.Build(cfg)
+					if err == nil {
+						break
+					}
+					if time.Now().After(deadline) {
+						shutdownContainer(t, container)
+						t.Fatalf("build sftp storage: %v", err)
+					}
+					time.Sleep(250 * time.Millisecond)
 				}
 				return store, func() {
 					shutdownContainer(t, container)
