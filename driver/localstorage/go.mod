@@ -2,7 +2,7 @@ module github.com/goforj/storage/driver/localstorage
 
 go 1.24.4
 
-require github.com/goforj/storage v0.2.2
+require github.com/goforj/storage v0.2.3
 
 require (
 	cel.dev/expr v0.25.1 // indirect
