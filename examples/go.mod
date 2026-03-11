@@ -3,16 +3,16 @@ module github.com/goforj/storage/examples
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.2.3
-	github.com/goforj/storage/driver/dropboxstorage v0.2.3
-	github.com/goforj/storage/driver/ftpstorage v0.2.3
-	github.com/goforj/storage/driver/gcsstorage v0.2.3
-	github.com/goforj/storage/driver/localstorage v0.2.3
-	github.com/goforj/storage/driver/memorystorage v0.2.3
-	github.com/goforj/storage/driver/rclonestorage v0.2.3
-	github.com/goforj/storage/driver/redisstorage v0.2.3
-	github.com/goforj/storage/driver/s3storage v0.2.3
-	github.com/goforj/storage/driver/sftpstorage v0.2.3
+	github.com/goforj/storage v0.2.4
+	github.com/goforj/storage/driver/dropboxstorage v0.2.4
+	github.com/goforj/storage/driver/ftpstorage v0.2.4
+	github.com/goforj/storage/driver/gcsstorage v0.2.4
+	github.com/goforj/storage/driver/localstorage v0.2.4
+	github.com/goforj/storage/driver/memorystorage v0.2.4
+	github.com/goforj/storage/driver/rclonestorage v0.2.4
+	github.com/goforj/storage/driver/redisstorage v0.2.4
+	github.com/goforj/storage/driver/s3storage v0.2.4
+	github.com/goforj/storage/driver/sftpstorage v0.2.4
 )
 
 replace github.com/goforj/storage => ..
