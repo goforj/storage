@@ -15,7 +15,7 @@ import (
 	"github.com/rclone/rclone/fs/config/configfile"
 	"github.com/rclone/rclone/fs/hash"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestInitRcloneConfigData(t *testing.T) {
@@ -26,7 +26,7 @@ func TestInitRcloneConfigData(t *testing.T) {
 		t.Fatalf("RenderLocal: %v", err)
 	}
 
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigData: conf}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: conf}); err != nil {
 		t.Fatalf("initRclone: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func TestInitRcloneConfigData(t *testing.T) {
 func TestInitRcloneConfigDataConflict(t *testing.T) {
 	resetRcloneInit(t)
 
-	err := initRclone(storage.ResolvedConfig{
+	err := initRclone(storagecore.ResolvedConfig{
 		RcloneConfigData: "data",
 		RcloneConfigPath: "path",
 	})
@@ -67,7 +67,7 @@ func TestInitRcloneConfigDataSetConfigPathError(t *testing.T) {
 		setConfigPath = config.SetConfigPath
 	})
 
-	err := initRclone(storage.ResolvedConfig{RcloneConfigData: "[one]\ntype = local\n"})
+	err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: "[one]\ntype = local\n"})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected setConfigPath error, got %v", err)
 	}
@@ -79,10 +79,10 @@ func TestInitRcloneConfigPathConflict(t *testing.T) {
 	path1 := filepath.Join(t.TempDir(), "rclone-one.conf")
 	path2 := filepath.Join(t.TempDir(), "rclone-two.conf")
 
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
 		t.Fatalf("initRclone path1: %v", err)
 	}
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigPath: path2}); err == nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigPath: path2}); err == nil {
 		t.Fatalf("expected error for conflicting config path")
 	}
 }
@@ -98,7 +98,7 @@ func TestInitRcloneConfigPathSetConfigPathError(t *testing.T) {
 		setConfigPath = config.SetConfigPath
 	})
 
-	err := initRclone(storage.ResolvedConfig{RcloneConfigPath: "badpath.conf"})
+	err := initRclone(storagecore.ResolvedConfig{RcloneConfigPath: "badpath.conf"})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected setConfigPath error, got %v", err)
 	}
@@ -110,7 +110,7 @@ func TestInitRcloneReturnsInitErr(t *testing.T) {
 	sentinel := errors.New("boom")
 	initErr = sentinel
 
-	if err := initRclone(storage.ResolvedConfig{}); !errors.Is(err, sentinel) {
+	if err := initRclone(storagecore.ResolvedConfig{}); !errors.Is(err, sentinel) {
 		t.Fatalf("expected initErr to be returned, got %v", err)
 	}
 }
@@ -118,7 +118,7 @@ func TestInitRcloneReturnsInitErr(t *testing.T) {
 func TestInitRcloneEmptyConfig(t *testing.T) {
 	resetRcloneInit(t)
 
-	if err := initRclone(storage.ResolvedConfig{}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{}); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestDriverGetNotFound(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if _, err := d.Get("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.Get("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -244,14 +244,14 @@ func TestDriverURLNotFound(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if _, err := d.URL("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.URL("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestDriverURLUnsupported(t *testing.T) {
 	d := &driver{fs: newFakeFs()}
-	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }
@@ -263,7 +263,7 @@ func TestDriverURLForbidden(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
 }
@@ -354,7 +354,7 @@ func TestDriverPutMkdirError(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if err := d.Put("dir/file.txt", []byte("x")); !errors.Is(err, storage.ErrForbidden) {
+	if err := d.Put("dir/file.txt", []byte("x")); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
 }
@@ -366,7 +366,7 @@ func TestDriverPutError(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if err := d.Put("file.txt", []byte("x")); !errors.Is(err, storage.ErrUnsupported) {
+	if err := d.Put("file.txt", []byte("x")); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }
@@ -378,7 +378,7 @@ func TestDriverDeleteObjectNotFound(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if err := d.Delete("file.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.Delete("file.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -393,7 +393,7 @@ func TestDriverDeleteRemoveError(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if err := d.Delete("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+	if err := d.Delete("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
 }
@@ -467,7 +467,7 @@ func TestDriverExistsError(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if _, err := d.Exists("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.Exists("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
 }
@@ -477,7 +477,7 @@ func TestDriverListError(t *testing.T) {
 	fake.listErr = fs.ErrorDirNotFound
 
 	d := &driver{fs: fake}
-	if _, err := d.List("missing"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.List("missing"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -511,7 +511,7 @@ func TestDriverModTimeError(t *testing.T) {
 	}
 
 	d := &driver{fs: fake}
-	if _, err := d.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -716,7 +716,7 @@ func (e errReadCloser) Close() error {
 func TestInitRcloneInvalidConfigData(t *testing.T) {
 	resetRcloneInit(t)
 
-	err := initRclone(storage.ResolvedConfig{RcloneConfigData: "bad line"})
+	err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: "bad line"})
 	if err == nil {
 		t.Fatalf("expected error for invalid config data")
 	}
@@ -733,10 +733,10 @@ func TestInitRclonePathAlreadySetNoConflict(t *testing.T) {
 	resetRcloneInit(t)
 
 	path1 := filepath.Join(t.TempDir(), "rclone.conf")
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
 		t.Fatalf("initRclone path1: %v", err)
 	}
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigPath: path1}); err != nil {
 		t.Fatalf("expected no error for same config path, got %v", err)
 	}
 }
@@ -756,7 +756,7 @@ func TestInitRcloneConfigDataSetsConfigPath(t *testing.T) {
 		t.Fatalf("RenderLocal: %v", err)
 	}
 
-	if err := initRclone(storage.ResolvedConfig{RcloneConfigData: conf}); err != nil {
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: conf}); err != nil {
 		t.Fatalf("initRclone: %v", err)
 	}
 

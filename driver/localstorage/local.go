@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("local", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("local", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -50,8 +50,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "local" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver: "local",
 		Remote: c.Root,
 		Prefix: c.Prefix,
@@ -68,19 +68,19 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Prefix: "sandbox",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(_ context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.Remote == "" {
 		return nil, fmt.Errorf("storage: local storage requires root path")
 	}
-	cleanPrefix, err := storage.NormalizePath(cfg.Prefix)
+	cleanPrefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -155,31 +155,31 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	target, err := d.fullPath(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	info, err := os.Stat(target)
 	if err != nil {
-		return storage.Entry{}, wrapLocalError(err)
+		return storagecore.Entry{}, wrapLocalError(err)
 	}
 	rel, err := d.userRelative(target)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	size := info.Size()
 	if info.IsDir() {
 		size = 0
 	}
-	return storage.Entry{Path: rel, Size: size, IsDir: info.IsDir()}, nil
+	return storagecore.Entry{Path: rel, Size: size, IsDir: info.IsDir()}, nil
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -207,11 +207,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		return nil, err
 	}
 
-	var result []storage.Entry
+	var result []storagecore.Entry
 	for _, e := range entries {
 		name := e.Name()
 		rel := filepath.ToSlash(filepath.Join(basePrefix, name))
@@ -238,7 +238,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		if info != nil {
 			size = info.Size()
 		}
-		result = append(result, storage.Entry{
+		result = append(result, storagecore.Entry{
 			Path:  rel,
 			Size:  size,
 			IsDir: e.IsDir(),
@@ -247,11 +247,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return result, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		if err != nil {
 			return err
 		}
-		return fn(storage.Entry{Path: rel, Size: info.Size(), IsDir: false})
+		return fn(storagecore.Entry{Path: rel, Size: info.Size(), IsDir: false})
 	}
 
 	return filepath.WalkDir(target, func(current string, entry fs.DirEntry, walkErr error) error {
@@ -293,7 +293,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 			}
 			size = info.Size()
 		}
-		return fn(storage.Entry{
+		return fn(storagecore.Entry{
 			Path:  rel,
 			Size:  size,
 			IsDir: entry.IsDir(),
@@ -318,7 +318,7 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 		return wrapLocalError(err)
 	}
 	if srcInfo.IsDir() {
-		return fmt.Errorf("%w: copy of directory not supported", storage.ErrUnsupported)
+		return fmt.Errorf("%w: copy of directory not supported", storagecore.ErrUnsupported)
 	}
 	dstTarget, err := d.fullPath(dst)
 	if err != nil {
@@ -360,7 +360,7 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 		return wrapLocalError(err)
 	}
 	if srcInfo.IsDir() {
-		return fmt.Errorf("%w: move of directory not supported", storage.ErrUnsupported)
+		return fmt.Errorf("%w: move of directory not supported", storagecore.ErrUnsupported)
 	}
 	dstTarget, err := d.fullPath(dst)
 	if err != nil {
@@ -380,7 +380,7 @@ func (d *driver) URL(p string) (string, error) {
 }
 
 func (d *driver) URLContext(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for local driver", storage.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for local driver", storagecore.ErrUnsupported)
 }
 
 // modTime returns the file modification time. This is a test helper and not part of the public API.
@@ -402,17 +402,17 @@ func (d *driver) resolvePath(p string) (string, error) {
 }
 
 func (d *driver) fullPath(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	joined := filepath.Join(d.root, filepath.FromSlash(storage.JoinPrefix(d.prefix, normalized)))
+	joined := filepath.Join(d.root, filepath.FromSlash(storagecore.JoinPrefix(d.prefix, normalized)))
 	rel, err := filepath.Rel(d.root, joined)
 	if err != nil {
 		return "", fmt.Errorf("storage: compute relative path: %w", err)
 	}
 	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("%w: path escapes root", storage.ErrForbidden)
+		return "", fmt.Errorf("%w: path escapes root", storagecore.ErrForbidden)
 	}
 	return joined, nil
 }
@@ -433,10 +433,10 @@ func (d *driver) userRelative(target string) (string, error) {
 
 func wrapLocalError(err error) error {
 	if errorsIsNotExist(err) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	if errorsIsPermission(err) {
-		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrForbidden, err)
 	}
 	return err
 }

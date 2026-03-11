@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 	"github.com/jlaffaye/ftp"
 )
 
@@ -45,22 +45,22 @@ func TestFTPPrefixHelpers(t *testing.T) {
 	if got := (&driver{}).stripPrefix("plain/path"); got != "plain/path" {
 		t.Fatalf("stripPrefix without prefix got %q", got)
 	}
-	if _, err := d.fullPath("../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.fullPath("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("fullPath invalid error = %v", err)
 	}
 }
 
 func TestFTPWrapError(t *testing.T) {
-	if err := wrapError(errors.New("file not found")); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(errors.New("file not found")); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
-	if err := wrapError(errors.New("File not available")); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(errors.New("File not available")); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for case-insensitive match")
 	}
 	if err := wrapError(nil); err != nil {
 		t.Fatalf("wrapError(nil) = %v", err)
 	}
-	if err := wrapError(errors.New("boom")); errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(errors.New("boom")); errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("wrapError should preserve unrelated errors")
 	}
 }
@@ -85,7 +85,7 @@ func TestFTPContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
@@ -94,7 +94,7 @@ func TestFTPContextCancellation(t *testing.T) {
 	if err := d.MoveContext(ctx, "file.txt", "moved.txt"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("MoveContext error = %v", err)
 	}
-	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("URL error = %v", err)
 	}
 	if err := d.Close(); err != nil {
@@ -109,7 +109,7 @@ func TestShouldReconnectFTP(t *testing.T) {
 		want bool
 	}{
 		{name: "nil", err: nil, want: false},
-		{name: "not found", err: storage.ErrNotFound, want: false},
+		{name: "not found", err: storagecore.ErrNotFound, want: false},
 		{name: "context canceled", err: context.Canceled, want: false},
 		{name: "eof", err: io.EOF, want: true},
 		{name: "net closed", err: net.ErrClosed, want: true},
@@ -217,8 +217,8 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 			fileSizeErr: nil,
 		}
 		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
-		var got []storage.Entry
-		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+		var got []storagecore.Entry
+		if err := d.Walk("file.txt", func(entry storagecore.Entry) error {
 			got = append(got, entry)
 			return nil
 		}); err != nil {
@@ -238,7 +238,7 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 		}
 		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
 		stop := errors.New("stop")
-		err := d.Walk("", func(entry storage.Entry) error {
+		err := d.Walk("", func(entry storagecore.Entry) error {
 			if entry.Path == "sub" {
 				return stop
 			}
@@ -258,7 +258,7 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 			fileSizeErr: errors.New("size boom"),
 		}
 		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
-		if _, err := d.Get("file.txt"); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := d.Get("file.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 			t.Fatalf("Get error = %v", err)
 		}
 		if err := d.Put("file.txt", []byte("x")); err == nil {

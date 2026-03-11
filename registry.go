@@ -1,10 +1,8 @@
 package storage
 
-import (
-	"context"
-	"fmt"
-	"sync"
-)
+import "context"
+
+import storagecore "github.com/goforj/storage/storagecore"
 
 // DriverFactory constructs a Storage for a given normalized disk configuration.
 // @group Construction
@@ -17,11 +15,6 @@ import (
 //	_ = factory
 type DriverFactory func(ctx context.Context, cfg ResolvedConfig) (Storage, error)
 
-var (
-	registryMu sync.RWMutex
-	registry   = map[string]DriverFactory{}
-)
-
 // RegisterDriver makes a driver available to the Manager. It panics on duplicate registrations.
 // @group Manager
 //
@@ -31,17 +24,17 @@ var (
 //		return nil, nil
 //	})
 func RegisterDriver(name string, factory DriverFactory) {
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	if _, exists := registry[name]; exists {
-		panic(fmt.Sprintf("storage: driver %q already registered", name))
-	}
-	registry[name] = factory
+	storagecore.RegisterDriver(name, func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
+		return factory(ctx, cfg)
+	})
 }
 
 func lookupDriver(name string) (DriverFactory, bool) {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	factory, ok := registry[name]
-	return factory, ok
+	factory, ok := storagecore.LookupDriver(name)
+	if !ok {
+		return nil, false
+	}
+	return func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
+		return factory(ctx, cfg)
+	}, true
 }

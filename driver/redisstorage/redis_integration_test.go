@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 	testcontainers "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -129,7 +129,7 @@ func TestRedisListAndWalkUseIndexedHierarchy(t *testing.T) {
 	assertPaths(t, oneEntries, []string{"one/file-a.txt", "one/two"})
 
 	var walked []string
-	if err := d.Walk("", func(entry storage.Entry) error {
+	if err := d.Walk("", func(entry storagecore.Entry) error {
 		walked = append(walked, entry.Path)
 		return nil
 	}); err != nil {
@@ -195,7 +195,7 @@ func assertKeyMissing(t *testing.T, d *driver, ctx context.Context, key string) 
 	}
 }
 
-func assertPaths(t *testing.T, entries []storage.Entry, want []string) {
+func assertPaths(t *testing.T, entries []storagecore.Entry, want []string) {
 	t.Helper()
 	got := make([]string, 0, len(entries))
 	for _, entry := range entries {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestConfigResolvedConfig(t *testing.T) {
@@ -68,7 +68,7 @@ func TestContextCancellation(t *testing.T) {
 	if _, err := store.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := store.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := store.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := store.CopyContext(ctx, "a", "b"); !errors.Is(err, context.Canceled) {
@@ -114,10 +114,10 @@ func TestRecursiveParentDirs(t *testing.T) {
 }
 
 func TestRedisNamespace(t *testing.T) {
-	if got := redisNamespace(storage.ResolvedConfig{}); got != "goforj:storage:redis" {
+	if got := redisNamespace(storagecore.ResolvedConfig{}); got != "goforj:storage:redis" {
 		t.Fatalf("redisNamespace default = %q", got)
 	}
-	if got := redisNamespace(storage.ResolvedConfig{RedisDB: 3}); got != "goforj:storage:redis:db:3" {
+	if got := redisNamespace(storagecore.ResolvedConfig{RedisDB: 3}); got != "goforj:storage:redis:db:3" {
 		t.Fatalf("redisNamespace db = %q", got)
 	}
 }

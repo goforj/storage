@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 type fakeS3 struct {
@@ -147,13 +147,13 @@ func TestS3Constructors(t *testing.T) {
 
 	t.Run("invalid prefix", func(t *testing.T) {
 		_, err := New(Config{Bucket: "bucket", Region: "us-east-1", Prefix: "../bad"})
-		if !errors.Is(err, storage.ErrForbidden) {
+		if !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("New invalid prefix error = %v", err)
 		}
 	})
 
 	t.Run("load aws config", func(t *testing.T) {
-		cfg, err := loadAWSConfig(context.Background(), storage.ResolvedConfig{
+		cfg, err := loadAWSConfig(context.Background(), storagecore.ResolvedConfig{
 			S3Region:          "us-east-1",
 			S3Endpoint:        "http://localhost:9000",
 			S3AccessKeyID:     "access",
@@ -171,10 +171,10 @@ func TestS3Constructors(t *testing.T) {
 		origBuild := buildS3Clients
 		t.Cleanup(func() { buildS3Clients = origBuild })
 
-		buildS3Clients = func(cfg aws.Config, resolved storage.ResolvedConfig) (s3API, s3PresignAPI) {
+		buildS3Clients = func(cfg aws.Config, resolved storagecore.ResolvedConfig) (s3API, s3PresignAPI) {
 			return &fakeS3{}, fakePresign{url: "http://signed"}
 		}
-		store, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+		store, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			S3Bucket: "bucket",
 			S3Region: "us-east-1",
 			Prefix:   "pre",
@@ -205,7 +205,7 @@ func TestS3ContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
@@ -234,16 +234,16 @@ func TestS3KeyAndPrefixHelpers(t *testing.T) {
 }
 
 func TestS3WrapError(t *testing.T) {
-	if err := wrapError(&types.NoSuchKey{}); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(&types.NoSuchKey{}); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for NoSuchKey")
 	}
-	if err := wrapError(&types.NotFound{}); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(&types.NotFound{}); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for NotFound")
 	}
 	if !isNotFound(&types.NotFound{}) || !isNotFound(&types.NoSuchKey{}) {
 		t.Fatalf("isNotFound should detect known errors")
 	}
-	if err := wrapError(errors.New("boom")); errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(errors.New("boom")); errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("wrapError should preserve unrelated errors")
 	}
 	if isNotFound(errors.New("boom")) {
@@ -261,8 +261,8 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 			prefix:  "pre",
 		}
 
-		var got []storage.Entry
-		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+		var got []storagecore.Entry
+		if err := d.Walk("file.txt", func(entry storagecore.Entry) error {
 			got = append(got, entry)
 			return nil
 		}); err != nil {
@@ -290,7 +290,7 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 
 		var got []string
 		stop := errors.New("stop")
-		err := d.Walk("", func(entry storage.Entry) error {
+		err := d.Walk("", func(entry storagecore.Entry) error {
 			got = append(got, entry.Path)
 			if entry.Path == "file-b.txt" {
 				return stop
@@ -323,7 +323,7 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 			bucket: "b",
 			prefix: "pre",
 		}
-		if err := d.Walk("file.txt", func(storage.Entry) error { return nil }); err == nil {
+		if err := d.Walk("file.txt", func(storagecore.Entry) error { return nil }); err == nil {
 			t.Fatal("Walk returned nil error")
 		}
 	})
@@ -332,7 +332,7 @@ func TestS3WalkAndURLBranches(t *testing.T) {
 func TestS3MoreBranches(t *testing.T) {
 	t.Run("stat and exists not found", func(t *testing.T) {
 		d := &driver{client: &fakeS3{}, bucket: "b", prefix: "pre"}
-		if _, err := d.Stat("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := d.Stat("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 			t.Fatalf("Stat missing error = %v", err)
 		}
 		ok, err := d.Exists("missing.txt")
@@ -386,7 +386,7 @@ func TestS3MoreBranches(t *testing.T) {
 
 	t.Run("key and recursive helpers", func(t *testing.T) {
 		d := &driver{}
-		if _, err := d.key("../bad"); !errors.Is(err, storage.ErrForbidden) {
+		if _, err := d.key("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("key invalid error = %v", err)
 		}
 		if got := d.stripPrefix("plain/path"); got != "plain/path" {

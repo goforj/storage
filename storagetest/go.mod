@@ -88,4 +88,6 @@ require (
 
 replace github.com/goforj/storage => ..
 
+replace github.com/goforj/storage/storagecore => ../storagecore
+
 replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage

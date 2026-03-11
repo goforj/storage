@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/memorystorage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestConfigResolvedConfig(t *testing.T) {
@@ -46,9 +46,9 @@ func TestContextCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memorystorage.New: %v", err)
 	}
-	d, ok := store.(storage.ContextStorage)
+	d, ok := store.(storagecore.ContextStorage)
 	if !ok {
-		t.Fatal("store does not implement storage.ContextStorage")
+		t.Fatal("store does not implement storagecore.ContextStorage")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -72,7 +72,7 @@ func TestContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := d.CopyContext(ctx, "a", "b"); !errors.Is(err, context.Canceled) {
@@ -136,7 +136,7 @@ func TestModTime(t *testing.T) {
 		t.Fatalf("ModTime too old: %v", got)
 	}
 
-	if _, err := mt.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := mt.ModTime(context.Background(), "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("ModTime missing error = %v", err)
 	}
 }
@@ -147,31 +147,31 @@ func TestMemoryStorageEdgeCases(t *testing.T) {
 		t.Fatalf("memorystorage.New: %v", err)
 	}
 
-	if _, err := memorystorage.New(memorystorage.Config{Prefix: "../bad"}); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := memorystorage.New(memorystorage.Config{Prefix: "../bad"}); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("New invalid prefix error = %v", err)
 	}
-	if _, err := store.Get("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.Get("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Get missing error = %v", err)
 	}
-	if err := store.Delete("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := store.Delete("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Delete missing error = %v", err)
 	}
-	if _, err := store.Stat("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.Stat("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Stat missing error = %v", err)
 	}
-	if _, err := store.List("missing"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.List("missing"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("List missing error = %v", err)
 	}
-	if err := store.Walk("missing", func(storage.Entry) error { return nil }); !errors.Is(err, storage.ErrNotFound) {
+	if err := store.Walk("missing", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Walk missing error = %v", err)
 	}
-	if _, err := store.URL("missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.URL("missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("URL missing error = %v", err)
 	}
-	if err := store.Copy("missing.txt", "copy.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := store.Copy("missing.txt", "copy.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Copy missing error = %v", err)
 	}
-	if err := store.Move("missing.txt", "move.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := store.Move("missing.txt", "move.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Move missing error = %v", err)
 	}
 }
@@ -204,13 +204,13 @@ func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
 	}
 
 	entries, err := store.List("dir/sub/file.txt")
-	if err == nil || !errors.Is(err, storage.ErrNotFound) {
+	if err == nil || !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("List file error = %v entries=%v", err, entries)
 	}
 
 	var walked []string
 	stop := errors.New("stop")
-	err = store.Walk("dir", func(entry storage.Entry) error {
+	err = store.Walk("dir", func(entry storagecore.Entry) error {
 		walked = append(walked, entry.Path)
 		if entry.Path == "dir/sub/file.txt" {
 			return stop
@@ -239,7 +239,7 @@ func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
 		t.Fatalf("Exists old copy = %v err=%v", exists, err)
 	}
 
-	if _, err := store.URL("moved.txt"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := store.URL("moved.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("URL moved error = %v", err)
 	}
 }

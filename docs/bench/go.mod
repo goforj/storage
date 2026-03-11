@@ -23,6 +23,8 @@ replace github.com/goforj/storage/storagetest => ../../storagetest
 
 replace github.com/goforj/storage => ../..
 
+replace github.com/goforj/storage/storagecore => ../../storagecore
+
 replace github.com/goforj/storage/driver/ftpstorage => ../../driver/ftpstorage
 
 replace github.com/goforj/storage/driver/gcsstorage => ../../driver/gcsstorage

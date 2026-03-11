@@ -17,11 +17,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("s3", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("s3", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -45,7 +45,7 @@ type s3PresignAPI interface {
 	PresignGetObject(context.Context, *s3.GetObjectInput, ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
-var buildS3Clients = func(cfg aws.Config, resolved storage.ResolvedConfig) (s3API, s3PresignAPI) {
+var buildS3Clients = func(cfg aws.Config, resolved storagecore.ResolvedConfig) (s3API, s3PresignAPI) {
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.UsePathStyle = resolved.S3UsePathStyle
 	})
@@ -89,8 +89,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "s3" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:            "s3",
 		S3Bucket:          c.Bucket,
 		S3Endpoint:        c.Endpoint,
@@ -113,15 +113,15 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Region: "us-east-1",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.S3Bucket == "" {
 		return nil, fmt.Errorf("storage: s3 storage requires S3Bucket")
 	}
@@ -129,7 +129,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 		return nil, fmt.Errorf("storage: s3 storage requires S3Region")
 	}
 
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	}, nil
 }
 
-func loadAWSConfig(ctx context.Context, cfg storage.ResolvedConfig) (aws.Config, error) {
+func loadAWSConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (aws.Config, error) {
 	optFns := []func(*config.LoadOptions) error{
 		config.WithRegion(cfg.S3Region),
 	}
@@ -241,26 +241,26 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	key, err := d.key(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	out, err := d.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(d.bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
-	return storage.Entry{Path: d.stripPrefix(key), Size: aws.ToInt64(out.ContentLength), IsDir: false}, nil
+	return storagecore.Entry{Path: d.stripPrefix(key), Size: aws.ToInt64(out.ContentLength), IsDir: false}, nil
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -288,11 +288,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		prefix += "/"
 	}
 
-	var entries []storage.Entry
+	var entries []storagecore.Entry
 	var token *string
 	for {
 		out, err := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
@@ -321,7 +321,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 			if rel == "" {
 				continue
 			}
-			entries = append(entries, storage.Entry{Path: rel, IsDir: true})
+			entries = append(entries, storagecore.Entry{Path: rel, IsDir: true})
 		}
 		for _, obj := range out.Contents {
 			if strings.HasSuffix(aws.ToString(obj.Key), "/") {
@@ -331,7 +331,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 			if rel == "" {
 				continue
 			}
-			entries = append(entries, storage.Entry{
+			entries = append(entries, storagecore.Entry{
 				Path:  rel,
 				Size:  aws.ToInt64(obj.Size),
 				IsDir: false,
@@ -346,11 +346,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return entries, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -399,11 +399,11 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 					continue
 				}
 				seenDirs[dir] = struct{}{}
-				if err := fn(storage.Entry{Path: dir, IsDir: true}); err != nil {
+				if err := fn(storagecore.Entry{Path: dir, IsDir: true}); err != nil {
 					return err
 				}
 			}
-			if err := fn(storage.Entry{
+			if err := fn(storagecore.Entry{
 				Path:  rel,
 				Size:  aws.ToInt64(obj.Size),
 				IsDir: false,
@@ -418,7 +418,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		break
 	}
 	if fileExists {
-		return fn(storage.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
+		return fn(storagecore.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
 	}
 	return nil
 }
@@ -472,11 +472,11 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 }
 
 func (d *driver) key(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) stripPrefix(k string) string {
@@ -504,11 +504,11 @@ func recursiveParentDirs(p string) []string {
 func wrapError(err error) error {
 	var nfe *types.NotFound
 	if errors.As(err, &nfe) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	var apiErr *types.NoSuchKey
 	if errors.As(err, &apiErr) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	return err
 }

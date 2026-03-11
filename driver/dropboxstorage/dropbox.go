@@ -10,11 +10,11 @@ import (
 	"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox"
 	"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox/files"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("dropbox", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("dropbox", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -58,8 +58,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "dropbox" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:       "dropbox",
 		DropboxToken: c.Token,
 		Prefix:       c.Prefix,
@@ -75,19 +75,19 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Token: "token",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(_ context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.DropboxToken == "" {
 		return nil, fmt.Errorf("storage: dropbox storage requires DropboxToken")
 	}
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -151,29 +151,29 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	full, err := d.fullPath(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	meta, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
 	if err != nil {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
 	switch m := meta.(type) {
 	case *files.FileMetadata:
-		return storage.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}, nil
+		return storagecore.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}, nil
 	case *files.FolderMetadata:
-		return storage.Entry{Path: d.stripPrefix(m.PathLower), Size: 0, IsDir: true}, nil
+		return storagecore.Entry{Path: d.stripPrefix(m.PathLower), Size: 0, IsDir: true}, nil
 	default:
-		return storage.Entry{}, fmt.Errorf("%w: unsupported metadata type", storage.ErrUnsupported)
+		return storagecore.Entry{}, fmt.Errorf("%w: unsupported metadata type", storagecore.ErrUnsupported)
 	}
 }
 
@@ -196,11 +196,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	arg := files.NewListFolderArg(full)
 	arg.Recursive = false
 
-	var entries []storage.Entry
+	var entries []storagecore.Entry
 	err = d.listPage(ctx, arg, &entries)
 	if err != nil {
 		return nil, wrapError(err)
@@ -216,7 +216,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return entries, nil
 }
 
-func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]storage.Entry) error {
+func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries *[]storagecore.Entry) error {
 	res, err := d.client.ListFolder(arg)
 	if err != nil {
 		return err
@@ -225,14 +225,14 @@ func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 		switch m := e.(type) {
 		case *files.FileMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, storage.Entry{
+			*entries = append(*entries, storagecore.Entry{
 				Path:  rel,
 				Size:  int64(m.Size),
 				IsDir: false,
 			})
 		case *files.FolderMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, storage.Entry{
+			*entries = append(*entries, storagecore.Entry{
 				Path:  rel,
 				Size:  0,
 				IsDir: true,
@@ -246,7 +246,7 @@ func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 	return nil
 }
 
-func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]storage.Entry) error {
+func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinueArg, entries *[]storagecore.Entry) error {
 	res, err := d.client.ListFolderContinue(arg)
 	if err != nil {
 		return err
@@ -255,14 +255,14 @@ func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 		switch m := e.(type) {
 		case *files.FileMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, storage.Entry{
+			*entries = append(*entries, storagecore.Entry{
 				Path:  rel,
 				Size:  int64(m.Size),
 				IsDir: false,
 			})
 		case *files.FolderMetadata:
 			rel := d.stripPrefix(m.PathLower)
-			*entries = append(*entries, storage.Entry{
+			*entries = append(*entries, storagecore.Entry{
 				Path:  rel,
 				Size:  0,
 				IsDir: true,
@@ -275,11 +275,11 @@ func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 	return nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	full, err := d.fullPath(p)
 	if err != nil {
 		return err
@@ -334,11 +334,11 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 }
 
 func (d *driver) fullPath(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	joined := storage.JoinPrefix(d.prefix, normalized)
+	joined := storagecore.JoinPrefix(d.prefix, normalized)
 	if joined == "" {
 		return "/", nil
 	}
@@ -355,7 +355,7 @@ func (d *driver) stripPrefix(p string) string {
 	return trimmed
 }
 
-func (d *driver) walkPage(ctx context.Context, arg *files.ListFolderArg, fn func(storage.Entry) error) error {
+func (d *driver) walkPage(ctx context.Context, arg *files.ListFolderArg, fn func(storagecore.Entry) error) error {
 	res, err := d.client.ListFolder(arg)
 	if err != nil {
 		return wrapError(err)
@@ -375,18 +375,18 @@ func (d *driver) walkPage(ctx context.Context, arg *files.ListFolderArg, fn func
 	return nil
 }
 
-func (d *driver) emitWalkEntries(ctx context.Context, entries []files.IsMetadata, fn func(storage.Entry) error) error {
+func (d *driver) emitWalkEntries(ctx context.Context, entries []files.IsMetadata, fn func(storagecore.Entry) error) error {
 	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		switch m := e.(type) {
 		case *files.FileMetadata:
-			if err := fn(storage.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}); err != nil {
+			if err := fn(storagecore.Entry{Path: d.stripPrefix(m.PathLower), Size: int64(m.Size), IsDir: false}); err != nil {
 				return err
 			}
 		case *files.FolderMetadata:
-			if err := fn(storage.Entry{Path: d.stripPrefix(m.PathLower), IsDir: true}); err != nil {
+			if err := fn(storagecore.Entry{Path: d.stripPrefix(m.PathLower), IsDir: true}); err != nil {
 				return err
 			}
 		}
@@ -399,7 +399,7 @@ func wrapError(err error) error {
 		return nil
 	}
 	if isNotFound(err) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	return err
 }

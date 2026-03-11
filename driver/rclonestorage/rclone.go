@@ -22,11 +22,11 @@ import (
 	// Backends (all)
 	_ "github.com/rclone/rclone/backend/all"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("rclone", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("rclone", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -65,8 +65,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "rclone" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:           "rclone",
 		Remote:           c.Remote,
 		Prefix:           c.Prefix,
@@ -107,20 +107,20 @@ var (
 //
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.Remote == "" {
 		return nil, fmt.Errorf("storage: rclone storage requires remote")
 	}
 
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -217,24 +217,24 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	remote, err := d.fullPath(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	obj, err := d.fs.NewObject(ctx, remote)
 	if err == nil {
-		return storage.Entry{Path: d.stripPrefix(remote), Size: obj.Size(), IsDir: false}, nil
+		return storagecore.Entry{Path: d.stripPrefix(remote), Size: obj.Size(), IsDir: false}, nil
 	}
 	if !isNotFound(err) {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
 
 	parent := path.Dir(remote)
@@ -243,18 +243,18 @@ func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, erro
 	}
 	entries, listErr := d.fs.List(ctx, parent)
 	if listErr != nil {
-		return storage.Entry{}, wrapError(listErr)
+		return storagecore.Entry{}, wrapError(listErr)
 	}
 	for _, entry := range entries {
 		if entry.Remote() != remote {
 			continue
 		}
 		if _, ok := entry.(fs.Directory); ok {
-			return storage.Entry{Path: d.stripPrefix(remote), IsDir: true}, nil
+			return storagecore.Entry{Path: d.stripPrefix(remote), IsDir: true}, nil
 		}
-		return storage.Entry{Path: d.stripPrefix(remote), Size: entry.Size(), IsDir: false}, nil
+		return storagecore.Entry{Path: d.stripPrefix(remote), Size: entry.Size(), IsDir: false}, nil
 	}
-	return storage.Entry{}, fmt.Errorf("%w: object not found", storage.ErrNotFound)
+	return storagecore.Entry{}, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -279,11 +279,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		return nil, wrapError(err)
 	}
 
-	var result []storage.Entry
+	var result []storagecore.Entry
 	for _, entry := range entries {
 		rel := d.stripPrefix(entry.Remote())
 		if rel == "" {
@@ -310,7 +310,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 			size = 0
 		}
 
-		result = append(result, storage.Entry{
+		result = append(result, storagecore.Entry{
 			Path:  rel,
 			Size:  size,
 			IsDir: isDir,
@@ -319,11 +319,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return result, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 				isDir = true
 				size = 0
 			}
-			if err := fn(storage.Entry{Path: rel, Size: size, IsDir: isDir}); err != nil {
+			if err := fn(storagecore.Entry{Path: rel, Size: size, IsDir: isDir}); err != nil {
 				return err
 			}
 		}
@@ -397,7 +397,7 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 		if isNotFound(err) || errors.Is(err, fs.ErrorPermissionDenied) {
 			return "", wrapError(err)
 		}
-		return "", fmt.Errorf("%w: %v", storage.ErrUnsupported, err)
+		return "", fmt.Errorf("%w: %v", storagecore.ErrUnsupported, err)
 	}
 	return url, nil
 }
@@ -415,7 +415,7 @@ func (d *driver) ModTime(ctx context.Context, p string) (time.Time, error) {
 	return obj.ModTime(ctx).UTC(), nil
 }
 
-func initRclone(cfg storage.ResolvedConfig) error {
+func initRclone(cfg storagecore.ResolvedConfig) error {
 	if cfg.RcloneConfigData != "" {
 		if cfg.RcloneConfigPath != "" {
 			return fmt.Errorf("storage: only one of RcloneConfigPath or RcloneConfigData may be set")
@@ -454,11 +454,11 @@ func initRclone(cfg storage.ResolvedConfig) error {
 }
 
 func (d *driver) fullPath(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) stripPrefix(remote string) string {
@@ -473,11 +473,11 @@ func (d *driver) stripPrefix(remote string) string {
 func wrapError(err error) error {
 	switch {
 	case isNotFound(err):
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	case errors.Is(err, fs.ErrorPermissionDenied):
-		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrForbidden, err)
 	case errors.Is(err, hash.ErrUnsupported):
-		return fmt.Errorf("%w: %v", storage.ErrUnsupported, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrUnsupported, err)
 	}
 	return err
 }

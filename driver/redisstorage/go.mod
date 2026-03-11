@@ -3,7 +3,7 @@ module github.com/goforj/storage/driver/redisstorage
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.2.4
+	github.com/goforj/storage/storagecore v0.2.4
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/testcontainers/testcontainers-go v0.31.0
 )

@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 var sshDial = ssh.Dial
@@ -27,7 +27,7 @@ var newSFTPClient = func(sshClient *ssh.Client) (sftpClient, error) {
 }
 
 func init() {
-	storage.RegisterDriver("sftp", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("sftp", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -89,8 +89,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "sftp" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:                    "sftp",
 		SFTPHost:                  c.Host,
 		SFTPPort:                  c.Port,
@@ -114,15 +114,15 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Password: "secret",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(_ context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.SFTPHost == "" {
 		return nil, fmt.Errorf("storage: sftp storage requires SFTPHost")
 	}
@@ -162,7 +162,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 		return nil, fmt.Errorf("storage: sftp client: %w", err)
 	}
 
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		_ = client.Close()
 		return nil, err
@@ -174,7 +174,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 	}, nil
 }
 
-func buildAuth(cfg storage.ResolvedConfig) ([]ssh.AuthMethod, error) {
+func buildAuth(cfg storagecore.ResolvedConfig) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 	if cfg.SFTPPassword != "" {
 		methods = append(methods, ssh.Password(cfg.SFTPPassword))
@@ -196,7 +196,7 @@ func buildAuth(cfg storage.ResolvedConfig) ([]ssh.AuthMethod, error) {
 	return methods, nil
 }
 
-func buildHostKeyCallback(cfg storage.ResolvedConfig) (ssh.HostKeyCallback, error) {
+func buildHostKeyCallback(cfg storagecore.ResolvedConfig) (ssh.HostKeyCallback, error) {
 	if cfg.SFTPInsecureIgnoreHostKey {
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
@@ -275,27 +275,27 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	fp, err := d.fullPath(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	info, err := d.client.Stat(fp)
 	if err != nil {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
 	size := info.Size()
 	if info.IsDir() {
 		size = 0
 	}
-	return storage.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: info.IsDir()}, nil
+	return storagecore.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: info.IsDir()}, nil
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -323,11 +323,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -340,10 +340,10 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		return nil, wrapError(err)
 	}
 	basePrefix := d.stripPrefix(fp)
-	var entries []storage.Entry
+	var entries []storagecore.Entry
 	for _, info := range infos {
 		rel := path.Join(basePrefix, info.Name())
-		entries = append(entries, storage.Entry{
+		entries = append(entries, storagecore.Entry{
 			Path:  rel,
 			Size:  info.Size(),
 			IsDir: info.IsDir(),
@@ -352,11 +352,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return entries, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		return wrapError(err)
 	}
 	if !info.IsDir() {
-		return fn(storage.Entry{Path: d.stripPrefix(fp), Size: info.Size(), IsDir: false})
+		return fn(storagecore.Entry{Path: d.stripPrefix(fp), Size: info.Size(), IsDir: false})
 	}
 	return d.walkDir(ctx, fp, fn)
 }
@@ -405,15 +405,15 @@ func (d *driver) URL(p string) (string, error) {
 }
 
 func (d *driver) URLContext(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for sftp", storage.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for sftp", storagecore.ErrUnsupported)
 }
 
 func (d *driver) fullPath(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) stripPrefix(p string) string {
@@ -425,7 +425,7 @@ func (d *driver) stripPrefix(p string) string {
 	return trimmed
 }
 
-func (d *driver) walkDir(ctx context.Context, dir string, fn func(storage.Entry) error) error {
+func (d *driver) walkDir(ctx context.Context, dir string, fn func(storagecore.Entry) error) error {
 	infos, err := d.client.ReadDir(dir)
 	if err != nil {
 		return wrapError(err)
@@ -435,7 +435,7 @@ func (d *driver) walkDir(ctx context.Context, dir string, fn func(storage.Entry)
 			return err
 		}
 		rel := d.stripPrefix(path.Join(dir, info.Name()))
-		entry := storage.Entry{Path: rel, Size: info.Size(), IsDir: info.IsDir()}
+		entry := storagecore.Entry{Path: rel, Size: info.Size(), IsDir: info.IsDir()}
 		if entry.IsDir {
 			entry.Size = 0
 		}
@@ -453,10 +453,10 @@ func (d *driver) walkDir(ctx context.Context, dir string, fn func(storage.Entry)
 
 func wrapError(err error) error {
 	if os.IsNotExist(err) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	if os.IsPermission(err) {
-		return fmt.Errorf("%w: %v", storage.ErrForbidden, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrForbidden, err)
 	}
 	return err
 }

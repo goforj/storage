@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -26,7 +26,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 	})
 
 	t.Run("build auth missing credentials", func(t *testing.T) {
-		_, err := buildAuth(storage.ResolvedConfig{})
+		_, err := buildAuth(storagecore.ResolvedConfig{})
 		if err == nil {
 			t.Fatal("buildAuth returned nil error")
 		}
@@ -37,14 +37,14 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 		if err := os.WriteFile(keyPath, []byte("invalid"), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
-		_, err := buildAuth(storage.ResolvedConfig{SFTPKeyPath: keyPath})
+		_, err := buildAuth(storagecore.ResolvedConfig{SFTPKeyPath: keyPath})
 		if err == nil {
 			t.Fatal("buildAuth returned nil error")
 		}
 	})
 
 	t.Run("build host key callback defaults", func(t *testing.T) {
-		cb, err := buildHostKeyCallback(storage.ResolvedConfig{})
+		cb, err := buildHostKeyCallback(storagecore.ResolvedConfig{})
 		if err != nil {
 			t.Fatalf("buildHostKeyCallback: %v", err)
 		}
@@ -54,7 +54,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 	})
 
 	t.Run("build auth password", func(t *testing.T) {
-		methods, err := buildAuth(storage.ResolvedConfig{SFTPPassword: "secret"})
+		methods, err := buildAuth(storagecore.ResolvedConfig{SFTPPassword: "secret"})
 		if err != nil {
 			t.Fatalf("buildAuth password: %v", err)
 		}
@@ -64,7 +64,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 	})
 
 	t.Run("build host key callback invalid known hosts", func(t *testing.T) {
-		_, err := buildHostKeyCallback(storage.ResolvedConfig{SFTPKnownHostsPath: t.TempDir() + "/missing"})
+		_, err := buildHostKeyCallback(storagecore.ResolvedConfig{SFTPKnownHostsPath: t.TempDir() + "/missing"})
 		if err == nil {
 			t.Fatal("buildHostKeyCallback returned nil error")
 		}
@@ -92,7 +92,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 			return &fakeSFTPClient{}, nil
 		}
 
-		store, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+		store, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			SFTPHost:     "good",
 			SFTPPassword: "secret",
 			Prefix:       "pre",
@@ -101,7 +101,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 			t.Fatalf("newFromDiskConfig success err=%v store=%v", err, store)
 		}
 
-		if _, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			SFTPHost:     "bad",
 			SFTPPassword: "secret",
 		}); err == nil {
@@ -109,7 +109,7 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 		}
 
 		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return nil, errors.New("client boom") }
-		if _, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			SFTPHost:     "good",
 			SFTPPassword: "secret",
 		}); err == nil {
@@ -117,11 +117,11 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 		}
 
 		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return &fakeSFTPClient{}, nil }
-		if _, err := newFromDiskConfig(context.Background(), storage.ResolvedConfig{
+		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			SFTPHost:     "good",
 			SFTPPassword: "secret",
 			Prefix:       "../bad",
-		}); !errors.Is(err, storage.ErrForbidden) {
+		}); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("newFromDiskConfig invalid prefix error = %v", err)
 		}
 	})
@@ -142,13 +142,13 @@ func TestSFTPPrefixHelpers(t *testing.T) {
 }
 
 func TestSFTPWrapError(t *testing.T) {
-	if err := wrapError(os.ErrNotExist); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(os.ErrNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound")
 	}
-	if err := wrapError(os.ErrPermission); !errors.Is(err, storage.ErrForbidden) {
+	if err := wrapError(os.ErrPermission); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden")
 	}
-	if err := wrapError(errors.New("other")); errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrForbidden) {
+	if err := wrapError(errors.New("other")); errors.Is(err, storagecore.ErrNotFound) || errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("wrapError should preserve unrelated errors")
 	}
 }
@@ -173,7 +173,7 @@ func TestSFTPContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
@@ -182,7 +182,7 @@ func TestSFTPContextCancellation(t *testing.T) {
 	if err := d.MoveContext(ctx, "file.txt", "moved.txt"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("MoveContext error = %v", err)
 	}
-	if _, err := d.URL("file.txt"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("URL error = %v", err)
 	}
 }
@@ -207,7 +207,7 @@ func TestSFTPResolvedConfigAndHelpers(t *testing.T) {
 	if got := d.stripPrefix("plain/path"); got != "plain/path" {
 		t.Fatalf("stripPrefix without prefix = %q", got)
 	}
-	if _, err := d.fullPath("../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.fullPath("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("fullPath invalid error = %v", err)
 	}
 }
@@ -329,8 +329,8 @@ func TestSFTPFakeWalkAndErrors(t *testing.T) {
 			client: &fakeSFTPClient{statInfo: fakeFileInfo{name: "file.txt", size: 4}},
 			prefix: "pre",
 		}
-		var got []storage.Entry
-		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+		var got []storagecore.Entry
+		if err := d.Walk("file.txt", func(entry storagecore.Entry) error {
 			got = append(got, entry)
 			return nil
 		}); err != nil {
@@ -351,7 +351,7 @@ func TestSFTPFakeWalkAndErrors(t *testing.T) {
 		}
 		d := &driver{client: client, prefix: "pre"}
 		stop := errors.New("stop")
-		err := d.Walk("folder", func(entry storage.Entry) error {
+		err := d.Walk("folder", func(entry storagecore.Entry) error {
 			if entry.Path == "folder/sub" {
 				return stop
 			}
@@ -374,22 +374,22 @@ func TestSFTPFakeWalkAndErrors(t *testing.T) {
 			},
 			prefix: "pre",
 		}
-		if _, err := d.Get("file.txt"); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := d.Get("file.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 			t.Fatalf("Get error = %v", err)
 		}
-		if err := d.Put("file.txt", []byte("x")); !errors.Is(err, storage.ErrForbidden) {
+		if err := d.Put("file.txt", []byte("x")); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("Put error = %v", err)
 		}
-		if err := d.Delete("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+		if err := d.Delete("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("Delete error = %v", err)
 		}
-		if _, err := d.Stat("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+		if _, err := d.Stat("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("Stat error = %v", err)
 		}
-		if _, err := d.Exists("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+		if _, err := d.Exists("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("Exists error = %v", err)
 		}
-		if _, err := d.List("file.txt"); !errors.Is(err, storage.ErrForbidden) {
+		if _, err := d.List("file.txt"); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("List error = %v", err)
 		}
 	})

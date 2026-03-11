@@ -11,7 +11,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestGCSConstructors(t *testing.T) {
@@ -25,14 +25,14 @@ func TestGCSConstructors(t *testing.T) {
 	t.Run("url emulator unsupported", func(t *testing.T) {
 		d := &driver{emulator: true}
 		_, err := d.URLContext(context.Background(), "file.txt")
-		if !errors.Is(err, storage.ErrUnsupported) {
+		if !errors.Is(err, storagecore.ErrUnsupported) {
 			t.Fatalf("URLContext error = %v", err)
 		}
 	})
 
 	t.Run("new invalid prefix", func(t *testing.T) {
 		_, err := New(Config{Bucket: "bucket", Prefix: "../bad"})
-		if !errors.Is(err, storage.ErrForbidden) {
+		if !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("New invalid prefix error = %v", err)
 		}
 	})
@@ -53,13 +53,13 @@ func TestGCSKeyAndPrefixHelpers(t *testing.T) {
 }
 
 func TestGCSWrapError(t *testing.T) {
-	if err := wrapError(gcsapi.ErrObjectNotExist); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(gcsapi.ErrObjectNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if !isNotFound(&googleapi.Error{Code: 404}) {
 		t.Fatal("isNotFound should detect googleapi 404")
 	}
-	if err := wrapError(errors.New("other")); errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(errors.New("other")); errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("wrapError should preserve non-not-found errors")
 	}
 	if isNotFound(errors.New("other")) {
@@ -87,7 +87,7 @@ func TestGCSContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 	if err := d.CopyContext(ctx, "file.txt", "copy.txt"); !errors.Is(err, context.Canceled) {
@@ -112,7 +112,7 @@ func TestGCSHelpers(t *testing.T) {
 	if got := d.stripPrefix("plain/path"); got != "plain/path" {
 		t.Fatalf("stripPrefix without prefix = %q", got)
 	}
-	if _, err := d.key("../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.key("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("key invalid error = %v", err)
 	}
 	if got := recursiveParentDirs("a/b/c/file.txt"); len(got) != 3 || got[0] != "a" || got[2] != "a/b/c" {
@@ -283,8 +283,8 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 		}
 		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "pre"}
 
-		var got []storage.Entry
-		if err := d.Walk("file.txt", func(entry storage.Entry) error {
+		var got []storagecore.Entry
+		if err := d.Walk("file.txt", func(entry storagecore.Entry) error {
 			got = append(got, entry)
 			return nil
 		}); err != nil {
@@ -307,7 +307,7 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "pre"}
 
 		stop := errors.New("stop")
-		err := d.Walk("folder", func(entry storage.Entry) error {
+		err := d.Walk("folder", func(entry storagecore.Entry) error {
 			if entry.Path == "folder/file-b.txt" {
 				return stop
 			}
@@ -332,7 +332,7 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 		}
 		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "pre"}
 
-		if _, err := d.Get("file.txt"); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := d.Get("file.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 			t.Fatalf("Get error = %v", err)
 		}
 		if err := d.Put("file.txt", []byte("x")); err == nil {

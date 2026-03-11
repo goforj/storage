@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 	"github.com/redis/go-redis/v9"
 )
 
 func init() {
-	storage.RegisterDriver("redis", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("redis", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -54,8 +54,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "redis" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:        "redis",
 		RedisAddr:     c.Addr,
 		RedisUsername: c.Username,
@@ -75,19 +75,19 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Prefix: "scratch",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.RedisAddr == "" {
 		return nil, fmt.Errorf("storage: redis storage requires RedisAddr")
 	}
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 		return nil, fmt.Errorf("storage: redis get: %w", err)
 	}
 	if len(fields) == 0 || fields[0] == nil {
-		return nil, fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return nil, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	data, ok := fields[0].(string)
 	if !ok {
@@ -178,7 +178,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		return fmt.Errorf("storage: redis delete: %w", err)
 	}
 	if deleted == 0 {
-		return fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	if err := d.unindexDelete(ctx, key); err != nil {
 		return fmt.Errorf("storage: redis delete: %w", err)
@@ -186,34 +186,34 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	key, err := d.key(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	size, err := d.objectSize(ctx, key)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	if size >= 0 {
-		return storage.Entry{Path: d.stripPrefix(key), Size: size, IsDir: false}, nil
+		return storagecore.Entry{Path: d.stripPrefix(key), Size: size, IsDir: false}, nil
 	}
 
 	ok, err := d.dirExists(ctx, key)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	if ok {
-		return storage.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
 	}
-	return storage.Entry{}, fmt.Errorf("%w: object not found", storage.ErrNotFound)
+	return storagecore.Entry{}, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -235,11 +235,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return size >= 0, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -261,24 +261,24 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 			return nil, err
 		}
 		if size >= 0 {
-			return nil, fmt.Errorf("%w: path is not a directory", storage.ErrNotFound)
+			return nil, fmt.Errorf("%w: path is not a directory", storagecore.ErrNotFound)
 		}
 		ok, err := d.dirExists(ctx, key)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			return nil, fmt.Errorf("%w: object not found", storage.ErrNotFound)
+			return nil, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 		}
 	}
 	return entries, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
@@ -330,7 +330,7 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	}
 	data, ok := fields["data"]
 	if !ok {
-		return fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	pipe := d.client.TxPipeline()
 	pipe.HSet(ctx, d.objectKey(dstKey), map[string]any{
@@ -366,7 +366,7 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	}
 	data, ok := fields["data"]
 	if !ok {
-		return fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	pipe := d.client.TxPipeline()
 	pipe.HSet(ctx, d.objectKey(dstKey), map[string]any{
@@ -394,7 +394,7 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 	if _, err := d.StatContext(ctx, p); err != nil {
 		return "", err
 	}
-	return "", fmt.Errorf("%w: public URL not supported for redis", storage.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for redis", storagecore.ErrUnsupported)
 }
 
 // ModTime returns the object's mod time. Intended for testing only.
@@ -408,7 +408,7 @@ func (d *driver) ModTime(ctx context.Context, p string) (time.Time, error) {
 	}
 	raw, err := d.client.HGet(ctx, d.objectKey(key), "modtime").Result()
 	if err == redis.Nil {
-		return time.Time{}, fmt.Errorf("%w: object not found", storage.ErrNotFound)
+		return time.Time{}, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
 	if err != nil {
 		return time.Time{}, fmt.Errorf("storage: redis modtime: %w", err)
@@ -425,11 +425,11 @@ func (d *driver) Close() error {
 }
 
 func (d *driver) key(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) objectKey(key string) string {
@@ -472,14 +472,14 @@ func (d *driver) children(ctx context.Context, key string) ([]string, error) {
 	return children, nil
 }
 
-func (d *driver) listEntries(ctx context.Context, children []string) ([]storage.Entry, error) {
-	entries := make([]storage.Entry, 0, len(children))
+func (d *driver) listEntries(ctx context.Context, children []string) ([]storagecore.Entry, error) {
+	entries := make([]storagecore.Entry, 0, len(children))
 	for _, child := range children {
 		isDir, key, err := parseChildEntry(child)
 		if err != nil {
 			return nil, err
 		}
-		entry := storage.Entry{Path: d.stripPrefix(key), IsDir: isDir}
+		entry := storagecore.Entry{Path: d.stripPrefix(key), IsDir: isDir}
 		if !isDir {
 			size, err := d.objectSize(ctx, key)
 			if err != nil {
@@ -492,34 +492,34 @@ func (d *driver) listEntries(ctx context.Context, children []string) ([]storage.
 		}
 		entries = append(entries, entry)
 	}
-	slices.SortFunc(entries, func(a, b storage.Entry) int {
+	slices.SortFunc(entries, func(a, b storagecore.Entry) int {
 		return strings.Compare(a.Path, b.Path)
 	})
 	return entries, nil
 }
 
-func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]storage.Entry, bool, error) {
+func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]storagecore.Entry, bool, error) {
 	size, err := d.objectSize(ctx, key)
 	if err != nil {
 		return nil, false, err
 	}
 	if size >= 0 {
-		return []storage.Entry{{Path: d.stripPrefix(key), Size: size, IsDir: false}}, true, nil
+		return []storagecore.Entry{{Path: d.stripPrefix(key), Size: size, IsDir: false}}, true, nil
 	}
 	if key != "" && len(keys) == 0 {
 		return nil, false, nil
 	}
 
 	seenDirs := map[string]struct{}{}
-	entries := make([]storage.Entry, 0, len(keys))
+	entries := make([]storagecore.Entry, 0, len(keys))
 	for _, existing := range keys {
 		for _, dir := range recursiveParentDirs(d.stripPrefix(existing)) {
-			fullDir := storage.JoinPrefix(d.prefix, dir)
+			fullDir := storagecore.JoinPrefix(d.prefix, dir)
 			if _, ok := seenDirs[fullDir]; ok {
 				continue
 			}
 			seenDirs[fullDir] = struct{}{}
-			entries = append(entries, storage.Entry{Path: dir, IsDir: true})
+			entries = append(entries, storagecore.Entry{Path: dir, IsDir: true})
 		}
 		size, err := d.objectSize(ctx, existing)
 		if err != nil {
@@ -528,13 +528,13 @@ func (d *driver) walkEntries(ctx context.Context, keys []string, key string) ([]
 		if size < 0 {
 			continue
 		}
-		entries = append(entries, storage.Entry{
+		entries = append(entries, storagecore.Entry{
 			Path:  d.stripPrefix(existing),
 			Size:  size,
 			IsDir: false,
 		})
 	}
-	slices.SortFunc(entries, func(a, b storage.Entry) int {
+	slices.SortFunc(entries, func(a, b storagecore.Entry) int {
 		return strings.Compare(a.Path, b.Path)
 	})
 	return entries, true, nil
@@ -663,7 +663,7 @@ func parseChildEntry(child string) (bool, string, error) {
 	}
 }
 
-func redisNamespace(cfg storage.ResolvedConfig) string {
+func redisNamespace(cfg storagecore.ResolvedConfig) string {
 	base := "goforj:storage:redis"
 	if cfg.RedisDB != 0 {
 		base += ":db:" + strconv.Itoa(cfg.RedisDB)

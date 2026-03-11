@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestLocalResolvedConfigAndPrefixValidation(t *testing.T) {
@@ -18,7 +18,7 @@ func TestLocalResolvedConfigAndPrefixValidation(t *testing.T) {
 		t.Fatalf("ResolvedConfig = %+v", resolved)
 	}
 
-	if _, err := New(Config{Root: t.TempDir(), Prefix: "../bad"}); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := New(Config{Root: t.TempDir(), Prefix: "../bad"}); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("New invalid prefix error = %v", err)
 	}
 }
@@ -31,10 +31,10 @@ func TestLocalCRUDBranches(t *testing.T) {
 	}
 	d := store.(*driver)
 
-	if _, err := d.GetContext(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.GetContext(context.Background(), "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("GetContext missing error = %v", err)
 	}
-	if _, err := d.GetContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.GetContext(context.Background(), "../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("GetContext invalid path error = %v", err)
 	}
 
@@ -89,15 +89,15 @@ func TestLocalCRUDBranches(t *testing.T) {
 		t.Fatalf("List folder entries = %+v", subEntries)
 	}
 
-	if _, err := d.ListContext(context.Background(), "missing"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.ListContext(context.Background(), "missing"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("ListContext missing error = %v", err)
 	}
-	if _, err := d.StatContext(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.StatContext(context.Background(), "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("StatContext missing error = %v", err)
 	}
 
 	var walked []string
-	if err := d.WalkContext(context.Background(), "", func(entry storage.Entry) error {
+	if err := d.WalkContext(context.Background(), "", func(entry storagecore.Entry) error {
 		walked = append(walked, entry.Path)
 		return nil
 	}); err != nil {
@@ -111,16 +111,16 @@ func TestLocalCRUDBranches(t *testing.T) {
 	if err := d.DeleteContext(context.Background(), "folder/file.txt"); err != nil {
 		t.Fatalf("DeleteContext: %v", err)
 	}
-	if err := d.Delete("folder/file.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.Delete("folder/file.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Delete missing error = %v", err)
 	}
-	if err := d.DeleteContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if err := d.DeleteContext(context.Background(), "../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("DeleteContext invalid path error = %v", err)
 	}
-	if _, err := d.ListContext(context.Background(), "../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.ListContext(context.Background(), "../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("ListContext invalid path error = %v", err)
 	}
-	if err := d.WalkContext(context.Background(), "missing", func(storage.Entry) error { return nil }); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.WalkContext(context.Background(), "missing", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("WalkContext missing error = %v", err)
 	}
 }
@@ -154,22 +154,22 @@ func TestLocalCopyAndMoveBranches(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "pre", "dir"), 0o755); err != nil {
 		t.Fatalf("MkdirAll dir: %v", err)
 	}
-	if err := d.Copy("dir", "copy-dir"); !errors.Is(err, storage.ErrUnsupported) {
+	if err := d.Copy("dir", "copy-dir"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("Copy dir error = %v", err)
 	}
-	if err := d.Move("dir", "move-dir"); !errors.Is(err, storage.ErrUnsupported) {
+	if err := d.Move("dir", "move-dir"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("Move dir error = %v", err)
 	}
-	if err := d.Copy("missing.txt", "x"); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.Copy("missing.txt", "x"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Copy missing error = %v", err)
 	}
-	if err := d.Move("missing.txt", "x"); !errors.Is(err, storage.ErrNotFound) {
+	if err := d.Move("missing.txt", "x"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Move missing error = %v", err)
 	}
-	if err := d.Copy("src.txt", "../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if err := d.Copy("src.txt", "../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("Copy invalid dst error = %v", err)
 	}
-	if err := d.Move("src.txt", "../bad"); !errors.Is(err, storage.ErrForbidden) {
+	if err := d.Move("src.txt", "../bad"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("Move invalid dst error = %v", err)
 	}
 }
@@ -181,7 +181,7 @@ func TestLocalModTimeAndRelativeEdgeCases(t *testing.T) {
 	if rel, err := d.userRelative(filepath.Join(root, "pre")); err != nil || rel != "" {
 		t.Fatalf("userRelative root = %q err=%v", rel, err)
 	}
-	if _, err := d.modTime(context.Background(), "missing.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := d.modTime(context.Background(), "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("modTime missing error = %v", err)
 	}
 }

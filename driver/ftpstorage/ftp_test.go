@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/goftp/server"
-
-	"github.com/goforj/storage"
 )
 
 type memFactory struct {
@@ -129,28 +127,17 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		_ = s.Shutdown()
 	})
 
-	cfg := storage.Config{
-		Default: "ftp",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"ftp": Config{
-				Host:     "127.0.0.1",
-				Port:     opts.Port,
-				User:     "anonymous",
-				Password: "anonymous",
-			},
-		},
-	}
-
 	// small delay to ensure server is listening
 	time.Sleep(200 * time.Millisecond)
 
-	mgr, err := storage.New(cfg)
+	fs, err := New(Config{
+		Host:     "127.0.0.1",
+		Port:     opts.Port,
+		User:     "anonymous",
+		Password: "anonymous",
+	})
 	if err != nil {
-		t.Fatalf("New manager: %v", err)
-	}
-	fs, err := mgr.Disk("ftp")
-	if err != nil {
-		t.Fatalf("disk: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	if err := fs.Put("hello.txt", []byte("world")); err != nil {

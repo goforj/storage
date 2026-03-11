@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 OUTPUT_FILE="${COVERAGE_OUTPUT:-coverage.txt}"
-TMP_ROOT="${COVERAGE_TMP_DIR:-/tmp/storage-coverage}"
+TMP_ROOT="${COVERAGE_TMP_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/storage-coverage.XXXXXX")}"
 DEFAULT_GOCACHE="$(go env GOCACHE)"
 DEFAULT_GOMODCACHE="$(go env GOMODCACHE)"
 GOCACHE_DIR="${GOCACHE_DIR:-$DEFAULT_GOCACHE}"
@@ -40,6 +40,7 @@ go test -cover ./... -args -test.gocoverdir="$ROOT_COVER_DIR"
 
 echo "==> storagetest module coverage"
 (
+  mkdir -p "$STORAGETEST_COVER_DIR"
   cd storagetest
   GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
   go test -cover ./... -args -test.gocoverdir="$STORAGETEST_COVER_DIR"
@@ -53,6 +54,7 @@ for module_dir in "${DRIVER_MODULES[@]}"; do
   mkdir -p "$cover_dir"
   echo "==> ${module_name} module coverage"
   (
+    mkdir -p "$cover_dir"
     cd "$module_dir"
     GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
     go test -cover ./... -args -test.gocoverdir="$cover_dir"
@@ -63,6 +65,7 @@ done
 if [[ -d "$INTEGRATION_MODULE_DIR" ]]; then
   echo "==> Integration module coverage ($INTEGRATION_MODULE_DIR)"
   (
+    mkdir -p "$INTEGRATION_COVER_DIR"
     cd "$INTEGRATION_MODULE_DIR"
     GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
     go test -cover -tags="$INTEGRATION_TAGS" -coverpkg="$INTEGRATION_MODULE_COVERPKG" $INTEGRATION_MODULE_PKGS \

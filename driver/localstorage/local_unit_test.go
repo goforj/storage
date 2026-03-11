@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestLocalConstructors(t *testing.T) {
@@ -32,13 +32,13 @@ func TestLocalConstructors(t *testing.T) {
 }
 
 func TestWrapLocalError(t *testing.T) {
-	if err := wrapLocalError(os.ErrNotExist); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapLocalError(os.ErrNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
-	if err := wrapLocalError(os.ErrPermission); !errors.Is(err, storage.ErrForbidden) {
+	if err := wrapLocalError(os.ErrPermission); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
-	if err := wrapLocalError(errors.New("other")); !errors.Is(err, storage.ErrForbidden) && !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapLocalError(errors.New("other")); !errors.Is(err, storagecore.ErrForbidden) && !errors.Is(err, storagecore.ErrNotFound) {
 		// pass; should be unchanged
 	} else {
 		t.Fatalf("expected passthrough error")
@@ -56,14 +56,14 @@ func TestResolvePathAndTraversal(t *testing.T) {
 		t.Fatalf("expected path, got empty")
 	}
 	// traversal rejection
-	if _, err := d.resolvePath("../etc/passwd"); !errors.Is(err, storage.ErrForbidden) {
+	if _, err := d.resolvePath("../etc/passwd"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden for traversal, got %v", err)
 	}
 }
 
 func TestLocalURLUnsupported(t *testing.T) {
 	d := &driver{}
-	if _, err := d.URL("x"); !errors.Is(err, storage.ErrUnsupported) {
+	if _, err := d.URL("x"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestLocalContextCancellation(t *testing.T) {
 	if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListContext error = %v", err)
 	}
-	if err := d.WalkContext(ctx, "", func(storage.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("WalkContext error = %v", err)
 	}
 }
@@ -136,8 +136,8 @@ func TestLocalWalkFileAndCallbackError(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	var got storage.Entry
-	if err := d.WalkContext(context.Background(), "file.txt", func(entry storage.Entry) error {
+	var got storagecore.Entry
+	if err := d.WalkContext(context.Background(), "file.txt", func(entry storagecore.Entry) error {
 		got = entry
 		return nil
 	}); err != nil {
@@ -148,7 +148,7 @@ func TestLocalWalkFileAndCallbackError(t *testing.T) {
 	}
 
 	want := errors.New("stop")
-	err := d.WalkContext(context.Background(), "", func(storage.Entry) error { return want })
+	err := d.WalkContext(context.Background(), "", func(storagecore.Entry) error { return want })
 	if !errors.Is(err, want) {
 		t.Fatalf("WalkContext callback error = %v", err)
 	}

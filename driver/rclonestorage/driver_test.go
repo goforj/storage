@@ -10,8 +10,6 @@ import (
 
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
-
-	"github.com/goforj/storage"
 )
 
 func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
@@ -37,34 +35,21 @@ func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 		UseUnsignedPayload: true, // simplify fake server compat (no seek required)
 	})
 
-	cfg := storage.Config{
-		Default: "local",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": Config{
-				Remote:           "localdisk:" + remoteRoot,
-				Prefix:           "sandbox",
-				RcloneConfigData: localConf + "\n" + s3Conf,
-			},
-			"s3": Config{
-				Remote:           "s3fake:bucket",
-				Prefix:           "sandbox",
-				RcloneConfigData: localConf + "\n" + s3Conf,
-			},
-		},
-	}
-
-	manager, err := storage.New(cfg)
+	localFS, err := New(Config{
+		Remote:           "localdisk:" + remoteRoot,
+		Prefix:           "sandbox",
+		RcloneConfigData: localConf + "\n" + s3Conf,
+	})
 	if err != nil {
-		t.Fatalf("New manager: %v", err)
+		t.Fatalf("New local: %v", err)
 	}
-
-	localFS, err := manager.Disk("local")
+	s3FS, err := New(Config{
+		Remote:           "s3fake:bucket",
+		Prefix:           "sandbox",
+		RcloneConfigData: localConf + "\n" + s3Conf,
+	})
 	if err != nil {
-		t.Fatalf("local disk: %v", err)
-	}
-	s3FS, err := manager.Disk("s3")
-	if err != nil {
-		t.Fatalf("s3 disk: %v", err)
+		t.Fatalf("New s3: %v", err)
 	}
 
 	if err := localFS.Put("hello.txt", []byte("local")); err != nil {

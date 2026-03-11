@@ -11,8 +11,6 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
-
-	"github.com/goforj/storage"
 )
 
 func TestSFTPWithEmbeddedServer(t *testing.T) {
@@ -41,29 +39,18 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 
 	go acceptLoop(t, ln, serverConfig, root)
 
-	cfg := storage.Config{
-		Default: "sftp",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"sftp": Config{
-				Host:                  "127.0.0.1",
-				Port:                  ln.Addr().(*net.TCPAddr).Port,
-				User:                  "test",
-				Password:              "test",
-				InsecureIgnoreHostKey: true,
-			},
-		},
-	}
-
 	// brief delay to ensure server is accepting
 	time.Sleep(100 * time.Millisecond)
 
-	mgr, err := storage.New(cfg)
+	fs, err := New(Config{
+		Host:                  "127.0.0.1",
+		Port:                  ln.Addr().(*net.TCPAddr).Port,
+		User:                  "test",
+		Password:              "test",
+		InsecureIgnoreHostKey: true,
+	})
 	if err != nil {
-		t.Fatalf("New manager: %v", err)
-	}
-	fs, err := mgr.Disk("sftp")
-	if err != nil {
-		t.Fatalf("disk: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	if err := fs.Put("hello.txt", []byte("sftp")); err != nil {

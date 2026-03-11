@@ -49,36 +49,36 @@ help: ##@other Show this help.
 # Go helpers
 #----------------------
 GO_TEST_FLAGS ?= -count=1
-GOCACHE ?= /tmp/storage-gocache
-GOMODCACHE ?= /tmp/storage-gomodcache
+
+GO_CACHE_ENV = $(if $(GOCACHE),GOCACHE="$(GOCACHE)") $(if $(GOMODCACHE),GOMODCACHE="$(GOMODCACHE)")
 
 tidy: ##@go Run go mod tidy
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go mod tidy
+	$(GO_CACHE_ENV) go mod tidy
 
 test: ##@go Run unit tests
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test $(GO_TEST_FLAGS) ./...
+	$(GO_CACHE_ENV) go test $(GO_TEST_FLAGS) ./...
 
 examples-test: ##@go Run tests in the examples module
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd examples && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test $(GO_TEST_FLAGS) ./...
+	cd examples && $(GO_CACHE_ENV) go test $(GO_TEST_FLAGS) ./...
 
 coverage: ##@go Generate combined unit + integration coverage for Codecov
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && GOCACHE_DIR="$(GOCACHE)" GOMODCACHE_DIR="$(GOMODCACHE)" scripts/coverage-codecov.sh
+	$(GO_CACHE_ENV) scripts/coverage-codecov.sh
 
 check-modules: ##@go Verify published module manifests do not rely on local replace wiring
 	scripts/check-published-modules.sh
 
 integration: ##@go Run the centralized integration matrix in ./integration (may require Docker)
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all
+	cd integration && $(GO_CACHE_ENV) go test -tags=integration $(GO_TEST_FLAGS) ./all
 
 integration-driver: ##@go Run a single backend in the centralized integration matrix: make integration-driver gcs
 	test -n "$(RUN_ARGS)" || (echo "usage: make integration-driver <driver>" && exit 1)
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd integration && INTEGRATION_DRIVER="$(firstword $(RUN_ARGS))" GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=integration $(GO_TEST_FLAGS) ./all
+	cd integration && INTEGRATION_DRIVER="$(firstword $(RUN_ARGS))" $(GO_CACHE_ENV) go test -tags=integration $(GO_TEST_FLAGS) ./all
 
 bench: ##@go Run benchmark suites in ./docs/bench
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd docs/bench && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=bench -run '^$$' -bench . -count=1
+	cd docs/bench && $(GO_CACHE_ENV) go test -tags=bench -run '^$$' -bench . -count=1
 
 bench-render: ##@go Render benchmark artifacts and update README benchmark embeds
-	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" && cd docs/bench && GOCACHE="$(GOCACHE)" GOMODCACHE="$(GOMODCACHE)" go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v
+	cd docs/bench && $(GO_CACHE_ENV) go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v
 
 tag-modules: ##@release Tag all Go modules: make tag-modules v0.1.0 [-- --dry-run]
 	test -n "$(RUN_ARGS)" || (echo "usage: make tag-modules <version> [-- --dry-run|--push|--exclude <dir>]" && exit 1)

@@ -2,10 +2,8 @@ package storage
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"path"
-	"strings"
+
+	storagecore "github.com/goforj/storage/storagecore"
 )
 
 // Storage is the public interface for interacting with a storage backend.
@@ -169,7 +167,7 @@ type Storage interface {
 	//	})
 	//
 	//	url, _ := disk.URL("docs/readme.txt")
-	//	_ = url // signed object URL
+	//	_ = url
 	//
 	// Example: handle unsupported url generation
 	//
@@ -240,16 +238,12 @@ type ContextStorage interface {
 //	}
 //	fmt.Println(entry.Path, entry.IsDir)
 //	// Output: docs/readme.txt false
-type Entry struct {
-	Path  string
-	Size  int64
-	IsDir bool
-}
+type Entry = storagecore.Entry
 
 var (
-	ErrNotFound    = errors.New("storage: not found")
-	ErrForbidden   = errors.New("storage: forbidden")
-	ErrUnsupported = errors.New("storage: unsupported operation")
+	ErrNotFound    = storagecore.ErrNotFound
+	ErrForbidden   = storagecore.ErrForbidden
+	ErrUnsupported = storagecore.ErrUnsupported
 )
 
 // DiskName is a typed identifier for configured disks.
@@ -260,7 +254,7 @@ var (
 //	const uploads storage.DiskName = "uploads"
 //	fmt.Println(uploads)
 //	// Output: uploads
-type DiskName string
+type DiskName = storagecore.DiskName
 
 // DriverConfig is implemented by typed driver configs such as local.Config or
 // s3storage.Config. It is the public config boundary for Manager and Build.
@@ -308,55 +302,7 @@ type Config struct {
 //	})
 //
 //	_, _ = factory(context.Background(), storage.ResolvedConfig{Driver: "memory"})
-type ResolvedConfig struct {
-	Driver string
-
-	// rclone-specific (only used by rclone driver)
-	Remote           string
-	Prefix           string
-	RcloneConfigPath string
-	RcloneConfigData string
-
-	// s3 (native)
-	S3Bucket          string
-	S3Endpoint        string
-	S3Region          string
-	S3AccessKeyID     string
-	S3SecretAccessKey string
-	S3UsePathStyle    bool
-	S3UnsignedPayload bool
-
-	// sftp (native)
-	SFTPHost                  string
-	SFTPPort                  int
-	SFTPUser                  string
-	SFTPPassword              string
-	SFTPKeyPath               string
-	SFTPKnownHostsPath        string
-	SFTPInsecureIgnoreHostKey bool
-
-	// ftp (native)
-	FTPHost               string
-	FTPPort               int
-	FTPUser               string
-	FTPPassword           string
-	FTPTLS                bool
-	FTPInsecureSkipVerify bool
-
-	// dropbox (native)
-	DropboxToken string
-
-	// gcs (native)
-	GCSBucket          string
-	GCSCredentialsJSON string
-	GCSEndpoint        string
-
-	// redis (native)
-	RedisAddr     string
-	RedisUsername string
-	RedisPassword string
-	RedisDB       int
-}
+type ResolvedConfig = storagecore.ResolvedConfig
 
 // NormalizePath cleans a user path, normalizes separators, and rejects attempts
 // to escape the disk root or prefix root.
@@ -370,15 +316,7 @@ type ResolvedConfig struct {
 //	fmt.Println(p)
 //	// Output: avatars/user-1.png
 func NormalizePath(p string) (string, error) {
-	cleaned := path.Clean(strings.TrimSpace(p))
-	cleaned = strings.TrimPrefix(cleaned, "/")
-	if cleaned == "." {
-		cleaned = ""
-	}
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", fmt.Errorf("%w: invalid path", ErrForbidden)
-	}
-	return cleaned, nil
+	return storagecore.NormalizePath(p)
 }
 
 // JoinPrefix combines a disk prefix with a path using slash separators.
@@ -389,11 +327,5 @@ func NormalizePath(p string) (string, error) {
 //	fmt.Println(storage.JoinPrefix("assets", "logo.svg"))
 //	// Output: assets/logo.svg
 func JoinPrefix(prefix, p string) string {
-	if prefix == "" {
-		return p
-	}
-	if p == "" {
-		return prefix
-	}
-	return path.Join(prefix, p)
+	return storagecore.JoinPrefix(prefix, p)
 }

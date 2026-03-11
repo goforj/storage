@@ -9,16 +9,16 @@ import (
 )
 
 func main() {
-	// Move moves the object at src to dst.
+	// Copy copies the object at src to dst.
 
-	// Example: move an object
+	// Example: copy an object
 	disk, _ := storage.Build(localstorage.Config{
-		Root: "/tmp/storage-move",
+		Root: "/tmp/storage-copy",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
-	_ = disk.Move("docs/readme.txt", "docs/archive.txt")
+	_ = disk.Copy("docs/readme.txt", "docs/copy.txt")
 
-	ok, _ := disk.Exists("docs/readme.txt")
-	fmt.Println(ok)
-	// Output: false
+	data, _ := disk.Get("docs/copy.txt")
+	fmt.Println(string(data))
+	// Output: hello
 }

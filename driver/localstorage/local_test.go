@@ -4,24 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/goforj/storage"
 )
 
 func TestLocalStorageBuildAndIO(t *testing.T) {
 	root := t.TempDir()
-	cfg := storage.Config{
-		Default: "local",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": Config{Root: root, Prefix: "sandbox"},
-		},
-	}
-
-	manager, err := storage.New(cfg)
+	fsys, err := New(Config{Root: root, Prefix: "sandbox"})
 	if err != nil {
-		t.Fatalf("New manager: %v", err)
+		t.Fatalf("New: %v", err)
 	}
-	fsys := manager.Default()
 
 	if err := fsys.Put("file.txt", []byte("hello")); err != nil {
 		t.Fatalf("Put: %v", err)
@@ -42,17 +32,10 @@ func TestLocalPrefixIsolation(t *testing.T) {
 		t.Fatalf("write outside: %v", err)
 	}
 
-	cfg := storage.Config{
-		Default: "local",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": Config{Root: root, Prefix: "sandbox"},
-		},
-	}
-	manager, err := storage.New(cfg)
+	fsys, err := New(Config{Root: root, Prefix: "sandbox"})
 	if err != nil {
-		t.Fatalf("New manager: %v", err)
+		t.Fatalf("New: %v", err)
 	}
-	fsys := manager.Default()
 
 	if err := fsys.Put("inside/file.txt", []byte("inside")); err != nil {
 		t.Fatalf("Put: %v", err)

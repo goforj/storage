@@ -14,5 +14,6 @@ use (
 	./driver/sftpstorage
 	./examples
 	./integration
+	./storagecore
 	./storagetest
 )

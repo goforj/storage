@@ -13,8 +13,6 @@ import (
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/stretchr/testify/require"
-
-	"github.com/goforj/storage"
 )
 
 func TestS3StorageWithFakeS3(t *testing.T) {
@@ -24,25 +22,16 @@ func TestS3StorageWithFakeS3(t *testing.T) {
 		t.Fatalf("unable to start fake s3 server")
 	}
 
-	cfg := storage.Config{
-		Default: "s3",
-		Disks: map[storage.DiskName]storage.DriverConfig{
-			"s3": Config{
-				Bucket:          "bucket",
-				Endpoint:        server.URL,
-				Region:          "us-east-1",
-				AccessKeyID:     "access",
-				SecretAccessKey: "secret",
-				UsePathStyle:    true,
-			},
-		},
-	}
-
 	ensureBucket(t, server.URL, "bucket")
 
-	mgr, err := storage.New(cfg)
-	require.NoError(t, err)
-	fs, err := mgr.Disk("s3")
+	fs, err := New(Config{
+		Bucket:          "bucket",
+		Endpoint:        server.URL,
+		Region:          "us-east-1",
+		AccessKeyID:     "access",
+		SecretAccessKey: "secret",
+		UsePathStyle:    true,
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, fs.Put("hello.txt", []byte("s3")))

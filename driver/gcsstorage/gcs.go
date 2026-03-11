@@ -18,11 +18,11 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("gcs", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("gcs", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -103,8 +103,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "gcs" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:             "gcs",
 		GCSBucket:          c.Bucket,
 		GCSCredentialsJSON: c.CredentialsJSON,
@@ -122,19 +122,19 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Bucket: "uploads",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.GCSBucket == "" {
 		return nil, fmt.Errorf("storage: gcs storage requires GCSBucket")
 	}
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func newFromDiskConfig(ctx context.Context, cfg storage.ResolvedConfig) (storage
 	}, nil
 }
 
-func newClient(ctx context.Context, cfg storage.ResolvedConfig) (gcsClient, error) {
+func newClient(ctx context.Context, cfg storagecore.ResolvedConfig) (gcsClient, error) {
 	var opts []option.ClientOption
 	if cfg.GCSCredentialsJSON != "" {
 		opts = append(opts, option.WithCredentialsJSON([]byte(cfg.GCSCredentialsJSON)))
@@ -241,23 +241,23 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	return nil
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	key, err := d.key(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	attrs, err := d.client.Bucket(d.bucket).Object(key).Attrs(ctx)
 	if err != nil {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
-	return storage.Entry{Path: d.stripPrefix(key), Size: attrs.Size, IsDir: false}, nil
+	return storagecore.Entry{Path: d.stripPrefix(key), Size: attrs.Size, IsDir: false}, nil
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -282,11 +282,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		Delimiter: "/",
 	})
 
-	var entries []storage.Entry
+	var entries []storagecore.Entry
 	for {
 		obj, err := it.Next()
 		if err == iterator.Done {
@@ -314,7 +314,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		if obj.Prefix != "" {
 			rel := strings.TrimSuffix(d.stripPrefix(obj.Prefix), "/")
 			if rel != "" {
-				entries = append(entries, storage.Entry{Path: rel, IsDir: true})
+				entries = append(entries, storagecore.Entry{Path: rel, IsDir: true})
 			}
 			continue
 		}
@@ -322,7 +322,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 		if rel == "" {
 			continue
 		}
-		entries = append(entries, storage.Entry{
+		entries = append(entries, storagecore.Entry{
 			Path:  rel,
 			Size:  obj.Size,
 			IsDir: false,
@@ -331,11 +331,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return entries, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -378,11 +378,11 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 				continue
 			}
 			seenDirs[dir] = struct{}{}
-			if err := fn(storage.Entry{Path: dir, IsDir: true}); err != nil {
+			if err := fn(storagecore.Entry{Path: dir, IsDir: true}); err != nil {
 				return err
 			}
 		}
-		if err := fn(storage.Entry{
+		if err := fn(storagecore.Entry{
 			Path:  rel,
 			Size:  obj.Size,
 			IsDir: false,
@@ -391,7 +391,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		}
 	}
 	if fileExists {
-		return fn(storage.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
+		return fn(storagecore.Entry{Path: d.stripPrefix(strings.TrimSuffix(prefix, "/")), IsDir: false})
 	}
 	return nil
 }
@@ -431,7 +431,7 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 		return "", err
 	}
 	if d.emulator {
-		return "", storage.ErrUnsupported
+		return "", storagecore.ErrUnsupported
 	}
 	key, err := d.key(p)
 	if err != nil {
@@ -448,11 +448,11 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 }
 
 func (d *driver) key(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) stripPrefix(k string) string {
@@ -479,7 +479,7 @@ func recursiveParentDirs(p string) []string {
 
 func wrapError(err error) error {
 	if isNotFound(err) {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	return err
 }

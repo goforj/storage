@@ -7,17 +7,17 @@ import (
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/hash"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestRcloneWrapError(t *testing.T) {
-	if err := wrapError(fs.ErrorObjectNotFound); !errors.Is(err, storage.ErrNotFound) {
+	if err := wrapError(fs.ErrorObjectNotFound); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
-	if err := wrapError(fs.ErrorPermissionDenied); !errors.Is(err, storage.ErrForbidden) {
+	if err := wrapError(fs.ErrorPermissionDenied); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
-	if err := wrapError(hash.ErrUnsupported); !errors.Is(err, storage.ErrUnsupported) {
+	if err := wrapError(hash.ErrUnsupported); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }

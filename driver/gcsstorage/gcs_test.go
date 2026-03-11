@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/fsouza/fake-gcs-server/fakestorage"
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func TestGCSStorageWithFakeServer(t *testing.T) {
@@ -65,7 +65,7 @@ func TestGCSStorageWithFakeServer(t *testing.T) {
 	}
 
 	var walked []string
-	if err := disk.Walk("docs", func(entry storage.Entry) error {
+	if err := disk.Walk("docs", func(entry storagecore.Entry) error {
 		walked = append(walked, entry.Path)
 		return nil
 	}); err != nil {
@@ -76,7 +76,7 @@ func TestGCSStorageWithFakeServer(t *testing.T) {
 	}
 
 	url, err := disk.URL("docs/readme.txt")
-	if !errors.Is(err, storage.ErrUnsupported) || url != "" {
+	if !errors.Is(err, storagecore.ErrUnsupported) || url != "" {
 		t.Fatalf("URL err=%v url=%q", err, url)
 	}
 

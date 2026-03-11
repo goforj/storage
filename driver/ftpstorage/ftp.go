@@ -17,11 +17,11 @@ import (
 
 	"github.com/jlaffaye/ftp"
 
-	"github.com/goforj/storage"
+	"github.com/goforj/storage/storagecore"
 )
 
 func init() {
-	storage.RegisterDriver("ftp", func(ctx context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+	storagecore.RegisterDriver("ftp", func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 		return newFromDiskConfig(ctx, cfg)
 	})
 }
@@ -89,8 +89,8 @@ type Config struct {
 
 func (Config) DriverName() string { return "ftp" }
 
-func (c Config) ResolvedConfig() storage.ResolvedConfig {
-	return storage.ResolvedConfig{
+func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
+	return storagecore.ResolvedConfig{
 		Driver:                "ftp",
 		FTPHost:               c.Host,
 		FTPPort:               c.Port,
@@ -113,15 +113,15 @@ func (c Config) ResolvedConfig() storage.ResolvedConfig {
 //		Password: "secret",
 //	})
 //	_ = fs
-func New(cfg Config) (storage.Storage, error) {
+func New(cfg Config) (storagecore.Storage, error) {
 	return NewContext(context.Background(), cfg)
 }
 
-func NewContext(ctx context.Context, cfg Config) (storage.Storage, error) {
+func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
 	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
 }
 
-func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.Storage, error) {
+func newFromDiskConfig(_ context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
 	if cfg.FTPHost == "" {
 		return nil, fmt.Errorf("storage: ftp requires FTPHost")
 	}
@@ -131,7 +131,7 @@ func newFromDiskConfig(_ context.Context, cfg storage.ResolvedConfig) (storage.S
 	if port == 0 {
 		port = 21
 	}
-	prefix, err := storage.NormalizePath(cfg.Prefix)
+	prefix, err := storagecore.NormalizePath(cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -309,19 +309,19 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	}))
 }
 
-func (d *driver) Stat(p string) (storage.Entry, error) {
+func (d *driver) Stat(p string) (storagecore.Entry, error) {
 	return d.StatContext(context.Background(), p)
 }
 
-func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, error) {
+func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
 	fp, err := d.fullPath(p)
 	if err != nil {
-		return storage.Entry{}, err
+		return storagecore.Entry{}, err
 	}
-	var entry storage.Entry
+	var entry storagecore.Entry
 	err = d.withConn(func(c ftpConn) error {
 		parent := path.Dir(fp)
 		if parent == "." {
@@ -341,13 +341,13 @@ func (d *driver) StatContext(ctx context.Context, p string) (storage.Entry, erro
 			if isDir {
 				size = 0
 			}
-			entry = storage.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: isDir}
+			entry = storagecore.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: isDir}
 			return nil
 		}
 		return &textproto.Error{Code: 550, Msg: "not found"}
 	})
 	if err != nil {
-		return storage.Entry{}, wrapError(err)
+		return storagecore.Entry{}, wrapError(err)
 	}
 	return entry, nil
 }
@@ -370,7 +370,7 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	})
 	if err != nil {
 		wrapped := wrapError(err)
-		if errors.Is(wrapped, storage.ErrNotFound) {
+		if errors.Is(wrapped, storagecore.ErrNotFound) {
 			return false, nil
 		}
 		return false, wrapped
@@ -378,11 +378,11 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(p string) ([]storage.Entry, error) {
+func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
-func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, error) {
+func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	if err != nil {
 		return nil, err
 	}
-	var entries []storage.Entry
+	var entries []storagecore.Entry
 	err = d.withConn(func(c ftpConn) error {
 		l, err := c.List(fp)
 		if err != nil {
@@ -401,7 +401,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 			if fp != "" && fp != "." && fp != "/" {
 				rel = path.Join(d.stripPrefix(fp), e.Name)
 			}
-			entries = append(entries, storage.Entry{
+			entries = append(entries, storagecore.Entry{
 				Path:  rel,
 				Size:  int64(e.Size),
 				IsDir: e.Type == ftp.EntryTypeFolder,
@@ -415,11 +415,11 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storage.Entry, er
 	return entries, nil
 }
 
-func (d *driver) Walk(p string, fn func(storage.Entry) error) error {
+func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
+func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -430,7 +430,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 	return wrapError(d.withConn(func(c ftpConn) error {
 		if err := d.walkDir(ctx, c, fp, fn); err == nil {
 			return nil
-		} else if wrapped := wrapError(err); !errors.Is(wrapped, storage.ErrNotFound) {
+		} else if wrapped := wrapError(err); !errors.Is(wrapped, storagecore.ErrNotFound) {
 			return err
 		}
 
@@ -438,7 +438,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storage.Entr
 		if err != nil {
 			return err
 		}
-		return fn(storage.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: false})
+		return fn(storagecore.Entry{Path: d.stripPrefix(fp), Size: size, IsDir: false})
 	}))
 }
 
@@ -473,15 +473,15 @@ func (d *driver) URL(p string) (string, error) {
 }
 
 func (d *driver) URLContext(_ context.Context, _ string) (string, error) {
-	return "", fmt.Errorf("%w: public URL not supported for ftp", storage.ErrUnsupported)
+	return "", fmt.Errorf("%w: public URL not supported for ftp", storagecore.ErrUnsupported)
 }
 
 func (d *driver) fullPath(p string) (string, error) {
-	normalized, err := storage.NormalizePath(p)
+	normalized, err := storagecore.NormalizePath(p)
 	if err != nil {
 		return "", err
 	}
-	return storage.JoinPrefix(d.prefix, normalized), nil
+	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
 func (d *driver) stripPrefix(p string) string {
@@ -493,7 +493,7 @@ func (d *driver) stripPrefix(p string) string {
 	return trimmed
 }
 
-func (d *driver) walkDir(ctx context.Context, c ftpConn, dir string, fn func(storage.Entry) error) error {
+func (d *driver) walkDir(ctx context.Context, c ftpConn, dir string, fn func(storagecore.Entry) error) error {
 	entries, err := c.List(dir)
 	if err != nil {
 		return err
@@ -506,7 +506,7 @@ func (d *driver) walkDir(ctx context.Context, c ftpConn, dir string, fn func(sto
 		if dir != "" && dir != "." && dir != "/" {
 			full = path.Join(dir, e.Name)
 		}
-		entry := storage.Entry{
+		entry := storagecore.Entry{
 			Path:  d.stripPrefix(full),
 			Size:  int64(e.Size),
 			IsDir: e.Type == ftp.EntryTypeFolder,
@@ -532,7 +532,7 @@ func wrapError(err error) error {
 	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") || strings.Contains(msg, "can't check for file existence") || strings.Contains(msg, "550") {
-		return fmt.Errorf("%w: %v", storage.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", storagecore.ErrNotFound, err)
 	}
 	return err
 }
@@ -541,7 +541,7 @@ func shouldReconnectFTP(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, storagecore.ErrNotFound) {
 		return false
 	}
 	var protoErr *textproto.Error
