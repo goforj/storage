@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.0.5
-	github.com/goforj/storage/storagecore v0.2.6
+	github.com/goforj/storage/storagecore v0.3.0
 )
 
 require (
