@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.21
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.90.0
 	github.com/fsouza/fake-gcs-server v1.52.3
-	github.com/goforj/storage v0.4.1
-	github.com/goforj/storage/driver/memorystorage v0.4.1
+	github.com/goforj/storage v0.4.2
+	github.com/goforj/storage/driver/memorystorage v0.4.2
 	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
 	google.golang.org/api v0.264.0
 )
