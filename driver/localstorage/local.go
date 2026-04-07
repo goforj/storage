@@ -119,6 +119,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -132,6 +136,23 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		return fmt.Errorf("storage: mkdir: %w", err)
 	}
 	if err := os.WriteFile(target, contents, 0o644); err != nil {
+		return wrapLocalError(err)
+	}
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	target, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	if target == d.root {
+		return nil
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
 		return wrapLocalError(err)
 	}
 	return nil
@@ -450,12 +471,8 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if err != nil {
 		return err
 	}
-	srcInfo, err := os.Stat(srcTarget)
-	if err != nil {
+	if _, err := os.Stat(srcTarget); err != nil {
 		return wrapLocalError(err)
-	}
-	if srcInfo.IsDir() {
-		return fmt.Errorf("%w: move of directory not supported", storagecore.ErrUnsupported)
 	}
 	dstTarget, err := d.fullPath(dst)
 	if err != nil {

@@ -199,6 +199,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -212,6 +216,29 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		Key:           aws.String(key),
 		Body:          bytes.NewReader(contents),
 		ContentLength: aws.Int64(int64(len(contents))),
+	})
+	if err != nil {
+		return wrapError(err)
+	}
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return nil
+	}
+	_, err = d.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(d.bucket),
+		Key:           aws.String(key + "/"),
+		Body:          bytes.NewReader(nil),
+		ContentLength: aws.Int64(0),
 	})
 	if err != nil {
 		return wrapError(err)
@@ -236,7 +263,16 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return wrapError(err)
+		if !isNotFound(err) {
+			return wrapError(err)
+		}
+		_, err = d.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(d.bucket),
+			Key:    aws.String(key + "/"),
+		})
+		if err != nil {
+			return wrapError(err)
+		}
 	}
 	return nil
 }
@@ -257,10 +293,36 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 		Bucket: aws.String(d.bucket),
 		Key:    aws.String(key),
 	})
-	if err != nil {
+	if err == nil {
+		return storagecore.Entry{Path: d.stripPrefix(key), Size: aws.ToInt64(out.ContentLength), IsDir: false}, nil
+	}
+	if !isNotFound(err) {
 		return storagecore.Entry{}, wrapError(err)
 	}
-	return storagecore.Entry{Path: d.stripPrefix(key), Size: aws.ToInt64(out.ContentLength), IsDir: false}, nil
+	if _, dirErr := d.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(d.bucket),
+		Key:    aws.String(key + "/"),
+	}); dirErr == nil {
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
+	} else if !isNotFound(dirErr) {
+		return storagecore.Entry{}, wrapError(dirErr)
+	}
+	prefix := key
+	if prefix != "" {
+		prefix += "/"
+	}
+	listOut, listErr := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  aws.String(d.bucket),
+		Prefix:  aws.String(prefix),
+		MaxKeys: aws.Int32(1),
+	})
+	if listErr != nil {
+		return storagecore.Entry{}, wrapError(listErr)
+	}
+	if len(listOut.Contents) > 0 || len(listOut.CommonPrefixes) > 0 {
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
+	}
+	return storagecore.Entry{}, wrapError(err)
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -455,6 +517,13 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	srcEntry, err := d.StatContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return storagecore.MoveDirContext(ctx, d, src, dst)
+	}
 	if err := d.CopyContext(ctx, src, dst); err != nil {
 		return err
 	}

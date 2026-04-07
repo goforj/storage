@@ -18,6 +18,7 @@ type stubFS struct{}
 
 func (stubFS) Get(string) ([]byte, error)   { return nil, nil }
 func (stubFS) Put(string, []byte) error     { return nil }
+func (stubFS) MakeDir(string) error         { return nil }
 func (stubFS) Delete(string) error          { return nil }
 func (stubFS) Stat(string) (Entry, error)   { return Entry{}, nil }
 func (stubFS) Exists(string) (bool, error)  { return true, nil }

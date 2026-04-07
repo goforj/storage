@@ -10,12 +10,14 @@ import (
 //
 // Semantics:
 //   - Put overwrites an existing object at the same path.
+//   - MakeDir creates a directory-like prefix and may be implemented as a
+//     backend-specific directory marker on object stores.
 //   - List is one-level and non-recursive.
 //   - List with an empty path lists from the disk root or prefix root.
 //   - Walk is recursive.
 //   - URL returns a usable access URL when the driver supports it.
 //   - Copy overwrites the destination object when the backend supports copy semantics.
-//   - Move relocates an object and may be implemented as copy followed by delete.
+//   - Move relocates an object or directory tree and may be implemented as copy followed by delete.
 //   - Unsupported operations should return ErrUnsupported.
 //
 // @group Core
@@ -53,6 +55,16 @@ type Storage interface {
 	//	fmt.Println("stored")
 	//	// Output: stored
 	Put(p string, contents []byte) error
+
+	// MakeDir creates a directory-like entry at path.
+	//
+	// Example: create a directory
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Root: "/tmp/storage-mkdir",
+	//	})
+	//	_ = disk.MakeDir("docs/archive")
+	MakeDir(p string) error
 
 	// Delete removes the object at path.
 	//
@@ -142,7 +154,7 @@ type Storage interface {
 	//	// Output: hello
 	Copy(src, dst string) error
 
-	// Move moves the object at src to dst.
+	// Move moves the object or directory tree at src to dst.
 	//
 	// Example: move an object
 	//
@@ -155,6 +167,19 @@ type Storage interface {
 	//	ok, _ := disk.Exists("docs/readme.txt")
 	//	fmt.Println(ok)
 	//	// Output: false
+	//
+	// Example: move a directory tree
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Root: "/tmp/storage-move-dir",
+	//	})
+	//	_ = disk.MakeDir("docs/archive")
+	//	_ = disk.Put("docs/archive/readme.txt", []byte("hello"))
+	//	_ = disk.Move("docs/archive", "docs/published")
+	//
+	//	entry, _ := disk.Stat("docs/published")
+	//	fmt.Println(entry.IsDir)
+	//	// Output: true
 	Move(src, dst string) error
 
 	// URL returns a usable access URL when the driver supports it.
@@ -204,6 +229,8 @@ type ContextStorage interface {
 	GetContext(ctx context.Context, p string) ([]byte, error)
 	// PutContext writes an object at path using the caller-provided context.
 	PutContext(ctx context.Context, p string, contents []byte) error
+	// MakeDirContext creates a directory-like entry using the caller-provided context.
+	MakeDirContext(ctx context.Context, p string) error
 	// DeleteContext removes the object at path using the caller-provided context.
 	DeleteContext(ctx context.Context, p string) error
 	// StatContext returns the entry at path using the caller-provided context.

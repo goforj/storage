@@ -3,6 +3,7 @@ package memorystorage
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ type object struct {
 type driver struct {
 	mu      sync.RWMutex
 	prefix  string
+	dirs    map[string]struct{}
 	objects map[string]object
 }
 
@@ -79,6 +81,7 @@ func newFromDiskConfig(_ context.Context, cfg storagecore.ResolvedConfig) (stora
 	}
 	return &driver{
 		prefix:  prefix,
+		dirs:    make(map[string]struct{}),
 		objects: make(map[string]object),
 	}, nil
 }
@@ -108,6 +111,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -117,11 +124,30 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		return err
 	}
 	d.mu.Lock()
+	d.ensureDirChainLocked(key)
 	d.objects[key] = object{
 		data:    slices.Clone(contents),
 		modTime: time.Now().UTC(),
 	}
 	d.mu.Unlock()
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureDirChainLocked(key)
+	d.dirs[key] = struct{}{}
 	return nil
 }
 
@@ -139,11 +165,18 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, ok := d.objects[key]; !ok {
-		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
+	if _, ok := d.objects[key]; ok {
+		delete(d.objects, key)
+		return nil
 	}
-	delete(d.objects, key)
-	return nil
+	if _, ok := d.dirs[key]; ok {
+		if d.hasChildrenLocked(key) {
+			return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
+		}
+		delete(d.dirs, key)
+		return nil
+	}
+	return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 }
 
 func (d *driver) Stat(p string) (storagecore.Entry, error) {
@@ -162,6 +195,9 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 	defer d.mu.RUnlock()
 	if obj, ok := d.objects[key]; ok {
 		return storagecore.Entry{Path: d.stripPrefix(key), Size: int64(len(obj.data)), IsDir: false}, nil
+	}
+	if _, ok := d.dirs[key]; ok {
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
 	}
 	if d.hasChildrenLocked(key) {
 		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
@@ -325,6 +361,13 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	srcEntry, err := d.StatContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return storagecore.MoveDirContext(ctx, d, src, dst)
+	}
 	srcKey, err := d.key(src)
 	if err != nil {
 		return err
@@ -387,6 +430,18 @@ func (d *driver) key(p string) (string, error) {
 	return storagecore.JoinPrefix(d.prefix, normalized), nil
 }
 
+func explicitDirChain(key string) []string {
+	parts := strings.Split(key, "/")
+	if len(parts) <= 1 {
+		return nil
+	}
+	out := make([]string, 0, len(parts)-1)
+	for i := range parts[:len(parts)-1] {
+		out = append(out, strings.Join(parts[:i+1], "/"))
+	}
+	return out
+}
+
 func (d *driver) stripPrefix(key string) string {
 	if d.prefix == "" {
 		return key
@@ -401,6 +456,11 @@ func (d *driver) hasChildrenLocked(key string) bool {
 		prefix += "/"
 	}
 	for existing := range d.objects {
+		if key == "" || strings.HasPrefix(existing, prefix) {
+			return true
+		}
+	}
+	for existing := range d.dirs {
 		if key == "" || strings.HasPrefix(existing, prefix) {
 			return true
 		}
@@ -447,6 +507,33 @@ func (d *driver) listEntriesLocked(key string) []storagecore.Entry {
 			IsDir: true,
 		})
 	}
+	for existing := range d.dirs {
+		if key != "" && !strings.HasPrefix(existing, prefix) {
+			continue
+		}
+		rest := existing
+		if prefix != "" {
+			rest = strings.TrimPrefix(existing, prefix)
+		}
+		if rest == "" {
+			continue
+		}
+		parts := strings.Split(rest, "/")
+		child := parts[0]
+		dirPath := child
+		if key != "" {
+			dirPath = key + "/" + child
+		}
+		if _, ok := seenDirs[dirPath]; ok {
+			continue
+		}
+		seenDirs[dirPath] = struct{}{}
+		entries = append(entries, storagecore.Entry{
+			Path:  d.stripPrefix(dirPath),
+			Size:  0,
+			IsDir: true,
+		})
+	}
 	slices.SortFunc(entries, func(a, b storagecore.Entry) int {
 		return strings.Compare(a.Path, b.Path)
 	})
@@ -457,7 +544,7 @@ func (d *driver) walkEntriesLocked(key string) ([]storagecore.Entry, bool) {
 	if obj, ok := d.objects[key]; ok {
 		return []storagecore.Entry{{Path: d.stripPrefix(key), Size: int64(len(obj.data)), IsDir: false}}, true
 	}
-	if key != "" && !d.hasChildrenLocked(key) {
+	if _, ok := d.dirs[key]; !ok && key != "" && !d.hasChildrenLocked(key) {
 		return nil, false
 	}
 
@@ -485,10 +572,36 @@ func (d *driver) walkEntriesLocked(key string) ([]storagecore.Entry, bool) {
 			IsDir: false,
 		})
 	}
+	for existing := range d.dirs {
+		if key != "" && existing != key && !strings.HasPrefix(existing, prefix) {
+			continue
+		}
+		if existing == "" {
+			continue
+		}
+		fullDir := existing
+		if _, ok := seenDirs[fullDir]; ok {
+			continue
+		}
+		seenDirs[fullDir] = struct{}{}
+		entries = append(entries, storagecore.Entry{Path: d.stripPrefix(fullDir), IsDir: true})
+	}
 	slices.SortFunc(entries, func(a, b storagecore.Entry) int {
 		return strings.Compare(a.Path, b.Path)
 	})
 	return entries, true
+}
+
+func (d *driver) ensureDirChainLocked(key string) {
+	dir := path.Dir(key)
+	for dir != "." && dir != "" {
+		d.dirs[dir] = struct{}{}
+		next := path.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
 }
 
 func recursiveParentDirs(p string) []string {

@@ -51,3 +51,28 @@ func TestLocalPrefixIsolation(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalStorageWindowsStyleSeparators(t *testing.T) {
+	root := t.TempDir()
+	fsys, err := New(Config{Root: root, Prefix: "sandbox"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if err := fsys.Put(`nested\docs\readme.txt`, []byte("hello")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	target := filepath.Join(root, "sandbox", "nested", "docs", "readme.txt")
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected normalized local path to exist: %v", err)
+	}
+
+	got, err := fsys.Get("nested/docs/readme.txt")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("Get = %q", got)
+	}
+}

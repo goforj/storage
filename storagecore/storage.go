@@ -11,6 +11,7 @@ import (
 type Storage interface {
 	Get(p string) ([]byte, error)
 	Put(p string, contents []byte) error
+	MakeDir(p string) error
 	Delete(p string) error
 	Stat(p string) (Entry, error)
 	Exists(p string) (bool, error)
@@ -24,6 +25,7 @@ type Storage interface {
 type ContextStorage interface {
 	GetContext(ctx context.Context, p string) ([]byte, error)
 	PutContext(ctx context.Context, p string, contents []byte) error
+	MakeDirContext(ctx context.Context, p string) error
 	DeleteContext(ctx context.Context, p string) error
 	StatContext(ctx context.Context, p string) (Entry, error)
 	ExistsContext(ctx context.Context, p string) (bool, error)
@@ -107,7 +109,9 @@ type ResolvedConfig struct {
 }
 
 func NormalizePath(p string) (string, error) {
-	cleaned := path.Clean(strings.TrimSpace(p))
+	cleanedInput := strings.TrimSpace(p)
+	cleanedInput = strings.ReplaceAll(cleanedInput, "\\", "/")
+	cleaned := path.Clean(cleanedInput)
 	cleaned = strings.TrimPrefix(cleaned, "/")
 	if cleaned == "." {
 		cleaned = ""

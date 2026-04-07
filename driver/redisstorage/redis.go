@@ -140,6 +140,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -161,6 +165,39 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	return nil
 }
 
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return nil
+	}
+	dirs := explicitDirChain(key)
+	pipe := d.client.TxPipeline()
+	if len(dirs) == 0 {
+		pipe.SAdd(ctx, d.dirChildrenKey(""), encodeDirChild(key))
+		pipe.SAdd(ctx, d.dirObjectsKey(key), dirMarkerMember(key))
+	} else {
+		pipe.SAdd(ctx, d.dirChildrenKey(""), encodeDirChild(dirs[0]))
+		for i := 0; i < len(dirs)-1; i++ {
+			pipe.SAdd(ctx, d.dirChildrenKey(dirs[i]), encodeDirChild(dirs[i+1]))
+			pipe.SAdd(ctx, d.dirObjectsKey(dirs[i]), dirMarkerMember(key))
+		}
+		parent := dirs[len(dirs)-1]
+		pipe.SAdd(ctx, d.dirChildrenKey(parent), encodeDirChild(key))
+		pipe.SAdd(ctx, d.dirObjectsKey(parent), dirMarkerMember(key))
+		pipe.SAdd(ctx, d.dirObjectsKey(key), dirMarkerMember(key))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("storage: redis mkdir: %w", err)
+	}
+	return nil
+}
+
 func (d *driver) Delete(p string) error {
 	return d.DeleteContext(context.Background(), p)
 }
@@ -177,10 +214,43 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if err != nil {
 		return fmt.Errorf("storage: redis delete: %w", err)
 	}
-	if deleted == 0 {
+	if deleted > 0 {
+		if err := d.unindexDelete(ctx, key); err != nil {
+			return fmt.Errorf("storage: redis delete: %w", err)
+		}
+		return nil
+	}
+
+	ok, err := d.dirExists(ctx, key)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
 	}
-	if err := d.unindexDelete(ctx, key); err != nil {
+	children, err := d.children(ctx, key)
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		isDir, _, err := parseChildEntry(child)
+		if err != nil {
+			return err
+		}
+		if isDir {
+			return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
+		}
+	}
+	pipe := d.client.TxPipeline()
+	pipe.Del(ctx, d.dirObjectsKey(key))
+	pipe.Del(ctx, d.dirChildrenKey(key))
+	parent := parentDir(key)
+	pipe.SRem(ctx, d.dirChildrenKey(parent), encodeDirChild(key))
+	pipe.SRem(ctx, d.dirObjectsKey(""), dirMarkerMember(key))
+	for _, dir := range recursiveParentDirs(key) {
+		pipe.SRem(ctx, d.dirObjectsKey(dir), dirMarkerMember(key))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("storage: redis delete: %w", err)
 	}
 	return nil
@@ -363,6 +433,13 @@ func (d *driver) Move(src, dst string) error {
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	srcEntry, err := d.StatContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return storagecore.MoveDirContext(ctx, d, src, dst)
 	}
 	srcKey, err := d.key(src)
 	if err != nil {
@@ -567,6 +644,22 @@ func (d *driver) dirExists(ctx context.Context, key string) (bool, error) {
 		return false, fmt.Errorf("storage: redis stat: %w", err)
 	}
 	return count > 0, nil
+}
+
+func explicitDirChain(key string) []string {
+	parts := strings.Split(key, "/")
+	if len(parts) <= 1 {
+		return nil
+	}
+	out := make([]string, 0, len(parts)-1)
+	for i := range parts[:len(parts)-1] {
+		out = append(out, strings.Join(parts[:i+1], "/"))
+	}
+	return out
+}
+
+func dirMarkerMember(key string) string {
+	return "dirmarker:" + key
 }
 
 func (d *driver) indexPut(pipe redis.Pipeliner, key string) {

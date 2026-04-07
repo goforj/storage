@@ -47,6 +47,7 @@ type ftpConn interface {
 	List(path string) ([]*ftp.Entry, error)
 	FileSize(path string) (int64, error)
 	MakeDir(path string) error
+	Rename(from, to string) error
 }
 
 type realFTPConn struct {
@@ -262,6 +263,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -276,6 +281,22 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 			_ = ensureDirs(c, dir)
 		}
 		return c.Stor(fp, bytes.NewReader(contents))
+	}))
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fp, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	if fp == "" || fp == "." || fp == "/" {
+		return nil
+	}
+	return wrapError(d.withConn(func(c ftpConn) error {
+		return ensureDirs(c, fp)
 	}))
 }
 
@@ -474,10 +495,23 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
-	if err := d.CopyContext(ctx, src, dst); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return d.DeleteContext(ctx, src)
+	srcPath, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	dstPath, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	return wrapError(d.withConn(func(c ftpConn) error {
+		if err := ensureDirs(c, path.Dir(dstPath)); err != nil {
+			return err
+		}
+		return c.Rename(srcPath, dstPath)
+	}))
 }
 
 func (d *driver) URL(p string) (string, error) {
@@ -610,4 +644,8 @@ func (c realFTPConn) FileSize(path string) (int64, error) {
 
 func (c realFTPConn) MakeDir(path string) error {
 	return c.conn.MakeDir(path)
+}
+
+func (c realFTPConn) Rename(from, to string) error {
+	return c.conn.Rename(from, to)
 }

@@ -3,20 +3,26 @@ package storagetest
 import (
 	"context"
 	"errors"
+	"path"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/goforj/storage"
+	storagecore "github.com/goforj/storage/storagecore"
 )
 
 type contractMemoryStorage struct {
 	files map[string][]byte
+	dirs  map[string]struct{}
 }
 
 func newContractMemoryStorage() *contractMemoryStorage {
-	return &contractMemoryStorage{files: map[string][]byte{}}
+	return &contractMemoryStorage{
+		files: map[string][]byte{},
+		dirs:  map[string]struct{}{},
+	}
 }
 
 func (s *contractMemoryStorage) normalize(p string) (string, error) {
@@ -40,7 +46,21 @@ func (s *contractMemoryStorage) Put(p string, contents []byte) error {
 	if err != nil {
 		return err
 	}
+	s.ensureDirChain(normalized)
 	s.files[normalized] = append([]byte(nil), contents...)
+	return nil
+}
+
+func (s *contractMemoryStorage) MakeDir(p string) error {
+	normalized, err := s.normalize(p)
+	if err != nil {
+		return err
+	}
+	if normalized == "" {
+		return nil
+	}
+	s.ensureDirChain(normalized)
+	s.dirs[normalized] = struct{}{}
 	return nil
 }
 
@@ -49,11 +69,25 @@ func (s *contractMemoryStorage) Delete(p string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := s.files[normalized]; !ok {
-		return storage.ErrNotFound
+	if _, ok := s.files[normalized]; ok {
+		delete(s.files, normalized)
+		return nil
 	}
-	delete(s.files, normalized)
-	return nil
+	if _, ok := s.dirs[normalized]; ok {
+		for file := range s.files {
+			if strings.HasPrefix(file, normalized+"/") {
+				return storage.ErrForbidden
+			}
+		}
+		for dir := range s.dirs {
+			if dir != normalized && strings.HasPrefix(dir, normalized+"/") {
+				return storage.ErrForbidden
+			}
+		}
+		delete(s.dirs, normalized)
+		return nil
+	}
+	return storage.ErrNotFound
 }
 
 func (s *contractMemoryStorage) Stat(p string) (storage.Entry, error) {
@@ -62,10 +96,13 @@ func (s *contractMemoryStorage) Stat(p string) (storage.Entry, error) {
 		return storage.Entry{}, err
 	}
 	data, ok := s.files[normalized]
-	if !ok {
-		return storage.Entry{}, storage.ErrNotFound
+	if ok {
+		return storage.Entry{Path: normalized, Size: int64(len(data))}, nil
 	}
-	return storage.Entry{Path: normalized, Size: int64(len(data))}, nil
+	if _, ok := s.dirs[normalized]; ok {
+		return storage.Entry{Path: normalized, IsDir: true}, nil
+	}
+	return storage.Entry{}, storage.ErrNotFound
 }
 
 func (s *contractMemoryStorage) Exists(p string) (bool, error) {
@@ -107,6 +144,22 @@ func (s *contractMemoryStorage) List(p string) ([]storage.Entry, error) {
 		}
 		entries[full] = storage.Entry{Path: full, IsDir: true}
 	}
+	for dir := range s.dirs {
+		if prefix != "" && !strings.HasPrefix(dir, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(dir, prefix)
+		if rest == dir && prefix != "" {
+			continue
+		}
+		parts := strings.Split(rest, "/")
+		child := parts[0]
+		full := child
+		if normalized != "" {
+			full = normalized + "/" + child
+		}
+		entries[full] = storage.Entry{Path: full, IsDir: true}
+	}
 	if normalized != "" && len(entries) == 0 {
 		return nil, storage.ErrNotFound
 	}
@@ -137,9 +190,20 @@ func (s *contractMemoryStorage) Walk(p string, fn func(storage.Entry) error) err
 			paths = append(paths, file)
 		}
 	}
+	for dir := range s.dirs {
+		if normalized == "" || dir == normalized || strings.HasPrefix(dir, normalized+"/") {
+			paths = append(paths, dir)
+		}
+	}
 	slices.Sort(paths)
 	for _, file := range paths {
-		if err := fn(storage.Entry{Path: file, Size: int64(len(s.files[file]))}); err != nil {
+		entry := storage.Entry{Path: file}
+		if data, ok := s.files[file]; ok {
+			entry.Size = int64(len(data))
+		} else {
+			entry.IsDir = true
+		}
+		if err := fn(entry); err != nil {
 			return err
 		}
 	}
@@ -158,6 +222,13 @@ func (s *contractMemoryStorage) Copy(src, dst string) error {
 }
 
 func (s *contractMemoryStorage) Move(src, dst string) error {
+	srcEntry, err := s.Stat(src)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return storagecore.MoveDirContext(context.Background(), s, src, dst)
+	}
 	data, err := s.Get(src)
 	if err != nil {
 		return err
@@ -191,6 +262,13 @@ func (s *contractMemoryStorage) PutContext(ctx context.Context, p string, conten
 		return err
 	}
 	return s.Put(p, contents)
+}
+
+func (s *contractMemoryStorage) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.MakeDir(p)
 }
 
 func (s *contractMemoryStorage) DeleteContext(ctx context.Context, p string) error {
@@ -260,6 +338,18 @@ func (s *contractMemoryStorage) URLContext(ctx context.Context, p string) (strin
 	return s.URL(p)
 }
 
+func (s *contractMemoryStorage) ensureDirChain(p string) {
+	dir := path.Dir(p)
+	for dir != "." && dir != "" {
+		s.dirs[dir] = struct{}{}
+		next := path.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
+}
+
 func (s *contractMemoryStorage) ModTime(_ context.Context, p string) (time.Time, error) {
 	if _, err := s.Stat(p); err != nil {
 		return time.Time{}, err
@@ -273,6 +363,7 @@ type unsupportedStorage struct {
 
 func (s unsupportedStorage) Get(p string) ([]byte, error)           { return s.inner.Get(p) }
 func (s unsupportedStorage) Put(p string, contents []byte) error    { return s.inner.Put(p, contents) }
+func (s unsupportedStorage) MakeDir(p string) error                 { return s.inner.MakeDir(p) }
 func (s unsupportedStorage) Delete(p string) error                  { return s.inner.Delete(p) }
 func (s unsupportedStorage) Stat(p string) (storage.Entry, error)   { return s.inner.Stat(p) }
 func (s unsupportedStorage) Exists(p string) (bool, error)          { return s.inner.Exists(p) }
@@ -280,8 +371,8 @@ func (s unsupportedStorage) List(p string) ([]storage.Entry, error) { return s.i
 func (s unsupportedStorage) ListPageContext(ctx context.Context, p string, offset, limit int) (storage.ListPageResult, error) {
 	return s.inner.ListPageContext(ctx, p, offset, limit)
 }
-func (s unsupportedStorage) Copy(src, dst string) error             { return s.inner.Copy(src, dst) }
-func (s unsupportedStorage) Move(src, dst string) error             { return s.inner.Move(src, dst) }
+func (s unsupportedStorage) Copy(src, dst string) error { return s.inner.Copy(src, dst) }
+func (s unsupportedStorage) Move(src, dst string) error { return s.inner.Move(src, dst) }
 func (s unsupportedStorage) Walk(string, func(storage.Entry) error) error {
 	return storage.ErrUnsupported
 }

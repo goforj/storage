@@ -71,6 +71,7 @@ type fakeDropbox struct {
 	getErr      error
 	putErr      error
 	delErr      error
+	moveErr     error
 	metaErr     error
 	metaOut     files.IsMetadata
 	listErr     error
@@ -104,6 +105,18 @@ func (f *fakeDropbox) Upload(arg *files.UploadArg, content io.Reader) (*files.Fi
 }
 func (f *fakeDropbox) DeleteV2(arg *files.DeleteArg) (*files.DeleteResult, error) {
 	return nil, f.delErr
+}
+func (f *fakeDropbox) CreateFolderV2(arg *files.CreateFolderArg) (*files.CreateFolderResult, error) {
+	if f.putErr != nil {
+		return nil, f.putErr
+	}
+	return &files.CreateFolderResult{}, nil
+}
+func (f *fakeDropbox) MoveV2(arg *files.RelocationArg) (*files.RelocationResult, error) {
+	if f.moveErr != nil {
+		return nil, f.moveErr
+	}
+	return &files.RelocationResult{}, nil
 }
 func (f *fakeDropbox) GetMetadata(arg *files.GetMetadataArg) (files.IsMetadata, error) {
 	if f.metaErr != nil {
@@ -341,7 +354,7 @@ func TestDropboxCopyAndMove(t *testing.T) {
 		t.Fatalf("Move: %v", err)
 	}
 
-	client.delErr = errors.New("delete boom")
+	client.moveErr = errors.New("move boom")
 	if err := d.MoveContext(context.Background(), "src.txt", "broken.txt"); err == nil {
 		t.Fatal("MoveContext returned nil error")
 	}

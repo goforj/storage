@@ -42,6 +42,7 @@ type sftpClient interface {
 	OpenFile(path string, flags int) (io.WriteCloser, error)
 	MkdirAll(path string) error
 	Remove(path string) error
+	Rename(oldname, newname string) error
 	Stat(path string) (os.FileInfo, error)
 	ReadDir(path string) ([]os.FileInfo, error)
 	Close() error
@@ -235,6 +236,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -252,6 +257,23 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	}
 	defer f.Close()
 	if _, err := f.Write(contents); err != nil {
+		return wrapError(err)
+	}
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fp, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	if fp == "" || fp == "." || fp == "/" {
+		return nil
+	}
+	if err := d.client.MkdirAll(fp); err != nil {
 		return wrapError(err)
 	}
 	return nil
@@ -406,10 +428,24 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
-	if err := d.CopyContext(ctx, src, dst); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return d.DeleteContext(ctx, src)
+	srcPath, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	dstPath, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	if err := d.client.MkdirAll(path.Dir(dstPath)); err != nil {
+		return wrapError(err)
+	}
+	if err := d.client.Rename(srcPath, dstPath); err != nil {
+		return wrapError(err)
+	}
+	return nil
 }
 
 func (d *driver) URL(p string) (string, error) {
@@ -487,6 +523,10 @@ func (c realSFTPClient) MkdirAll(path string) error {
 
 func (c realSFTPClient) Remove(path string) error {
 	return c.client.Remove(path)
+}
+
+func (c realSFTPClient) Rename(oldname, newname string) error {
+	return c.client.Rename(oldname, newname)
 }
 
 func (c realSFTPClient) Stat(path string) (os.FileInfo, error) {

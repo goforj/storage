@@ -35,6 +35,23 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		requireFalse(t, exists, "Exists after delete: expected false")
 	})
 
+	t.Run("make-dir", func(t *testing.T) {
+		dirPath := "mkdir/nested"
+		requireNoError(t, fsys.MakeDir(dirPath), "MakeDir")
+
+		entry, err := fsys.Stat(dirPath)
+		requireNoError(t, err, "Stat dir")
+		requireEqual(t, dirPath, entry.Path, "Stat dir path")
+		requireTrue(t, entry.IsDir, "Stat dir should be a directory")
+
+		entries, err := fsys.List("mkdir")
+		requireNoError(t, err, "List mkdir")
+		paths := extractPaths(entries)
+		requireContains(t, paths, dirPath, "List mkdir should include nested dir")
+
+		requireNoError(t, fsys.Put(dirPath+"/file.txt", []byte("hello")), "Put inside created dir")
+	})
+
 	t.Run("stat", func(t *testing.T) {
 		path := "stat/file.txt"
 		payload := []byte("hello world")
@@ -132,6 +149,35 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 	})
 
+	t.Run("count-files", func(t *testing.T) {
+		files := []string{
+			"count/root.txt",
+			"count/nested/one.txt",
+			"count/nested/two.txt",
+		}
+		requireNoError(t, fsys.MakeDir("count/empty"), "MakeDir empty")
+		for _, f := range files {
+			requireNoError(t, fsys.Put(f, []byte(f)), "Put "+f)
+		}
+
+		total, err := storage.CountFiles(fsys, "count")
+		if err != nil {
+			if errors.Is(err, storage.ErrUnsupported) {
+				t.Skip("Walk not supported; skipping")
+			}
+			t.Fatalf("CountFiles: %v", err)
+		}
+		requireEqual(t, 3, total, "CountFiles count")
+
+		if csys, ok := fsys.(storage.ContextStorage); ok {
+			total, err = storage.CountFilesContext(context.Background(), csys, "count/nested")
+			if err != nil {
+				t.Fatalf("CountFilesContext: %v", err)
+			}
+			requireEqual(t, 2, total, "CountFilesContext nested count")
+		}
+	})
+
 	t.Run("copy", func(t *testing.T) {
 		src := "copy/source.txt"
 		dst := "copy/dest.txt"
@@ -164,6 +210,25 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		got, err := fsys.Get(dst)
 		requireNoError(t, err, "Get moved object")
 		requireEqual(t, string(payload), string(got), "Get moved object")
+	})
+
+	t.Run("move-directory", func(t *testing.T) {
+		requireNoError(t, fsys.MakeDir("move-dir/source/nested"), "MakeDir source")
+		requireNoError(t, fsys.Put("move-dir/source/nested/file.txt", []byte("tree")), "Put tree file")
+
+		requireNoError(t, fsys.Move("move-dir/source", "move-dir/destination"), "Move directory")
+
+		exists, err := fsys.Exists("move-dir/source/nested/file.txt")
+		requireNoError(t, err, "Exists source file after directory move")
+		requireFalse(t, exists, "Exists source file after directory move: expected false")
+
+		entry, err := fsys.Stat("move-dir/destination")
+		requireNoError(t, err, "Stat destination directory")
+		requireTrue(t, entry.IsDir, "Stat destination directory should be a directory")
+
+		got, err := fsys.Get("move-dir/destination/nested/file.txt")
+		requireNoError(t, err, "Get moved directory file")
+		requireEqual(t, "tree", string(got), "Get moved directory file")
 	})
 
 	t.Run("url-behavior", func(t *testing.T) {
@@ -200,6 +265,9 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		if err := csys.PutContext(canceled, "ctx/file.txt", []byte("x")); err == nil {
 			t.Fatalf("expected context cancellation")
 		}
+		if err := csys.MakeDirContext(canceled, "ctx/dir"); err == nil {
+			t.Fatalf("expected context cancellation from MakeDirContext")
+		}
 		if err := csys.DeleteContext(canceled, "ctx/file.txt"); err == nil {
 			t.Fatalf("expected context cancellation from DeleteContext")
 		}
@@ -219,6 +287,9 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 		if err := csys.WalkContext(canceled, "ctx", func(storage.Entry) error { return nil }); err == nil {
 			t.Fatalf("expected context cancellation from WalkContext")
+		}
+		if _, err := storage.CountFilesContext(canceled, fsys, "ctx"); err == nil {
+			t.Fatalf("expected context cancellation from CountFilesContext")
 		}
 		if err := csys.CopyContext(canceled, "ctx/file.txt", "ctx/file-copy.txt"); err == nil {
 			t.Fatalf("expected context cancellation from CopyContext")

@@ -204,6 +204,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -223,6 +227,24 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	return nil
 }
 
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return nil
+	}
+	w := d.client.Bucket(d.bucket).Object(key + "/").NewWriter(ctx)
+	if err := w.Close(); err != nil {
+		return wrapError(err)
+	}
+	return nil
+}
+
 func (d *driver) Delete(p string) error {
 	return d.DeleteContext(context.Background(), p)
 }
@@ -236,7 +258,12 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		return err
 	}
 	if err := d.client.Bucket(d.bucket).Object(key).Delete(ctx); err != nil {
-		return wrapError(err)
+		if !isNotFound(err) {
+			return wrapError(err)
+		}
+		if err := d.client.Bucket(d.bucket).Object(key + "/").Delete(ctx); err != nil {
+			return wrapError(err)
+		}
 	}
 	return nil
 }
@@ -254,10 +281,28 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 		return storagecore.Entry{}, err
 	}
 	attrs, err := d.client.Bucket(d.bucket).Object(key).Attrs(ctx)
-	if err != nil {
+	if err == nil {
+		return storagecore.Entry{Path: d.stripPrefix(key), Size: attrs.Size, IsDir: false}, nil
+	}
+	if !isNotFound(err) {
 		return storagecore.Entry{}, wrapError(err)
 	}
-	return storagecore.Entry{Path: d.stripPrefix(key), Size: attrs.Size, IsDir: false}, nil
+	if _, dirErr := d.client.Bucket(d.bucket).Object(key + "/").Attrs(ctx); dirErr == nil {
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
+	} else if !isNotFound(dirErr) {
+		return storagecore.Entry{}, wrapError(dirErr)
+	}
+	prefix := key
+	if prefix != "" {
+		prefix += "/"
+	}
+	it := d.client.Bucket(d.bucket).Objects(ctx, &gcsapi.Query{Prefix: prefix})
+	if _, iterErr := it.Next(); iterErr == nil {
+		return storagecore.Entry{Path: d.stripPrefix(key), IsDir: true}, nil
+	} else if iterErr != iterator.Done {
+		return storagecore.Entry{}, wrapError(iterErr)
+	}
+	return storagecore.Entry{}, wrapError(err)
 }
 
 func (d *driver) Exists(p string) (bool, error) {
@@ -320,6 +365,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			if rel != "" {
 				entries = append(entries, storagecore.Entry{Path: rel, IsDir: true})
 			}
+			continue
+		}
+		if strings.HasSuffix(obj.Name, "/") {
 			continue
 		}
 		rel := d.stripPrefix(obj.Name)
@@ -428,6 +476,13 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	srcEntry, err := d.StatContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return storagecore.MoveDirContext(ctx, d, src, dst)
+	}
 	if err := d.CopyContext(ctx, src, dst); err != nil {
 		return err
 	}

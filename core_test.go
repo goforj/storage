@@ -21,6 +21,7 @@ type fakeStorage struct{}
 
 func (fakeStorage) Get(string) ([]byte, error)                          { return nil, nil }
 func (fakeStorage) Put(string, []byte) error                            { return nil }
+func (fakeStorage) MakeDir(string) error                                { return nil }
 func (fakeStorage) Delete(string) error                                 { return nil }
 func (fakeStorage) Stat(string) (Entry, error)                          { return Entry{}, nil }
 func (fakeStorage) Exists(string) (bool, error)                         { return false, nil }
@@ -31,6 +32,7 @@ func (fakeStorage) Move(string, string) error                           { return
 func (fakeStorage) URL(string) (string, error)                          { return "", nil }
 func (fakeStorage) GetContext(context.Context, string) ([]byte, error)  { return nil, nil }
 func (fakeStorage) PutContext(context.Context, string, []byte) error    { return nil }
+func (fakeStorage) MakeDirContext(context.Context, string) error        { return nil }
 func (fakeStorage) DeleteContext(context.Context, string) error         { return nil }
 func (fakeStorage) StatContext(context.Context, string) (Entry, error)  { return Entry{}, nil }
 func (fakeStorage) ExistsContext(context.Context, string) (bool, error) { return false, nil }

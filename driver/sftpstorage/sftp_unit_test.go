@@ -248,6 +248,7 @@ func (f *fakeSFTPClient) OpenFile(string, int) (io.WriteCloser, error) {
 
 func (f *fakeSFTPClient) MkdirAll(string) error                 { return f.mkdirErr }
 func (f *fakeSFTPClient) Remove(string) error                   { return f.removeErr }
+func (f *fakeSFTPClient) Rename(string, string) error           { return f.removeErr }
 func (f *fakeSFTPClient) Stat(string) (os.FileInfo, error)      { return f.statInfo, f.statErr }
 func (f *fakeSFTPClient) ReadDir(string) ([]os.FileInfo, error) { return f.readDir, f.readDirErr }
 func (f *fakeSFTPClient) Close() error                          { return nil }

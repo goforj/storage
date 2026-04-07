@@ -12,12 +12,14 @@ func main() {
 	//
 	// Semantics:
 	//   - Put overwrites an existing object at the same path.
+	//   - MakeDir creates a directory-like prefix and may be implemented as a
+	//     backend-specific directory marker on object stores.
 	//   - List is one-level and non-recursive.
 	//   - List with an empty path lists from the disk root or prefix root.
 	//   - Walk is recursive.
 	//   - URL returns a usable access URL when the driver supports it.
 	//   - Copy overwrites the destination object when the backend supports copy semantics.
-	//   - Move relocates an object and may be implemented as copy followed by delete.
+	//   - Move relocates an object or directory tree and may be implemented as copy followed by delete.
 	//   - Unsupported operations should return ErrUnsupported.
 
 	// Example: use the storage interface

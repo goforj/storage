@@ -149,6 +149,7 @@ func (f *fakeFTPConn) Quit() error                       { return f.quitErr }
 func (f *fakeFTPConn) Delete(string) error               { return f.deleteErr }
 func (f *fakeFTPConn) FileSize(string) (int64, error)    { return f.fileSize, f.fileSizeErr }
 func (f *fakeFTPConn) MakeDir(string) error              { return f.makeDirErr }
+func (f *fakeFTPConn) Rename(string, string) error       { return f.storErr }
 func (f *fakeFTPConn) List(string) ([]*ftp.Entry, error) { return f.listEntries, f.listErr }
 func (f *fakeFTPConn) Retr(string) (io.ReadCloser, error) {
 	if f.retrErr != nil {

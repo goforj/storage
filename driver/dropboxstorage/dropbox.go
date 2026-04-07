@@ -28,6 +28,8 @@ type dropboxClient interface {
 	Download(*files.DownloadArg) (*files.FileMetadata, io.ReadCloser, error)
 	Upload(*files.UploadArg, io.Reader) (*files.FileMetadata, error)
 	DeleteV2(*files.DeleteArg) (*files.DeleteResult, error)
+	CreateFolderV2(*files.CreateFolderArg) (*files.CreateFolderResult, error)
+	MoveV2(*files.RelocationArg) (*files.RelocationResult, error)
 	GetMetadata(*files.GetMetadataArg) (files.IsMetadata, error)
 	ListFolder(*files.ListFolderArg) (*files.ListFolderResult, error)
 	ListFolderContinue(*files.ListFolderContinueArg) (*files.ListFolderResult, error)
@@ -123,6 +125,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	full, err := d.fullPath(p)
 	if err != nil {
@@ -130,6 +136,23 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	}
 	_, err = d.client.Upload(files.NewUploadArg(full), bytes.NewReader(contents))
 	if err != nil {
+		return wrapError(err)
+	}
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	full, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	if full == "/" {
+		return nil
+	}
+	if _, err := d.client.CreateFolderV2(files.NewCreateFolderArg(full)); err != nil {
 		return wrapError(err)
 	}
 	return nil
@@ -321,10 +344,21 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
-	if err := d.CopyContext(ctx, src, dst); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return d.DeleteContext(ctx, src)
+	srcPath, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	dstPath, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := d.client.MoveV2(files.NewRelocationArg(srcPath, dstPath)); err != nil {
+		return wrapError(err)
+	}
+	return nil
 }
 
 func (d *driver) URL(p string) (string, error) {

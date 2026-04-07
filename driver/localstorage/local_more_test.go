@@ -157,8 +157,14 @@ func TestLocalCopyAndMoveBranches(t *testing.T) {
 	if err := d.Copy("dir", "copy-dir"); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("Copy dir error = %v", err)
 	}
-	if err := d.Move("dir", "move-dir"); !errors.Is(err, storagecore.ErrUnsupported) {
-		t.Fatalf("Move dir error = %v", err)
+	if err := d.Move("dir", "move-dir"); err != nil {
+		t.Fatalf("Move dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "pre", "move-dir")); err != nil {
+		t.Fatalf("move dir stat: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "pre", "dir")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source dir should be gone, err=%v", err)
 	}
 	if err := d.Copy("missing.txt", "x"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("Copy missing error = %v", err)

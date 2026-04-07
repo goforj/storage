@@ -173,6 +173,10 @@ func (d *driver) Put(p string, contents []byte) error {
 	return d.PutContext(context.Background(), p, contents)
 }
 
+func (d *driver) MakeDir(p string) error {
+	return d.MakeDirContext(context.Background(), p)
+}
+
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -190,6 +194,23 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	modTime := time.Now().UTC()
 	src := object.NewStaticObjectInfo(remote, modTime, int64(len(contents)), true, nil, nil)
 	if _, err := d.fs.Put(ctx, bytes.NewReader(contents), src); err != nil {
+		return wrapError(err)
+	}
+	return nil
+}
+
+func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	remote, err := d.fullPath(p)
+	if err != nil {
+		return err
+	}
+	if remote == "" || remote == "." {
+		return nil
+	}
+	if err := d.fs.Mkdir(ctx, remote); err != nil {
 		return wrapError(err)
 	}
 	return nil
@@ -233,8 +254,16 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 	if err == nil {
 		return storagecore.Entry{Path: d.stripPrefix(remote), Size: obj.Size(), IsDir: false}, nil
 	}
+	if errors.Is(err, fs.ErrorIsDir) {
+		return storagecore.Entry{Path: d.stripPrefix(remote), IsDir: true}, nil
+	}
 	if !isNotFound(err) {
 		return storagecore.Entry{}, wrapError(err)
+	}
+	if _, listErr := d.fs.List(ctx, remote); listErr == nil {
+		return storagecore.Entry{Path: d.stripPrefix(remote), IsDir: true}, nil
+	} else if !isNotFound(listErr) {
+		return storagecore.Entry{}, wrapError(listErr)
 	}
 
 	parent := path.Dir(remote)
@@ -386,6 +415,21 @@ func (d *driver) Move(src, dst string) error {
 }
 
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	srcEntry, err := d.StatContext(ctx, src)
+	if err != nil {
+		return err
+	}
+	srcRemote, err := d.fullPath(src)
+	if err != nil {
+		return err
+	}
+	dstRemote, err := d.fullPath(dst)
+	if err != nil {
+		return err
+	}
+	if srcEntry.IsDir {
+		return operations.DirMove(ctx, d.fs, srcRemote, dstRemote)
+	}
 	if err := d.CopyContext(ctx, src, dst); err != nil {
 		return err
 	}

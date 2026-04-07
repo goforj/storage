@@ -13,9 +13,12 @@ func TestNormalizePath(t *testing.T) {
 	}{
 		{"empty", "", "", false},
 		{"trims and cleans", " /foo//bar ", "foo/bar", false},
+		{"normalizes backslashes", `foo\\bar\\baz.txt`, "foo/bar/baz.txt", false},
+		{"normalizes leading backslash root", `\\foo\\bar`, "foo/bar", false},
 		{"root slash becomes empty", "/", "", false},
 		{"single dot", ".", "", false},
 		{"reject parent traversal", "..", "", true},
+		{"reject backslash parent traversal", `..\\foo`, "", true},
 		{"reject prefixed parent", "../foo", "", true},
 	}
 	for _, tt := range tests {
