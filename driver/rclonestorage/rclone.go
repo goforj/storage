@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -349,6 +350,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			IsDir: isDir,
 		})
 	}
+	slices.SortFunc(result, func(a, b storagecore.Entry) int {
+		return strings.Compare(a.Path, b.Path)
+	})
 	return result, nil
 }
 

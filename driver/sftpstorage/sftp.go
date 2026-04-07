@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -365,6 +366,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 	if err != nil {
 		return nil, wrapError(err)
 	}
+	slices.SortFunc(infos, func(a, b os.FileInfo) int {
+		return strings.Compare(a.Name(), b.Name())
+	})
 	basePrefix := d.stripPrefix(fp)
 	var entries []storagecore.Entry
 	for _, info := range infos {
