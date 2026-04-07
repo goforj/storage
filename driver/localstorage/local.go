@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -248,6 +249,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 	if err != nil {
 		return nil, wrapLocalError(err)
 	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
+	})
 
 	basePrefix, err := d.userRelative(target)
 	if err != nil {
@@ -286,12 +290,7 @@ func (d *driver) ListPageContext(ctx context.Context, p string, offset, limit in
 	if err != nil {
 		return storagecore.ListPageResult{}, err
 	}
-	file, err := os.Open(target)
-	if err != nil {
-		return storagecore.ListPageResult{}, wrapLocalError(err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
+	info, err := os.Stat(target)
 	if err != nil {
 		return storagecore.ListPageResult{}, wrapLocalError(err)
 	}
@@ -303,64 +302,46 @@ func (d *driver) ListPageContext(ctx context.Context, p string, offset, limit in
 	if err != nil {
 		return storagecore.ListPageResult{}, err
 	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return storagecore.ListPageResult{}, wrapLocalError(err)
+	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
+	})
 
 	result := storagecore.ListPageResult{
 		Entries: make([]storagecore.Entry, 0, limit),
 		Offset:  offset,
 		Limit:   limit,
 	}
-	skipped := 0
-	chunkSize := limit
-	if chunkSize < 64 {
-		chunkSize = 64
+
+	if offset >= len(entries) {
+		result.HasMore = false
+		return result, nil
 	}
 
-	for {
-		batch, readErr := file.ReadDir(chunkSize)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return storagecore.ListPageResult{}, wrapLocalError(readErr)
-		}
-		if len(batch) == 0 {
-			result.HasMore = false
-			return result, nil
-		}
-
-		for index, entry := range batch {
-			if skipped < offset {
-				skipped++
-				continue
-			}
-
-			name := entry.Name()
-			rel := filepath.ToSlash(filepath.Join(basePrefix, name))
-			info, _ := entry.Info()
-			size := int64(0)
-			if info != nil {
-				size = info.Size()
-			}
-			result.Entries = append(result.Entries, storagecore.Entry{
-				Path:  rel,
-				Size:  size,
-				IsDir: entry.IsDir(),
-			})
-			if len(result.Entries) == limit {
-				result.HasMore = index < len(batch)-1
-				if !result.HasMore {
-					peek, peekErr := file.ReadDir(1)
-					if peekErr != nil && !errors.Is(peekErr, io.EOF) {
-						return storagecore.ListPageResult{}, wrapLocalError(peekErr)
-					}
-					result.HasMore = len(peek) > 0
-				}
-				return result, nil
-			}
-		}
-
-		if errors.Is(readErr, io.EOF) {
-			result.HasMore = false
-			return result, nil
-		}
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
 	}
+	result.HasMore = end < len(entries)
+
+	for _, entry := range entries[offset:end] {
+		name := entry.Name()
+		rel := filepath.ToSlash(filepath.Join(basePrefix, name))
+		info, _ := entry.Info()
+		size := int64(0)
+		if info != nil {
+			size = info.Size()
+		}
+		result.Entries = append(result.Entries, storagecore.Entry{
+			Path:  rel,
+			Size:  size,
+			IsDir: entry.IsDir(),
+		})
+	}
+	return result, nil
 }
 
 func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
