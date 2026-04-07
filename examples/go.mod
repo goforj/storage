@@ -3,16 +3,16 @@ module github.com/goforj/storage/examples
 go 1.24.4
 
 require (
-	github.com/goforj/storage v0.3.0
-	github.com/goforj/storage/driver/dropboxstorage v0.3.0
-	github.com/goforj/storage/driver/ftpstorage v0.3.0
-	github.com/goforj/storage/driver/gcsstorage v0.3.0
-	github.com/goforj/storage/driver/localstorage v0.3.0
-	github.com/goforj/storage/driver/memorystorage v0.3.0
-	github.com/goforj/storage/driver/rclonestorage v0.3.0
-	github.com/goforj/storage/driver/redisstorage v0.3.0
-	github.com/goforj/storage/driver/s3storage v0.3.0
-	github.com/goforj/storage/driver/sftpstorage v0.3.0
+	github.com/goforj/storage v0.4.0
+	github.com/goforj/storage/driver/dropboxstorage v0.4.0
+	github.com/goforj/storage/driver/ftpstorage v0.4.0
+	github.com/goforj/storage/driver/gcsstorage v0.4.0
+	github.com/goforj/storage/driver/localstorage v0.4.0
+	github.com/goforj/storage/driver/memorystorage v0.4.0
+	github.com/goforj/storage/driver/rclonestorage v0.4.0
+	github.com/goforj/storage/driver/redisstorage v0.4.0
+	github.com/goforj/storage/driver/s3storage v0.4.0
+	github.com/goforj/storage/driver/sftpstorage v0.4.0
 )
 
 replace github.com/goforj/storage => ..
@@ -140,7 +140,7 @@ require (
 	github.com/go-playground/validator/v10 v10.28.0 // indirect
 	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/goforj/storage/storagecore v0.3.0 // indirect
+	github.com/goforj/storage/storagecore v0.4.0 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
