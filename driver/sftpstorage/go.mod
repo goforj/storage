@@ -3,7 +3,7 @@ module github.com/goforj/storage/driver/sftpstorage
 go 1.24.4
 
 require (
-	github.com/goforj/storage/storagecore v0.4.3
+	github.com/goforj/storage/storagecore v0.4.4
 	github.com/pkg/sftp v1.13.10
 	golang.org/x/crypto v0.47.0
 )
