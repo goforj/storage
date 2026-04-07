@@ -222,6 +222,26 @@ type ContextStorage interface {
 	URLContext(ctx context.Context, p string) (string, error)
 }
 
+// ListPageResult describes a paginated one-level directory listing.
+// @group Context
+type ListPageResult = storagecore.ListPageResult
+
+// PagedStorage exposes paginated one-level listing when a backend can support it.
+// Use Storage for the common path and type-assert to PagedStorage when you need
+// backend-driven pagination.
+// @group Context
+type PagedStorage interface {
+	// ListPage returns one page of immediate children under path.
+	ListPage(p string, offset, limit int) (ListPageResult, error)
+}
+
+// ContextPagedStorage exposes context-aware paginated one-level listing.
+// @group Context
+type ContextPagedStorage interface {
+	// ListPageContext returns one page of immediate children under path using the caller-provided context.
+	ListPageContext(ctx context.Context, p string, offset, limit int) (ListPageResult, error)
+}
+
 // Entry represents an item returned by List.
 //
 // Path is relative to the storage namespace, not an OS-native path.
@@ -245,6 +265,10 @@ var (
 	ErrForbidden   = storagecore.ErrForbidden
 	ErrUnsupported = storagecore.ErrUnsupported
 )
+
+func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
+	return storagecore.PaginateEntries(entries, offset, limit)
+}
 
 // DiskName is a typed identifier for configured disks.
 // @group Core

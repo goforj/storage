@@ -243,3 +243,44 @@ func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
 		t.Fatalf("URL moved error = %v", err)
 	}
 }
+
+func TestMemoryStorageListPage(t *testing.T) {
+	store, err := memorystorage.New(memorystorage.Config{})
+	if err != nil {
+		t.Fatalf("memorystorage.New: %v", err)
+	}
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := store.Put(name, []byte(name)); err != nil {
+			t.Fatalf("Put %s: %v", name, err)
+		}
+	}
+
+	paged, ok := store.(interface {
+		ListPageContext(context.Context, string, int, int) (storagecore.ListPageResult, error)
+	})
+	if !ok {
+		t.Fatal("store does not implement paged listing")
+	}
+
+	page, err := paged.ListPageContext(context.Background(), "", 0, 2)
+	if err != nil {
+		t.Fatalf("ListPageContext first: %v", err)
+	}
+	if !page.HasMore || page.Offset != 0 || page.Limit != 2 {
+		t.Fatalf("first page metadata = %+v", page)
+	}
+	if len(page.Entries) != 2 || page.Entries[0].Path != "a.txt" || page.Entries[1].Path != "b.txt" {
+		t.Fatalf("first page entries = %+v", page.Entries)
+	}
+
+	page, err = paged.ListPageContext(context.Background(), "", 2, 2)
+	if err != nil {
+		t.Fatalf("ListPageContext second: %v", err)
+	}
+	if page.HasMore {
+		t.Fatalf("second page should not have more: %+v", page)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Path != "c.txt" {
+		t.Fatalf("second page entries = %+v", page.Entries)
+	}
+}

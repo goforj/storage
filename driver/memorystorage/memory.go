@@ -191,6 +191,10 @@ func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
+func (d *driver) ListPage(p string, offset, limit int) (storagecore.ListPageResult, error) {
+	return d.ListPageContext(context.Background(), p, offset, limit)
+}
+
 func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -211,6 +215,48 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		}
 	}
 	return entries, nil
+}
+
+func (d *driver) ListPageContext(ctx context.Context, p string, offset, limit int) (storagecore.ListPageResult, error) {
+	if err := ctx.Err(); err != nil {
+		return storagecore.ListPageResult{}, err
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return storagecore.ListPageResult{}, err
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	entries := d.listEntriesLocked(key)
+	if key != "" && len(entries) == 0 {
+		if _, ok := d.objects[key]; ok {
+			return storagecore.ListPageResult{}, fmt.Errorf("%w: path is not a directory", storagecore.ErrNotFound)
+		}
+		if !d.hasChildrenLocked(key) {
+			return storagecore.ListPageResult{}, fmt.Errorf("%w: object not found", storagecore.ErrNotFound)
+		}
+	}
+	if offset > len(entries) {
+		offset = len(entries)
+	}
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	pageEntries := make([]storagecore.Entry, end-offset)
+	copy(pageEntries, entries[offset:end])
+	return storagecore.ListPageResult{
+		Entries: pageEntries,
+		Offset:  offset,
+		Limit:   limit,
+		HasMore: end < len(entries),
+	}, nil
 }
 
 func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {

@@ -221,6 +221,17 @@ func (s *contractMemoryStorage) ListContext(ctx context.Context, p string) ([]st
 	return s.List(p)
 }
 
+func (s *contractMemoryStorage) ListPageContext(ctx context.Context, p string, offset, limit int) (storage.ListPageResult, error) {
+	if err := ctx.Err(); err != nil {
+		return storage.ListPageResult{}, err
+	}
+	entries, err := s.List(p)
+	if err != nil {
+		return storage.ListPageResult{}, err
+	}
+	return storage.PaginateEntries(entries, offset, limit), nil
+}
+
 func (s *contractMemoryStorage) WalkContext(ctx context.Context, p string, fn func(storage.Entry) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -266,6 +277,9 @@ func (s unsupportedStorage) Delete(p string) error                  { return s.i
 func (s unsupportedStorage) Stat(p string) (storage.Entry, error)   { return s.inner.Stat(p) }
 func (s unsupportedStorage) Exists(p string) (bool, error)          { return s.inner.Exists(p) }
 func (s unsupportedStorage) List(p string) ([]storage.Entry, error) { return s.inner.List(p) }
+func (s unsupportedStorage) ListPageContext(ctx context.Context, p string, offset, limit int) (storage.ListPageResult, error) {
+	return s.inner.ListPageContext(ctx, p, offset, limit)
+}
 func (s unsupportedStorage) Copy(src, dst string) error             { return s.inner.Copy(src, dst) }
 func (s unsupportedStorage) Move(src, dst string) error             { return s.inner.Move(src, dst) }
 func (s unsupportedStorage) Walk(string, func(storage.Entry) error) error {

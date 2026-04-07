@@ -327,6 +327,10 @@ func (d *driver) List(p string) ([]storagecore.Entry, error) {
 	return d.ListContext(context.Background(), p)
 }
 
+func (d *driver) ListPage(p string, offset, limit int) (storagecore.ListPageResult, error) {
+	return d.ListPageContext(context.Background(), p, offset, limit)
+}
+
 func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -350,6 +354,14 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		})
 	}
 	return entries, nil
+}
+
+func (d *driver) ListPageContext(ctx context.Context, p string, offset, limit int) (storagecore.ListPageResult, error) {
+	entries, err := d.ListContext(ctx, p)
+	if err != nil {
+		return storagecore.ListPageResult{}, err
+	}
+	return storagecore.PaginateEntries(entries, offset, limit), nil
 }
 
 func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {

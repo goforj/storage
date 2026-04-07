@@ -75,6 +75,37 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 	})
 
+	t.Run("paged-listing", func(t *testing.T) {
+		paged, ok := fsys.(storage.ContextPagedStorage)
+		if !ok {
+			t.Fatal("storage does not implement ContextPagedStorage")
+		}
+		files := []string{
+			"page/a.txt",
+			"page/b.txt",
+			"page/c.txt",
+		}
+		for _, f := range files {
+			requireNoError(t, fsys.Put(f, []byte(f)), "Put "+f)
+		}
+
+		first, err := paged.ListPageContext(context.Background(), "page", 0, 2)
+		requireNoError(t, err, "ListPageContext first")
+		requireTrue(t, first.HasMore, "first page should have more")
+		requireEqual(t, 0, first.Offset, "first page offset")
+		requireEqual(t, 2, first.Limit, "first page limit")
+		if got := extractPaths(first.Entries); !slices.Equal(got, []string{"page/a.txt", "page/b.txt"}) {
+			t.Fatalf("first page entries: expected %v got %v", []string{"page/a.txt", "page/b.txt"}, got)
+		}
+
+		second, err := paged.ListPageContext(context.Background(), "page", 2, 2)
+		requireNoError(t, err, "ListPageContext second")
+		requireFalse(t, second.HasMore, "second page should not have more")
+		if got := extractPaths(second.Entries); !slices.Equal(got, []string{"page/c.txt"}) {
+			t.Fatalf("second page entries: expected %v got %v", []string{"page/c.txt"}, got)
+		}
+	})
+
 	t.Run("walk", func(t *testing.T) {
 		// Seed a small tree that exercises both nested objects and prefixes.
 		files := []string{
@@ -180,6 +211,11 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 		if _, err := csys.ListContext(canceled, "ctx"); err == nil {
 			t.Fatalf("expected context cancellation from ListContext")
+		}
+		if paged, ok := fsys.(storage.ContextPagedStorage); ok {
+			if _, err := paged.ListPageContext(canceled, "ctx", 0, 2); err == nil {
+				t.Fatalf("expected context cancellation from ListPageContext")
+			}
 		}
 		if err := csys.WalkContext(canceled, "ctx", func(storage.Entry) error { return nil }); err == nil {
 			t.Fatalf("expected context cancellation from WalkContext")

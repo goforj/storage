@@ -174,6 +174,50 @@ func TestLocalCopyAndMoveBranches(t *testing.T) {
 	}
 }
 
+func TestLocalListPageContext(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(Config{Root: root, Prefix: "pre"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	d := store.(*driver)
+
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := d.Put(name, []byte(name)); err != nil {
+			t.Fatalf("Put %s: %v", name, err)
+		}
+	}
+
+	page, err := d.ListPageContext(context.Background(), "", 0, 2)
+	if err != nil {
+		t.Fatalf("ListPageContext first: %v", err)
+	}
+	if !page.HasMore || page.Offset != 0 || page.Limit != 2 {
+		t.Fatalf("first page metadata = %+v", page)
+	}
+	if got := []string{page.Entries[0].Path, page.Entries[1].Path}; !slices.Equal(got, []string{"a.txt", "b.txt"}) {
+		t.Fatalf("first page entries = %v", got)
+	}
+
+	page, err = d.ListPageContext(context.Background(), "", 2, 2)
+	if err != nil {
+		t.Fatalf("ListPageContext second: %v", err)
+	}
+	if page.HasMore {
+		t.Fatalf("second page should not have more: %+v", page)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Path != "c.txt" {
+		t.Fatalf("second page entries = %+v", page.Entries)
+	}
+
+	if _, err := d.ListPageContext(context.Background(), "missing", 0, 2); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("ListPageContext missing error = %v", err)
+	}
+	if _, err := d.ListPageContext(context.Background(), "a.txt", 0, 2); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("ListPageContext file error = %v", err)
+	}
+}
+
 func TestLocalModTimeAndRelativeEdgeCases(t *testing.T) {
 	root := t.TempDir()
 	d := &driver{root: root, prefix: "pre"}

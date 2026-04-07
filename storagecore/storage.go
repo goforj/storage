@@ -34,6 +34,21 @@ type ContextStorage interface {
 	URLContext(ctx context.Context, p string) (string, error)
 }
 
+type ListPageResult struct {
+	Entries []Entry
+	Offset  int
+	Limit   int
+	HasMore bool
+}
+
+type PagedStorage interface {
+	ListPage(p string, offset, limit int) (ListPageResult, error)
+}
+
+type ContextPagedStorage interface {
+	ListPageContext(ctx context.Context, p string, offset, limit int) (ListPageResult, error)
+}
+
 type Entry struct {
 	Path  string
 	Size  int64
@@ -111,4 +126,28 @@ func JoinPrefix(prefix, p string) string {
 		return prefix
 	}
 	return path.Join(prefix, p)
+}
+
+func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset > len(entries) {
+		offset = len(entries)
+	}
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	pageEntries := make([]Entry, end-offset)
+	copy(pageEntries, entries[offset:end])
+	return ListPageResult{
+		Entries: pageEntries,
+		Offset:  offset,
+		Limit:   limit,
+		HasMore: end < len(entries),
+	}
 }
