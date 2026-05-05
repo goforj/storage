@@ -10,17 +10,14 @@ import (
 )
 
 func main() {
-	// Walk visits entries recursively when the backend supports it.
+	// URL returns a usable access URL when the driver supports it.
 
-	// Example: walk a backend when supported
+	// Example: handle unsupported url generation
 	disk, _ := storage.Build(localstorage.Config{
-		Root: "/tmp/storage-walk",
+		Root: "/tmp/storage-url",
 	})
 
-	err := disk.Walk("", func(entry storage.Entry) error {
-		fmt.Println(entry.Path)
-		return nil
-	})
+	_, err := disk.URL("docs/readme.txt")
 	fmt.Println(errors.Is(err, storage.ErrUnsupported))
 	// Output: true
 }

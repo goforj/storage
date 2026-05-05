@@ -9,17 +9,18 @@ import (
 )
 
 func main() {
-	// Default returns the default disk or panics if misconfigured.
+	// Disk returns a named disk or an error if it does not exist.
 
-	// Example: get the default disk
+	// Example: get a named disk
 	mgr, _ := storage.New(storage.Config{
 		Default: "local",
 		Disks: map[storage.DiskName]storage.DriverConfig{
-			"local": localstorage.Config{Root: "/tmp/storage-default"},
+			"local":   localstorage.Config{Root: "/tmp/storage-default"},
+			"uploads": localstorage.Config{Root: "/tmp/storage-uploads"},
 		},
 	})
 
-	fs := mgr.Default()
+	fs, _ := mgr.Disk("uploads")
 	fmt.Println(fs != nil)
 	// Output: true
 }
