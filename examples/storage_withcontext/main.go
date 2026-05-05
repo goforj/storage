@@ -11,19 +11,18 @@ import (
 )
 
 func main() {
-	// GetContext reads the object at path using the caller-provided context.
+	// WithContext returns a derived storage handle bound to ctx for subsequent operations.
 
-	// Example: read an object with a timeout
+	// Example: bind a timeout to storage operations
 	disk, _ := storage.Build(localstorage.Config{
-		Root: "/tmp/storage-get-context",
+		Root: "/tmp/storage-with-context",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	cs := disk.(storage.ContextStorage)
-	data, _ := cs.GetContext(ctx, "docs/readme.txt")
+	data, _ := disk.WithContext(ctx).Get("docs/readme.txt")
 	fmt.Println(string(data))
 	// Output: hello
 }

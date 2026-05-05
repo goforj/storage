@@ -49,6 +49,15 @@ func CountFilesContext(ctx context.Context, disk any, p string) (int, error) {
 		}
 		return nil
 	}
+	if scoped, ok := disk.(interface{ WithContext(context.Context) Storage }); ok {
+		bound := scoped.WithContext(ctx)
+		if walker, ok := bound.(fileCounterWalker); ok {
+			if err := walker.Walk(p, walk); err != nil {
+				return 0, err
+			}
+			return count, nil
+		}
+	}
 	if cs, ok := disk.(fileCounterContextWalker); ok {
 		if err := cs.WalkContext(ctx, p, walk); err != nil {
 			return 0, err

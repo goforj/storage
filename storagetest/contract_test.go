@@ -18,6 +18,11 @@ type contractMemoryStorage struct {
 	dirs  map[string]struct{}
 }
 
+type boundContractMemoryStorage struct {
+	inner *contractMemoryStorage
+	ctx   context.Context
+}
+
 func newContractMemoryStorage() *contractMemoryStorage {
 	return &contractMemoryStorage{
 		files: map[string][]byte{},
@@ -27,6 +32,10 @@ func newContractMemoryStorage() *contractMemoryStorage {
 
 func (s *contractMemoryStorage) normalize(p string) (string, error) {
 	return storage.NormalizePath(p)
+}
+
+func (s *contractMemoryStorage) WithContext(ctx context.Context) storage.Storage {
+	return &boundContractMemoryStorage{inner: s, ctx: ctx}
 }
 
 func (s *contractMemoryStorage) Get(p string) ([]byte, error) {
@@ -299,6 +308,10 @@ func (s *contractMemoryStorage) ListContext(ctx context.Context, p string) ([]st
 	return s.List(p)
 }
 
+func (s *contractMemoryStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
+	return s.ListPageContext(context.Background(), p, offset, limit)
+}
+
 func (s *contractMemoryStorage) ListPageContext(ctx context.Context, p string, offset, limit int) (storage.ListPageResult, error) {
 	if err := ctx.Err(); err != nil {
 		return storage.ListPageResult{}, err
@@ -338,6 +351,58 @@ func (s *contractMemoryStorage) URLContext(ctx context.Context, p string) (strin
 	return s.URL(p)
 }
 
+func (s *boundContractMemoryStorage) WithContext(ctx context.Context) storage.Storage {
+	return &boundContractMemoryStorage{inner: s.inner, ctx: ctx}
+}
+
+func (s *boundContractMemoryStorage) Get(p string) ([]byte, error) {
+	return s.inner.GetContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) Put(p string, contents []byte) error {
+	return s.inner.PutContext(s.ctx, p, contents)
+}
+
+func (s *boundContractMemoryStorage) MakeDir(p string) error {
+	return s.inner.MakeDirContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) Delete(p string) error {
+	return s.inner.DeleteContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) Stat(p string) (storage.Entry, error) {
+	return s.inner.StatContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) Exists(p string) (bool, error) {
+	return s.inner.ExistsContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) List(p string) ([]storage.Entry, error) {
+	return s.inner.ListContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) Walk(p string, fn func(storage.Entry) error) error {
+	return s.inner.WalkContext(s.ctx, p, fn)
+}
+
+func (s *boundContractMemoryStorage) Copy(src, dst string) error {
+	return s.inner.CopyContext(s.ctx, src, dst)
+}
+
+func (s *boundContractMemoryStorage) Move(src, dst string) error {
+	return s.inner.MoveContext(s.ctx, src, dst)
+}
+
+func (s *boundContractMemoryStorage) URL(p string) (string, error) {
+	return s.inner.URLContext(s.ctx, p)
+}
+
+func (s *boundContractMemoryStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
+	return s.inner.ListPageContext(s.ctx, p, offset, limit)
+}
+
 func (s *contractMemoryStorage) ensureDirChain(p string) {
 	dir := path.Dir(p)
 	for dir != "." && dir != "" {
@@ -361,6 +426,14 @@ type unsupportedStorage struct {
 	inner *contractMemoryStorage
 }
 
+type boundUnsupportedStorage struct {
+	inner *contractMemoryStorage
+	ctx   context.Context
+}
+
+func (s unsupportedStorage) WithContext(ctx context.Context) storage.Storage {
+	return boundUnsupportedStorage{inner: s.inner, ctx: ctx}
+}
 func (s unsupportedStorage) Get(p string) ([]byte, error)           { return s.inner.Get(p) }
 func (s unsupportedStorage) Put(p string, contents []byte) error    { return s.inner.Put(p, contents) }
 func (s unsupportedStorage) MakeDir(p string) error                 { return s.inner.MakeDir(p) }
@@ -368,8 +441,8 @@ func (s unsupportedStorage) Delete(p string) error                  { return s.i
 func (s unsupportedStorage) Stat(p string) (storage.Entry, error)   { return s.inner.Stat(p) }
 func (s unsupportedStorage) Exists(p string) (bool, error)          { return s.inner.Exists(p) }
 func (s unsupportedStorage) List(p string) ([]storage.Entry, error) { return s.inner.List(p) }
-func (s unsupportedStorage) ListPageContext(ctx context.Context, p string, offset, limit int) (storage.ListPageResult, error) {
-	return s.inner.ListPageContext(ctx, p, offset, limit)
+func (s unsupportedStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
+	return s.inner.ListPageContext(context.Background(), p, offset, limit)
 }
 func (s unsupportedStorage) Copy(src, dst string) error { return s.inner.Copy(src, dst) }
 func (s unsupportedStorage) Move(src, dst string) error { return s.inner.Move(src, dst) }
@@ -377,6 +450,41 @@ func (s unsupportedStorage) Walk(string, func(storage.Entry) error) error {
 	return storage.ErrUnsupported
 }
 func (s unsupportedStorage) URL(string) (string, error) {
+	return "", storage.ErrUnsupported
+}
+
+func (s boundUnsupportedStorage) WithContext(ctx context.Context) storage.Storage {
+	return boundUnsupportedStorage{inner: s.inner, ctx: ctx}
+}
+
+func (s boundUnsupportedStorage) Get(p string) ([]byte, error) { return s.inner.GetContext(s.ctx, p) }
+func (s boundUnsupportedStorage) Put(p string, contents []byte) error {
+	return s.inner.PutContext(s.ctx, p, contents)
+}
+func (s boundUnsupportedStorage) MakeDir(p string) error { return s.inner.MakeDirContext(s.ctx, p) }
+func (s boundUnsupportedStorage) Delete(p string) error  { return s.inner.DeleteContext(s.ctx, p) }
+func (s boundUnsupportedStorage) Stat(p string) (storage.Entry, error) {
+	return s.inner.StatContext(s.ctx, p)
+}
+func (s boundUnsupportedStorage) Exists(p string) (bool, error) { return s.inner.ExistsContext(s.ctx, p) }
+func (s boundUnsupportedStorage) List(p string) ([]storage.Entry, error) {
+	return s.inner.ListContext(s.ctx, p)
+}
+func (s boundUnsupportedStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
+	return s.inner.ListPageContext(s.ctx, p, offset, limit)
+}
+func (s boundUnsupportedStorage) Copy(src, dst string) error { return s.inner.CopyContext(s.ctx, src, dst) }
+func (s boundUnsupportedStorage) Move(src, dst string) error { return s.inner.MoveContext(s.ctx, src, dst) }
+func (s boundUnsupportedStorage) Walk(string, func(storage.Entry) error) error {
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
+	return storage.ErrUnsupported
+}
+func (s boundUnsupportedStorage) URL(string) (string, error) {
+	if err := s.ctx.Err(); err != nil {
+		return "", err
+	}
 	return "", storage.ErrUnsupported
 }
 

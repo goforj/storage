@@ -25,7 +25,17 @@ type DriverFactory func(ctx context.Context, cfg ResolvedConfig) (Storage, error
 //	})
 func RegisterDriver(name string, factory DriverFactory) {
 	storagecore.RegisterDriver(name, func(ctx context.Context, cfg storagecore.ResolvedConfig) (storagecore.Storage, error) {
-		return factory(ctx, cfg)
+		store, err := factory(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+		if wrapped, ok := store.(*boundStorage); ok {
+			return wrapped.inner, nil
+		}
+		if coreStore, ok := store.(storagecore.Storage); ok {
+			return coreStore, nil
+		}
+		return nil, ErrUnsupported
 	})
 }
 
@@ -35,6 +45,10 @@ func lookupDriver(name string) (DriverFactory, bool) {
 		return nil, false
 	}
 	return func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
-		return factory(ctx, cfg)
+		store, err := factory(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return wrapStorage(store), nil
 	}, true
 }

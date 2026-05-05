@@ -16,6 +16,7 @@ func (c stubDriverConfig) ResolvedConfig() ResolvedConfig { return c.cfg }
 
 type stubFS struct{}
 
+func (stubFS) WithContext(context.Context) Storage { return stubFS{} }
 func (stubFS) Get(string) ([]byte, error)   { return nil, nil }
 func (stubFS) Put(string, []byte) error     { return nil }
 func (stubFS) MakeDir(string) error         { return nil }

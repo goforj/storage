@@ -9,15 +9,13 @@ import (
 )
 
 func main() {
-	// Get reads the object at path.
+	// Put writes an object at path, overwriting any existing object.
 
-	// Example: read an object
+	// Example: write an object
 	disk, _ := storage.Build(localstorage.Config{
-		Root: "/tmp/storage-get",
+		Root: "/tmp/storage-put",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
-
-	data, _ := disk.Get("docs/readme.txt")
-	fmt.Println(string(data))
-	// Output: hello
+	fmt.Println("stored")
+	// Output: stored
 }

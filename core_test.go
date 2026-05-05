@@ -19,6 +19,7 @@ func (c fakeDriverConfig) ResolvedConfig() ResolvedConfig {
 
 type fakeStorage struct{}
 
+func (fakeStorage) WithContext(context.Context) Storage                    { return fakeStorage{} }
 func (fakeStorage) Get(string) ([]byte, error)                          { return nil, nil }
 func (fakeStorage) Put(string, []byte) error                            { return nil }
 func (fakeStorage) MakeDir(string) error                                { return nil }

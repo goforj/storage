@@ -30,6 +30,23 @@ import (
 //	})
 //	_ = disk
 type Storage interface {
+	// WithContext returns a derived storage handle bound to ctx for subsequent operations.
+	//
+	// Example: bind a timeout to storage operations
+	//
+	//	disk, _ := storage.Build(localstorage.Config{
+	//		Root: "/tmp/storage-with-context",
+	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	//
+	//	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	//	defer cancel()
+	//
+	//	data, _ := disk.WithContext(ctx).Get("docs/readme.txt")
+	//	fmt.Println(string(data))
+	//	// Output: hello
+	WithContext(ctx context.Context) Storage
+
 	// Get reads the object at path.
 	//
 	// Example: read an object
@@ -206,67 +223,17 @@ type Storage interface {
 	URL(p string) (string, error)
 }
 
-// ContextStorage exposes context-aware storage operations for cancellation and deadlines.
-// Use Storage for the common path and type-assert to ContextStorage when you need caller-provided context.
-// @group Context
-type ContextStorage interface {
-	// GetContext reads the object at path using the caller-provided context.
-	//
-	// Example: read an object with a timeout
-	//
-	//	disk, _ := storage.Build(localstorage.Config{
-	//		Root: "/tmp/storage-get-context",
-	//	})
-	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
-	//
-	//	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	//	defer cancel()
-	//
-	//	cs := disk.(storage.ContextStorage)
-	//	data, _ := cs.GetContext(ctx, "docs/readme.txt")
-	//	fmt.Println(string(data))
-	//	// Output: hello
-	GetContext(ctx context.Context, p string) ([]byte, error)
-	// PutContext writes an object at path using the caller-provided context.
-	PutContext(ctx context.Context, p string, contents []byte) error
-	// MakeDirContext creates a directory-like entry using the caller-provided context.
-	MakeDirContext(ctx context.Context, p string) error
-	// DeleteContext removes the object at path using the caller-provided context.
-	DeleteContext(ctx context.Context, p string) error
-	// StatContext returns the entry at path using the caller-provided context.
-	StatContext(ctx context.Context, p string) (Entry, error)
-	// ExistsContext reports whether an object exists at path using the caller-provided context.
-	ExistsContext(ctx context.Context, p string) (bool, error)
-	// ListContext returns the immediate children under path using the caller-provided context.
-	ListContext(ctx context.Context, p string) ([]Entry, error)
-	// WalkContext visits entries recursively using the caller-provided context.
-	WalkContext(ctx context.Context, p string, fn func(Entry) error) error
-	// CopyContext copies the object at src to dst using the caller-provided context.
-	CopyContext(ctx context.Context, src, dst string) error
-	// MoveContext moves the object at src to dst using the caller-provided context.
-	MoveContext(ctx context.Context, src, dst string) error
-	// URLContext returns a usable access URL using the caller-provided context.
-	URLContext(ctx context.Context, p string) (string, error)
-}
-
 // ListPageResult describes a paginated one-level directory listing.
-// @group Context
+// @group Core
 type ListPageResult = storagecore.ListPageResult
 
 // PagedStorage exposes paginated one-level listing when a backend can support it.
 // Use Storage for the common path and type-assert to PagedStorage when you need
 // backend-driven pagination.
-// @group Context
+// @group Core
 type PagedStorage interface {
 	// ListPage returns one page of immediate children under path.
 	ListPage(p string, offset, limit int) (ListPageResult, error)
-}
-
-// ContextPagedStorage exposes context-aware paginated one-level listing.
-// @group Context
-type ContextPagedStorage interface {
-	// ListPageContext returns one page of immediate children under path using the caller-provided context.
-	ListPageContext(ctx context.Context, p string, offset, limit int) (ListPageResult, error)
 }
 
 // Entry represents an item returned by List.

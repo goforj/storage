@@ -93,9 +93,9 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 
 	t.Run("paged-listing", func(t *testing.T) {
-		paged, ok := fsys.(storage.ContextPagedStorage)
+		paged, ok := fsys.(storage.PagedStorage)
 		if !ok {
-			t.Fatal("storage does not implement ContextPagedStorage")
+			t.Fatal("storage does not implement PagedStorage")
 		}
 		files := []string{
 			"page/a.txt",
@@ -106,8 +106,8 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			requireNoError(t, fsys.Put(f, []byte(f)), "Put "+f)
 		}
 
-		first, err := paged.ListPageContext(context.Background(), "page", 0, 2)
-		requireNoError(t, err, "ListPageContext first")
+		first, err := paged.ListPage("page", 0, 2)
+		requireNoError(t, err, "ListPage first")
 		requireTrue(t, first.HasMore, "first page should have more")
 		requireEqual(t, 0, first.Offset, "first page offset")
 		requireEqual(t, 2, first.Limit, "first page limit")
@@ -115,8 +115,8 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 			t.Fatalf("first page entries: expected %v got %v", []string{"page/a.txt", "page/b.txt"}, got)
 		}
 
-		second, err := paged.ListPageContext(context.Background(), "page", 2, 2)
-		requireNoError(t, err, "ListPageContext second")
+		second, err := paged.ListPage("page", 2, 2)
+		requireNoError(t, err, "ListPage second")
 		requireFalse(t, second.HasMore, "second page should not have more")
 		if got := extractPaths(second.Entries); !slices.Equal(got, []string{"page/c.txt"}) {
 			t.Fatalf("second page entries: expected %v got %v", []string{"page/c.txt"}, got)
@@ -169,13 +169,11 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 		requireEqual(t, 3, total, "CountFiles count")
 
-		if csys, ok := fsys.(storage.ContextStorage); ok {
-			total, err = storage.CountFilesContext(context.Background(), csys, "count/nested")
-			if err != nil {
-				t.Fatalf("CountFilesContext: %v", err)
-			}
-			requireEqual(t, 2, total, "CountFilesContext nested count")
+		total, err = storage.CountFilesContext(context.Background(), fsys, "count/nested")
+		if err != nil {
+			t.Fatalf("CountFilesContext: %v", err)
 		}
+		requireEqual(t, 2, total, "CountFilesContext nested count")
 	})
 
 	t.Run("copy", func(t *testing.T) {
@@ -253,52 +251,49 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 
 	t.Run("context-handling", func(t *testing.T) {
-		csys, ok := fsys.(storage.ContextStorage)
-		if !ok {
-			t.Skip("ContextStorage not supported; skipping")
-		}
 		canceled, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := csys.GetContext(canceled, "ctx/file.txt"); err == nil {
-			t.Fatalf("expected context cancellation from GetContext")
+		scoped := fsys.WithContext(canceled)
+		if _, err := scoped.Get("ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Get")
 		}
-		if err := csys.PutContext(canceled, "ctx/file.txt", []byte("x")); err == nil {
+		if err := scoped.Put("ctx/file.txt", []byte("x")); err == nil {
 			t.Fatalf("expected context cancellation")
 		}
-		if err := csys.MakeDirContext(canceled, "ctx/dir"); err == nil {
-			t.Fatalf("expected context cancellation from MakeDirContext")
+		if err := scoped.MakeDir("ctx/dir"); err == nil {
+			t.Fatalf("expected context cancellation from MakeDir")
 		}
-		if err := csys.DeleteContext(canceled, "ctx/file.txt"); err == nil {
-			t.Fatalf("expected context cancellation from DeleteContext")
+		if err := scoped.Delete("ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Delete")
 		}
-		if _, err := csys.StatContext(canceled, "ctx/file.txt"); err == nil {
-			t.Fatalf("expected context cancellation from StatContext")
+		if _, err := scoped.Stat("ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Stat")
 		}
-		if _, err := csys.ExistsContext(canceled, "ctx/file.txt"); err == nil {
-			t.Fatalf("expected context cancellation from ExistsContext")
+		if _, err := scoped.Exists("ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Exists")
 		}
-		if _, err := csys.ListContext(canceled, "ctx"); err == nil {
-			t.Fatalf("expected context cancellation from ListContext")
+		if _, err := scoped.List("ctx"); err == nil {
+			t.Fatalf("expected context cancellation from List")
 		}
-		if paged, ok := fsys.(storage.ContextPagedStorage); ok {
-			if _, err := paged.ListPageContext(canceled, "ctx", 0, 2); err == nil {
-				t.Fatalf("expected context cancellation from ListPageContext")
+		if paged, ok := scoped.(storage.PagedStorage); ok {
+			if _, err := paged.ListPage("ctx", 0, 2); err == nil {
+				t.Fatalf("expected context cancellation from ListPage")
 			}
 		}
-		if err := csys.WalkContext(canceled, "ctx", func(storage.Entry) error { return nil }); err == nil {
-			t.Fatalf("expected context cancellation from WalkContext")
+		if err := scoped.Walk("ctx", func(storage.Entry) error { return nil }); err == nil {
+			t.Fatalf("expected context cancellation from Walk")
 		}
 		if _, err := storage.CountFilesContext(canceled, fsys, "ctx"); err == nil {
 			t.Fatalf("expected context cancellation from CountFilesContext")
 		}
-		if err := csys.CopyContext(canceled, "ctx/file.txt", "ctx/file-copy.txt"); err == nil {
-			t.Fatalf("expected context cancellation from CopyContext")
+		if err := scoped.Copy("ctx/file.txt", "ctx/file-copy.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Copy")
 		}
-		if err := csys.MoveContext(canceled, "ctx/file.txt", "ctx/file-move.txt"); err == nil {
-			t.Fatalf("expected context cancellation from MoveContext")
+		if err := scoped.Move("ctx/file.txt", "ctx/file-move.txt"); err == nil {
+			t.Fatalf("expected context cancellation from Move")
 		}
-		if _, err := csys.URLContext(canceled, "ctx/file.txt"); err == nil {
-			t.Fatalf("expected context cancellation from URLContext")
+		if _, err := scoped.URL("ctx/file.txt"); err == nil {
+			t.Fatalf("expected context cancellation from URL")
 		}
 	})
 

@@ -134,7 +134,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 				if err != nil {
 					t.Fatalf("render rclone local config: %v", err)
 				}
-				store, err := rclonestorage.New(rclonestorage.Config{
+				store, err := storage.Build(rclonestorage.Config{
 					Remote:           "localdisk:" + root,
 					Prefix:           "itest",
 					RcloneConfigData: conf,

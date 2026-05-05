@@ -9,15 +9,17 @@ import (
 )
 
 func main() {
-	// List returns the immediate children under path.
+	// Move moves the object or directory tree at src to dst.
 
-	// Example: list a directory
+	// Example: move an object
 	disk, _ := storage.Build(localstorage.Config{
-		Root: "/tmp/storage-list",
+		Root: "/tmp/storage-move",
 	})
 	_ = disk.Put("docs/readme.txt", []byte("hello"))
+	_ = disk.Move("docs/readme.txt", "docs/archive.txt")
 
-	entries, _ := disk.List("docs")
-	fmt.Println(entries[0].Path)
-	// Output: docs/readme.txt
+	ok, _ := disk.Exists("docs/readme.txt")
+	fmt.Println(ok)
+	// Output: false
+
 }

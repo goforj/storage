@@ -238,7 +238,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		}
 		return &benchmarkFixture{
 			newStore: func(context.Context) (storage.Storage, func(), error) {
-				store, err := rclonestorage.New(rclonestorage.Config{
+				store, err := storage.Build(rclonestorage.Config{
 					Remote:           "localdisk:" + root,
 					Prefix:           "bench",
 					RcloneConfigData: conf,
@@ -325,7 +325,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 			}
 			return &benchmarkFixture{
 				newStore: func(context.Context) (storage.Storage, func(), error) {
-					store, err := rclonestorage.New(rclonestorage.Config{
+					store, err := storage.Build(rclonestorage.Config{
 						Remote:           "benchs3:storage-bench",
 						Prefix:           "bench",
 						RcloneConfigData: conf,
@@ -603,45 +603,27 @@ func benchmarkOps() []benchmarkOp {
 }
 
 func putContext(store storage.Storage, ctx context.Context, path string, contents []byte) error {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.PutContext(ctx, path, contents)
-	}
-	return store.Put(path, contents)
+	return store.WithContext(ctx).Put(path, contents)
 }
 
 func getContext(store storage.Storage, ctx context.Context, path string) ([]byte, error) {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.GetContext(ctx, path)
-	}
-	return store.Get(path)
+	return store.WithContext(ctx).Get(path)
 }
 
 func existsContext(store storage.Storage, ctx context.Context, path string) (bool, error) {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.ExistsContext(ctx, path)
-	}
-	return store.Exists(path)
+	return store.WithContext(ctx).Exists(path)
 }
 
 func listContext(store storage.Storage, ctx context.Context, path string) ([]storage.Entry, error) {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.ListContext(ctx, path)
-	}
-	return store.List(path)
+	return store.WithContext(ctx).List(path)
 }
 
 func walkContext(store storage.Storage, ctx context.Context, path string, fn func(storage.Entry) error) error {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.WalkContext(ctx, path, fn)
-	}
-	return store.Walk(path, fn)
+	return store.WithContext(ctx).Walk(path, fn)
 }
 
 func deleteContext(store storage.Storage, ctx context.Context, path string) error {
-	if cs, ok := store.(storage.ContextStorage); ok {
-		return cs.DeleteContext(ctx, path)
-	}
-	return store.Delete(path)
+	return store.WithContext(ctx).Delete(path)
 }
 
 func nextBenchPath(prefix string) string {
