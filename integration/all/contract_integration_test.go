@@ -36,6 +36,58 @@ type storageFactory struct {
 }
 
 func TestStorageContract_AllDrivers(t *testing.T) {
+	fixtures := integrationFixtures(t)
+
+	if len(fixtures) == 0 {
+		t.Skip("no integration drivers selected")
+	}
+
+	for _, fx := range fixtures {
+		fx := fx
+		t.Run(fx.name, func(t *testing.T) {
+			store, cleanup := fx.new(t)
+			t.Cleanup(cleanup)
+			storagetest.RunStorageContractTests(t, store)
+			verifyWalk(t, store)
+		})
+	}
+}
+
+func TestWithContextCancellation_AllDrivers(t *testing.T) {
+	fixtures := integrationFixtures(t)
+	if len(fixtures) == 0 {
+		t.Skip("no integration drivers selected")
+	}
+
+	for _, fx := range fixtures {
+		fx := fx
+		t.Run(fx.name, func(t *testing.T) {
+			store, cleanup := fx.new(t)
+			t.Cleanup(cleanup)
+
+			canceled, cancel := context.WithCancel(context.Background())
+			cancel()
+			scoped := store.WithContext(canceled)
+
+			if _, err := scoped.Get("ctx/file.txt"); err == nil {
+				t.Fatal("expected context cancellation from Get")
+			}
+			if err := scoped.Put("ctx/file.txt", []byte("x")); err == nil {
+				t.Fatal("expected context cancellation from Put")
+			}
+			if _, err := scoped.Exists("ctx/file.txt"); err == nil {
+				t.Fatal("expected context cancellation from Exists")
+			}
+			if _, err := scoped.List("ctx"); err == nil {
+				t.Fatal("expected context cancellation from List")
+			}
+		})
+	}
+}
+
+func integrationFixtures(t *testing.T) []storageFactory {
+	t.Helper()
+
 	var fixtures []storageFactory
 
 	if integrationDriverEnabled("local") {
@@ -242,20 +294,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 			},
 		})
 	}
-
-	if len(fixtures) == 0 {
-		t.Skip("no integration drivers selected")
-	}
-
-	for _, fx := range fixtures {
-		fx := fx
-		t.Run(fx.name, func(t *testing.T) {
-			store, cleanup := fx.new(t)
-			t.Cleanup(cleanup)
-			storagetest.RunStorageContractTests(t, store)
-			verifyWalk(t, store)
-		})
-	}
+	return fixtures
 }
 
 func verifyWalk(t *testing.T, store storage.Storage) {
