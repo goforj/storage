@@ -1,8 +1,10 @@
+// Package memorystorage_test verifies the public in-memory driver boundary.
 package memorystorage_test
 
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestConfigResolvedConfig verifies memory configuration maps its registry name and prefix.
 func TestConfigResolvedConfig(t *testing.T) {
 	cfg := memorystorage.Config{Prefix: "sandbox"}
 	if got := cfg.DriverName(); got != "memory" {
@@ -24,6 +27,7 @@ func TestConfigResolvedConfig(t *testing.T) {
 	}
 }
 
+// TestMemoryStorageBuildAndIO verifies construction and independent byte-slice round trips.
 func TestMemoryStorageBuildAndIO(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{Prefix: "itest"})
 	if err != nil {
@@ -41,6 +45,7 @@ func TestMemoryStorageBuildAndIO(t *testing.T) {
 	}
 }
 
+// TestContextCancellation verifies canceled calls do not mutate or inspect in-memory state.
 func TestContextCancellation(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
@@ -86,6 +91,7 @@ func TestContextCancellation(t *testing.T) {
 	}
 }
 
+// TestDirectoryStatAndList verifies explicit and implied directories appear with one-level semantics.
 func TestDirectoryStatAndList(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
@@ -111,6 +117,7 @@ func TestDirectoryStatAndList(t *testing.T) {
 	}
 }
 
+// TestModTime verifies stored object timestamps are exposed and missing paths fail portably.
 func TestModTime(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
@@ -141,6 +148,7 @@ func TestModTime(t *testing.T) {
 	}
 }
 
+// TestMemoryStorageEdgeCases verifies invalid paths, missing objects, and deletion constraints.
 func TestMemoryStorageEdgeCases(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{Prefix: "pre"})
 	if err != nil {
@@ -176,6 +184,7 @@ func TestMemoryStorageEdgeCases(t *testing.T) {
 	}
 }
 
+// TestMemoryStorageListWalkCopyMoveURL verifies ordering, relocation, copying, and unsupported links.
 func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
@@ -244,6 +253,7 @@ func TestMemoryStorageListWalkCopyMoveURL(t *testing.T) {
 	}
 }
 
+// TestMemoryStorageListPage verifies pagination defaults, bounds, and snapshot metadata.
 func TestMemoryStorageListPage(t *testing.T) {
 	store, err := memorystorage.New(memorystorage.Config{})
 	if err != nil {
@@ -282,5 +292,98 @@ func TestMemoryStorageListPage(t *testing.T) {
 	}
 	if len(page.Entries) != 1 || page.Entries[0].Path != "c.txt" {
 		t.Fatalf("second page entries = %+v", page.Entries)
+	}
+}
+
+// TestMemoryLogicalRootAndSamePathMove verifies root guards and source-validating no-op moves.
+func TestMemoryLogicalRootAndSamePathMove(t *testing.T) {
+	for _, prefix := range []string{"", "tenant"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			store, err := memorystorage.New(memorystorage.Config{Prefix: prefix})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			root, err := store.Stat("")
+			if err != nil || !root.IsDir || root.Path != "" {
+				t.Fatalf("Stat root = %+v err=%v", root, err)
+			}
+			if entries, err := store.List(""); err != nil || len(entries) != 0 {
+				t.Fatalf("List root = %+v err=%v", entries, err)
+			}
+			if err := store.Walk("", func(storagecore.Entry) error { return nil }); err != nil {
+				t.Fatalf("Walk root: %v", err)
+			}
+
+			if err := store.Put("file.txt", []byte("payload")); err != nil {
+				t.Fatalf("Put seed: %v", err)
+			}
+			if err := store.Move("file.txt", "file.txt"); err != nil {
+				t.Fatalf("Move same path: %v", err)
+			}
+			if data, err := store.Get("file.txt"); err != nil || string(data) != "payload" {
+				t.Fatalf("Get after same-path Move = %q err=%v", data, err)
+			}
+
+			for name, err := range map[string]error{
+				"put":         store.Put("", []byte("root")),
+				"copy target": store.Copy("file.txt", ""),
+				"move target": store.Move("file.txt", ""),
+				"delete":      store.Delete(""),
+			} {
+				if !errors.Is(err, storagecore.ErrForbidden) {
+					t.Errorf("%s root error = %v", name, err)
+				}
+			}
+		})
+	}
+}
+
+// TestMemoryRejectsFileDirectoryCollisions verifies one logical path cannot be both object and directory.
+func TestMemoryRejectsFileDirectoryCollisions(t *testing.T) {
+	store, err := memorystorage.New(memorystorage.Config{Prefix: "tenant"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := store.MakeDir("directory"); err != nil {
+		t.Fatalf("MakeDir: %v", err)
+	}
+	if err := store.Put("directory", []byte("payload")); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Put over directory error = %v", err)
+	}
+	if err := store.Put("file", []byte("payload")); err != nil {
+		t.Fatalf("Put file: %v", err)
+	}
+	if err := store.MakeDir("file"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir over file error = %v", err)
+	}
+	if err := store.Put("file/child", []byte("payload")); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Put below file error = %v", err)
+	}
+	if err := store.Copy("file", "directory"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Copy over directory error = %v", err)
+	}
+	if err := store.Move("file", "directory"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Move over directory error = %v", err)
+	}
+}
+
+// TestMemoryWalkOmitsRequestedDirectory verifies Walk reports descendants rather than its root.
+func TestMemoryWalkOmitsRequestedDirectory(t *testing.T) {
+	store, err := memorystorage.New(memorystorage.Config{Prefix: "tenant"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := store.Put("a/b/file.txt", []byte("payload")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	var paths []string
+	if err := store.Walk("a/b", func(entry storagecore.Entry) error {
+		paths = append(paths, entry.Path)
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	if slices.Contains(paths, "a") || slices.Contains(paths, "a/b") {
+		t.Fatalf("Walk returned its root or an ancestor: %v", paths)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// TestSFTPConstructorsAndAuth verifies required settings, secure host defaults, and dial cleanup.
 func TestSFTPConstructorsAndAuth(t *testing.T) {
 	if got := (Config{}).DriverName(); got != "sftp" {
 		t.Fatalf("DriverName = %q", got)
@@ -45,11 +47,8 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 
 	t.Run("build host key callback defaults", func(t *testing.T) {
 		cb, err := buildHostKeyCallback(storagecore.ResolvedConfig{})
-		if err != nil {
-			t.Fatalf("buildHostKeyCallback: %v", err)
-		}
-		if cb == nil {
-			t.Fatal("buildHostKeyCallback returned nil callback")
+		if err == nil || cb != nil {
+			t.Fatalf("buildHostKeyCallback = %v, %v; want secure-default error", cb, err)
 		}
 	})
 
@@ -73,10 +72,13 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 	t.Run("new from disk success and failures", func(t *testing.T) {
 		origDial := sshDial
 		origNewClient := newSFTPClient
+		origCloseSSHClient := closeSSHClient
 		t.Cleanup(func() {
 			sshDial = origDial
 			newSFTPClient = origNewClient
+			closeSSHClient = origCloseSSHClient
 		})
+		closeSSHClient = func(*ssh.Client) error { return nil }
 
 		sshDial = func(network, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
 			if addr == "bad:22" {
@@ -93,40 +95,45 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 		}
 
 		store, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
-			SFTPHost:     "good",
-			SFTPPassword: "secret",
-			Prefix:       "pre",
+			SFTPHost:                  "good",
+			SFTPPassword:              "secret",
+			SFTPInsecureIgnoreHostKey: true,
+			Prefix:                    "pre",
 		})
 		if err != nil || store == nil {
 			t.Fatalf("newFromDiskConfig success err=%v store=%v", err, store)
 		}
 
 		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
-			SFTPHost:     "bad",
-			SFTPPassword: "secret",
+			SFTPHost:                  "bad",
+			SFTPPassword:              "secret",
+			SFTPInsecureIgnoreHostKey: true,
 		}); err == nil {
 			t.Fatal("newFromDiskConfig dial returned nil error")
 		}
 
 		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return nil, errors.New("client boom") }
 		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
-			SFTPHost:     "good",
-			SFTPPassword: "secret",
+			SFTPHost:                  "good",
+			SFTPPassword:              "secret",
+			SFTPInsecureIgnoreHostKey: true,
 		}); err == nil {
 			t.Fatal("newFromDiskConfig client returned nil error")
 		}
 
 		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return &fakeSFTPClient{}, nil }
 		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
-			SFTPHost:     "good",
-			SFTPPassword: "secret",
-			Prefix:       "../bad",
+			SFTPHost:                  "good",
+			SFTPPassword:              "secret",
+			SFTPInsecureIgnoreHostKey: true,
+			Prefix:                    "../bad",
 		}); !errors.Is(err, storagecore.ErrForbidden) {
 			t.Fatalf("newFromDiskConfig invalid prefix error = %v", err)
 		}
 	})
 }
 
+// TestSFTPPrefixHelpers verifies normalized prefix joining and exact-component stripping.
 func TestSFTPPrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	fp, err := d.fullPath("file.txt")
@@ -141,6 +148,7 @@ func TestSFTPPrefixHelpers(t *testing.T) {
 	}
 }
 
+// TestSFTPWrapError verifies filesystem absence and permission errors retain storage identities.
 func TestSFTPWrapError(t *testing.T) {
 	if err := wrapError(os.ErrNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound")
@@ -153,6 +161,7 @@ func TestSFTPWrapError(t *testing.T) {
 	}
 }
 
+// TestSFTPContextCancellation verifies canceled calls stop before accessing the SFTP client.
 func TestSFTPContextCancellation(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -187,6 +196,7 @@ func TestSFTPContextCancellation(t *testing.T) {
 	}
 }
 
+// TestSFTPResolvedConfigAndHelpers verifies configuration mapping and traversal rejection.
 func TestSFTPResolvedConfigAndHelpers(t *testing.T) {
 	cfg := Config{
 		Host:                  "127.0.0.1",
@@ -213,19 +223,28 @@ func TestSFTPResolvedConfigAndHelpers(t *testing.T) {
 }
 
 type fakeSFTPClient struct {
-	openData    string
-	openReader  io.ReadCloser
-	openErr     error
-	openFile    *fakeWriteCloser
-	openFileErr error
-	mkdirErr    error
-	removeErr   error
-	statInfo    os.FileInfo
-	statErr     error
-	readDir     []os.FileInfo
-	readDirErr  error
+	openData      string
+	openReader    io.ReadCloser
+	openErr       error
+	openFile      *fakeWriteCloser
+	openFileErr   error
+	openFilePath  string
+	openFileFlags int
+	mkdirErr      error
+	removeErr     error
+	removePaths   []string
+	removeDirErr  error
+	removeDirs    []string
+	renameErr     error
+	renameOld     string
+	renameNew     string
+	statInfo      os.FileInfo
+	statErr       error
+	readDir       []os.FileInfo
+	readDirErr    error
 }
 
+// Open returns the configured download body, payload, or open failure.
 func (f *fakeSFTPClient) Open(string) (io.ReadCloser, error) {
 	if f.openErr != nil {
 		return nil, f.openErr
@@ -236,7 +255,10 @@ func (f *fakeSFTPClient) Open(string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewBufferString(f.openData)), nil
 }
 
-func (f *fakeSFTPClient) OpenFile(string, int) (io.WriteCloser, error) {
+// OpenFile records the temporary path and flags before returning a fake writer.
+func (f *fakeSFTPClient) OpenFile(path string, flags int) (io.WriteCloser, error) {
+	f.openFilePath = path
+	f.openFileFlags = flags
 	if f.openFileErr != nil {
 		return nil, f.openFileErr
 	}
@@ -246,26 +268,57 @@ func (f *fakeSFTPClient) OpenFile(string, int) (io.WriteCloser, error) {
 	return f.openFile, nil
 }
 
-func (f *fakeSFTPClient) MkdirAll(string) error                 { return f.mkdirErr }
-func (f *fakeSFTPClient) Remove(string) error                   { return f.removeErr }
-func (f *fakeSFTPClient) Rename(string, string) error           { return f.removeErr }
-func (f *fakeSFTPClient) Stat(string) (os.FileInfo, error)      { return f.statInfo, f.statErr }
-func (f *fakeSFTPClient) ReadDir(string) ([]os.FileInfo, error) { return f.readDir, f.readDirErr }
-func (f *fakeSFTPClient) Close() error                          { return nil }
+// MkdirAll returns the configured parent-creation failure.
+func (f *fakeSFTPClient) MkdirAll(string) error { return f.mkdirErr }
 
-type fakeWriteCloser struct {
-	buf      bytes.Buffer
-	writeErr error
-	closeErr error
+// Remove records file and temporary cleanup paths before returning its configured failure.
+func (f *fakeSFTPClient) Remove(path string) error {
+	f.removePaths = append(f.removePaths, path)
+	return f.removeErr
 }
 
+// RemoveDirectory supports non-recursive directory deletion in the test fixture.
+func (f *fakeSFTPClient) RemoveDirectory(path string) error {
+	f.removeDirs = append(f.removeDirs, path)
+	return f.removeDirErr
+}
+
+// PosixRename records atomic replacement endpoints and returns its configured failure.
+func (f *fakeSFTPClient) PosixRename(oldname, newname string) error {
+	f.renameOld = oldname
+	f.renameNew = newname
+	return f.renameErr
+}
+
+// Stat returns configured remote metadata or lookup failure.
+func (f *fakeSFTPClient) Stat(string) (os.FileInfo, error) { return f.statInfo, f.statErr }
+
+// ReadDir returns configured immediate children or listing failure.
+func (f *fakeSFTPClient) ReadDir(string) ([]os.FileInfo, error) { return f.readDir, f.readDirErr }
+
+// Close makes fake SFTP client cleanup succeed.
+func (f *fakeSFTPClient) Close() error { return nil }
+
+type fakeWriteCloser struct {
+	buf        bytes.Buffer
+	writeErr   error
+	closeErr   error
+	afterWrite func()
+}
+
+// Write captures bytes and can cancel or fail an upload after the write boundary.
 func (f *fakeWriteCloser) Write(p []byte) (int, error) {
 	if f.writeErr != nil {
 		return 0, f.writeErr
 	}
-	return f.buf.Write(p)
+	n, err := f.buf.Write(p)
+	if f.afterWrite != nil {
+		f.afterWrite()
+	}
+	return n, err
 }
 
+// Close returns the configured temporary-writer cleanup failure.
 func (f *fakeWriteCloser) Close() error { return f.closeErr }
 
 type fakeFileInfo struct {
@@ -274,18 +327,30 @@ type fakeFileInfo struct {
 	isDir bool
 }
 
+// Name returns the configured remote basename.
 func (f fakeFileInfo) Name() string { return f.name }
-func (f fakeFileInfo) Size() int64  { return f.size }
+
+// Size returns the configured remote byte length.
+func (f fakeFileInfo) Size() int64 { return f.size }
+
+// Mode marks configured fixture directories with os.ModeDir.
 func (f fakeFileInfo) Mode() os.FileMode {
 	if f.isDir {
 		return os.ModeDir
 	}
 	return 0
 }
-func (f fakeFileInfo) ModTime() time.Time { return time.Now() }
-func (f fakeFileInfo) IsDir() bool        { return f.isDir }
-func (f fakeFileInfo) Sys() interface{}   { return nil }
 
+// ModTime supplies a valid timestamp for os.FileInfo.
+func (f fakeFileInfo) ModTime() time.Time { return time.Now() }
+
+// IsDir returns the configured file-versus-directory distinction.
+func (f fakeFileInfo) IsDir() bool { return f.isDir }
+
+// Sys reports no platform-specific fixture metadata.
+func (f fakeFileInfo) Sys() interface{} { return nil }
+
+// TestSFTPFakeBackedOperations verifies core storage operations through the SFTP adapter boundary.
 func TestSFTPFakeBackedOperations(t *testing.T) {
 	client := &fakeSFTPClient{
 		openData: "hello",
@@ -307,6 +372,12 @@ func TestSFTPFakeBackedOperations(t *testing.T) {
 	if got := client.openFile.buf.String(); got != "payload" {
 		t.Fatalf("written payload = %q", got)
 	}
+	if client.openFilePath == "pre/folder/file.txt" || client.renameNew != "pre/folder/file.txt" {
+		t.Fatalf("Put temporary=%q rename=%q->%q", client.openFilePath, client.renameOld, client.renameNew)
+	}
+	if client.openFileFlags&os.O_EXCL == 0 || client.openFileFlags&os.O_TRUNC != 0 {
+		t.Fatalf("Put flags = %d", client.openFileFlags)
+	}
 	if err := d.Delete("file.txt"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -324,6 +395,162 @@ func TestSFTPFakeBackedOperations(t *testing.T) {
 	}
 }
 
+// TestSFTPPutFailurePreservesDestination verifies failed or canceled uploads never replace live data.
+func TestSFTPPutFailurePreservesDestination(t *testing.T) {
+	t.Run("write failure removes temporary without rename", func(t *testing.T) {
+		writeErr := errors.New("write boom")
+		client := &fakeSFTPClient{openFile: &fakeWriteCloser{writeErr: writeErr}}
+		d := &driver{client: client, prefix: "pre"}
+		if err := d.Put("file.txt", []byte("replacement")); !errors.Is(err, writeErr) {
+			t.Fatalf("Put error = %v", err)
+		}
+		if client.renameNew != "" {
+			t.Fatalf("Put renamed failed upload to %q", client.renameNew)
+		}
+		if len(client.removePaths) != 1 || client.removePaths[0] != client.openFilePath {
+			t.Fatalf("removed paths = %v temporary=%q", client.removePaths, client.openFilePath)
+		}
+	})
+
+	t.Run("rename failure cleans complete temporary", func(t *testing.T) {
+		renameErr := errors.New("rename boom")
+		client := &fakeSFTPClient{renameErr: renameErr}
+		d := &driver{client: client, prefix: "pre"}
+		if err := d.Put("file.txt", []byte("replacement")); !errors.Is(err, renameErr) {
+			t.Fatalf("Put error = %v", err)
+		}
+		if client.renameNew != "pre/file.txt" || len(client.removePaths) != 1 || client.removePaths[0] != client.openFilePath {
+			t.Fatalf("rename=%q->%q removed=%v temporary=%q", client.renameOld, client.renameNew, client.removePaths, client.openFilePath)
+		}
+	})
+
+	t.Run("cancellation after write aborts before rename", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &fakeSFTPClient{openFile: &fakeWriteCloser{afterWrite: cancel}}
+		d := &driver{client: client, prefix: "pre"}
+		if err := d.PutContext(ctx, "file.txt", []byte("replacement")); !errors.Is(err, context.Canceled) {
+			t.Fatalf("PutContext error = %v", err)
+		}
+		if client.renameNew != "" || len(client.removePaths) != 1 {
+			t.Fatalf("rename target=%q removed=%v", client.renameNew, client.removePaths)
+		}
+	})
+}
+
+// TestSFTPRootAndSamePathMutations verifies root guards and source-validating no-op operations.
+func TestSFTPRootAndSamePathMutations(t *testing.T) {
+	for _, prefix := range []string{"", "pre"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			client := &fakeSFTPClient{
+				openData: "payload",
+				statInfo: fakeFileInfo{name: "file.txt", size: 7},
+			}
+			d := &driver{client: client, prefix: prefix}
+			if err := d.Copy("file.txt", "file.txt"); err != nil {
+				t.Fatalf("Copy same path: %v", err)
+			}
+			if err := d.Move("file.txt", "file.txt"); err != nil {
+				t.Fatalf("Move same path: %v", err)
+			}
+			if client.renameNew != "" {
+				t.Fatalf("same-path operations renamed to %q", client.renameNew)
+			}
+			client.statErr = os.ErrNotExist
+			if err := d.Move("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+				t.Fatalf("Move missing same path error = %v", err)
+			}
+			client.statErr = nil
+			for name, err := range map[string]error{
+				"put":         d.Put("", []byte("root")),
+				"copy source": d.Copy("", "file.txt"),
+				"copy target": d.Copy("file.txt", ""),
+				"move source": d.Move("", "other"),
+				"move target": d.Move("file.txt", ""),
+				"delete":      d.Delete(""),
+			} {
+				if !errors.Is(err, storagecore.ErrForbidden) {
+					t.Errorf("%s root error = %v", name, err)
+				}
+			}
+		})
+	}
+}
+
+// TestSFTPDeleteDispatchesByType verifies directories use the server's non-recursive operation.
+func TestSFTPDeleteDispatchesByType(t *testing.T) {
+	t.Run("file", func(t *testing.T) {
+		client := &fakeSFTPClient{statInfo: fakeFileInfo{name: "file.txt"}}
+		d := &driver{client: client}
+		if err := d.Delete("file.txt"); err != nil {
+			t.Fatalf("Delete file: %v", err)
+		}
+		if len(client.removePaths) != 1 || len(client.removeDirs) != 0 {
+			t.Fatalf("file removal calls: files=%v dirs=%v", client.removePaths, client.removeDirs)
+		}
+	})
+
+	t.Run("empty directory", func(t *testing.T) {
+		client := &fakeSFTPClient{statInfo: fakeFileInfo{name: "folder", isDir: true}}
+		d := &driver{client: client}
+		if err := d.Delete("folder"); err != nil {
+			t.Fatalf("Delete directory: %v", err)
+		}
+		if len(client.removeDirs) != 1 || len(client.removePaths) != 0 {
+			t.Fatalf("directory removal calls: files=%v dirs=%v", client.removePaths, client.removeDirs)
+		}
+	})
+
+	t.Run("nonempty directory", func(t *testing.T) {
+		client := &fakeSFTPClient{
+			statInfo:     fakeFileInfo{name: "folder", isDir: true},
+			removeDirErr: syscall.ENOTEMPTY,
+		}
+		d := &driver{client: client}
+		if err := d.Delete("folder"); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Delete nonempty directory error = %v", err)
+		}
+	})
+}
+
+// TestSFTPLogicalRootIsSynthetic verifies prefixes never expose an exact backend object.
+func TestSFTPLogicalRootIsSynthetic(t *testing.T) {
+	tests := []struct {
+		name   string
+		client *fakeSFTPClient
+		prefix string
+	}{
+		{name: "unprefixed empty root", client: &fakeSFTPClient{}, prefix: ""},
+		{name: "missing prefix", client: &fakeSFTPClient{statErr: os.ErrNotExist, readDirErr: os.ErrNotExist}, prefix: "pre"},
+		{name: "exact prefix object", client: &fakeSFTPClient{statInfo: fakeFileInfo{name: "pre"}, readDirErr: errors.New("not a directory")}, prefix: "pre"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &driver{client: tt.client, prefix: tt.prefix}
+			if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("Get root error = %v", err)
+			}
+			entry, err := d.Stat("")
+			if err != nil || entry.Path != "" || !entry.IsDir {
+				t.Fatalf("Stat root = %+v err=%v", entry, err)
+			}
+			if exists, err := d.Exists(""); err != nil || exists {
+				t.Fatalf("Exists root = %v err=%v", exists, err)
+			}
+			if entries, err := d.List(""); err != nil || len(entries) != 0 {
+				t.Fatalf("List root = %+v err=%v", entries, err)
+			}
+			called := false
+			if err := d.Walk("", func(storagecore.Entry) error { called = true; return nil }); err != nil || called {
+				t.Fatalf("Walk root called=%v err=%v", called, err)
+			}
+			if err := d.Copy("", "copy.txt"); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("Copy source root error = %v", err)
+			}
+		})
+	}
+}
+
+// TestSFTPFakeWalkAndErrors verifies recursive callbacks, error mapping, and object-only existence.
 func TestSFTPFakeWalkAndErrors(t *testing.T) {
 	t.Run("walk file path", func(t *testing.T) {
 		d := &driver{
@@ -427,5 +654,8 @@ func TestSFTPFakeWalkAndErrors(t *testing.T) {
 
 type failingReadCloser struct{}
 
+// Read injects a deterministic failure after a download opens.
 func (failingReadCloser) Read([]byte) (int, error) { return 0, errors.New("read boom") }
-func (failingReadCloser) Close() error             { return nil }
+
+// Close makes cleanup of the failing test reader succeed.
+func (failingReadCloser) Close() error { return nil }

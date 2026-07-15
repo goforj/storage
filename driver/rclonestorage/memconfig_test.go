@@ -9,6 +9,7 @@ import (
 	"github.com/unknwon/goconfig"
 )
 
+// TestMemoryStorage verifies inline config section, key, mutation, and serialization behavior.
 func TestMemoryStorage(t *testing.T) {
 	data := strings.Join([]string{
 		"[one]",
@@ -83,12 +84,14 @@ func TestMemoryStorage(t *testing.T) {
 	}
 }
 
+// TestMemoryStorageInvalidData verifies malformed inline rclone configuration is rejected.
 func TestMemoryStorageInvalidData(t *testing.T) {
 	if _, err := newMemoryStorage("bad line"); err == nil {
 		t.Fatalf("expected error for invalid config data")
 	}
 }
 
+// TestMemoryStorageSerializeError verifies serializer failures propagate to callers.
 func TestMemoryStorageSerializeError(t *testing.T) {
 	store, err := newMemoryStorage("[one]\nkey = value\n")
 	if err != nil {
@@ -108,6 +111,7 @@ func TestMemoryStorageSerializeError(t *testing.T) {
 	}
 }
 
+// containsString reports whether a config listing contains the requested name.
 func containsString(values []string, target string) bool {
 	for _, v := range values {
 		if v == target {

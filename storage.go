@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	storagecore "github.com/goforj/storage/storagecore"
+	"github.com/goforj/storage/storagecore"
 )
 
 // Storage is the public interface for interacting with a storage backend.
@@ -12,12 +12,14 @@ import (
 //   - Put overwrites an existing object at the same path.
 //   - MakeDir creates a directory-like prefix and may be implemented as a
 //     backend-specific directory marker on object stores.
-//   - List is one-level and non-recursive.
+//   - List is one-level, non-recursive, and sorted lexicographically by Path.
 //   - List with an empty path lists from the disk root or prefix root.
-//   - Walk is recursive.
+//   - Walk is recursive and visits entries lexicographically by Path.
 //   - URL returns a usable access URL when the driver supports it.
 //   - Copy overwrites the destination object when the backend supports copy semantics.
 //   - Move relocates an object or directory tree and may be implemented as copy followed by delete.
+//     Directory moves roll back destination entries if copying fails. A failure while deleting
+//     the source may leave a complete destination alongside the undeleted source remainder.
 //   - Unsupported operations should return ErrUnsupported.
 //
 // @group Core
@@ -140,20 +142,24 @@ type Storage interface {
 	//	// Output: docs/readme.txt
 	List(p string) ([]Entry, error)
 
-	// Walk visits entries recursively when the backend supports it.
+	// Walk visits entries recursively in deterministic path order.
 	//
-	// Example: walk a backend when supported
+	// Example: walk a local directory
 	//
 	//	disk, _ := storage.Build(localstorage.Config{
 	//		Root: "/tmp/storage-walk",
 	//	})
+	//	_ = disk.Put("docs/readme.txt", []byte("hello"))
 	//
 	//	err := disk.Walk("", func(entry storage.Entry) error {
 	//		fmt.Println(entry.Path)
 	//		return nil
 	//	})
-	//	fmt.Println(errors.Is(err, storage.ErrUnsupported))
-	//	// Output: true
+	//	fmt.Println(err == nil)
+	//	// Output:
+	//	// docs
+	//	// docs/readme.txt
+	//	// true
 	Walk(p string, fn func(Entry) error) error
 
 	// Copy copies the object at src to dst.
@@ -255,11 +261,15 @@ type PagedStorage interface {
 type Entry = storagecore.Entry
 
 var (
-	ErrNotFound    = storagecore.ErrNotFound
-	ErrForbidden   = storagecore.ErrForbidden
+	// ErrNotFound reports that a requested storage path has no backing entry.
+	ErrNotFound = storagecore.ErrNotFound
+	// ErrForbidden reports an invalid path mutation or unsupported path shape.
+	ErrForbidden = storagecore.ErrForbidden
+	// ErrUnsupported reports that a valid operation is unavailable for the selected driver.
 	ErrUnsupported = storagecore.ErrUnsupported
 )
 
+// PaginateEntries returns a clamped page without mutating the caller's entry slice.
 func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
 	return storagecore.PaginateEntries(entries, offset, limit)
 }

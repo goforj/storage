@@ -16,17 +16,17 @@ import (
 
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/goforj/storage"
-	ftpstorage "github.com/goforj/storage/driver/ftpstorage"
-	gcsstorage "github.com/goforj/storage/driver/gcsstorage"
-	localstorage "github.com/goforj/storage/driver/localstorage"
-	memorystorage "github.com/goforj/storage/driver/memorystorage"
-	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
-	redisstorage "github.com/goforj/storage/driver/redisstorage"
-	s3storage "github.com/goforj/storage/driver/s3storage"
-	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
+	"github.com/goforj/storage/driver/ftpstorage"
+	"github.com/goforj/storage/driver/gcsstorage"
+	"github.com/goforj/storage/driver/localstorage"
+	"github.com/goforj/storage/driver/memorystorage"
+	"github.com/goforj/storage/driver/rclonestorage"
+	"github.com/goforj/storage/driver/redisstorage"
+	"github.com/goforj/storage/driver/s3storage"
+	"github.com/goforj/storage/driver/sftpstorage"
 	"github.com/goforj/storage/storagetest"
 	"github.com/goftp/server"
-	testcontainers "github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -35,6 +35,7 @@ type storageFactory struct {
 	new  func(t *testing.T) (storage.Storage, func())
 }
 
+// TestStorageContract_AllDrivers ensures every selected backend honors the same portable storage contract.
 func TestStorageContract_AllDrivers(t *testing.T) {
 	fixtures := integrationFixtures(t)
 
@@ -53,6 +54,7 @@ func TestStorageContract_AllDrivers(t *testing.T) {
 	}
 }
 
+// TestWithContextCancellation_AllDrivers ensures a pre-canceled scope prevents backend I/O consistently.
 func TestWithContextCancellation_AllDrivers(t *testing.T) {
 	fixtures := integrationFixtures(t)
 	if len(fixtures) == 0 {
@@ -85,6 +87,7 @@ func TestWithContextCancellation_AllDrivers(t *testing.T) {
 	}
 }
 
+// integrationFixtures builds each selected backend so one contract suite exercises transport-specific implementations.
 func integrationFixtures(t *testing.T) []storageFactory {
 	t.Helper()
 
@@ -297,6 +300,7 @@ func integrationFixtures(t *testing.T) []storageFactory {
 	return fixtures
 }
 
+// verifyWalk ensures supported walkers expose nested objects using logical relative paths.
 func verifyWalk(t *testing.T, store storage.Storage) {
 	t.Helper()
 
@@ -319,6 +323,7 @@ func verifyWalk(t *testing.T, store storage.Storage) {
 	}
 }
 
+// containsPath tolerates backend fixture prefixes while preserving the expected path-component boundary.
 func containsPath(paths []string, want string) bool {
 	for _, path := range paths {
 		if path == want || strings.HasSuffix(path, "/"+want) {
@@ -328,6 +333,7 @@ func containsPath(paths []string, want string) bool {
 	return false
 }
 
+// startMinioContainer provides an isolated S3-compatible endpoint for the shared contract suite.
 func startMinioContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
 	t.Helper()
 
@@ -359,6 +365,7 @@ func startMinioContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	return container, "http://" + host + ":" + port.Port()
 }
 
+// startSFTPContainer provides an isolated SSH transport with the credentials expected by the fixture.
 func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string, int) {
 	t.Helper()
 
@@ -389,6 +396,7 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 	return container, host, port.Int()
 }
 
+// startRedisContainer provides a real Redis server for commands that miniredis cannot model faithfully.
 func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
 	t.Helper()
 
@@ -418,6 +426,7 @@ func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	return container, host + ":" + port.Port()
 }
 
+// shutdownContainer uses a detached timeout so canceled test contexts cannot leak containers.
 func shutdownContainer(t *testing.T, container testcontainers.Container) {
 	t.Helper()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -429,6 +438,7 @@ type memFactory struct {
 	root string
 }
 
+// NewDriver isolates the embedded FTP server inside the test's temporary filesystem.
 func (f *memFactory) NewDriver() (server.Driver, error) {
 	return &memDriver{root: f.root, perm: server.NewSimplePerm("user", "group")}, nil
 }
@@ -438,8 +448,10 @@ type memDriver struct {
 	perm server.Perm
 }
 
+// Init remains empty because the fixture driver receives all state from its factory.
 func (d *memDriver) Init(*server.Conn) {}
 
+// Stat exposes operating-system metadata through the FTP server's file-info contract.
 func (d *memDriver) Stat(p string) (server.FileInfo, error) {
 	fi, err := os.Stat(d.abs(p))
 	if err != nil {
@@ -448,6 +460,7 @@ func (d *memDriver) Stat(p string) (server.FileInfo, error) {
 	return fileInfo{FileInfo: fi}, nil
 }
 
+// ChangeDir rejects files so the embedded server preserves FTP directory semantics.
 func (d *memDriver) ChangeDir(p string) error {
 	fi, err := os.Stat(d.abs(p))
 	if err != nil {
@@ -459,6 +472,7 @@ func (d *memDriver) ChangeDir(p string) error {
 	return nil
 }
 
+// ListDir forwards immediate children because recursive traversal belongs to the client under test.
 func (d *memDriver) ListDir(p string, cb func(server.FileInfo) error) error {
 	entries, err := os.ReadDir(d.abs(p))
 	if err != nil {
@@ -476,14 +490,23 @@ func (d *memDriver) ListDir(p string, cb func(server.FileInfo) error) error {
 	return nil
 }
 
-func (d *memDriver) DeleteDir(p string) error  { return os.RemoveAll(d.abs(p)) }
+// DeleteDir removes fixture subtrees so backend cleanup cannot leave temporary state behind.
+func (d *memDriver) DeleteDir(p string) error { return os.RemoveAll(d.abs(p)) }
+
+// DeleteFile removes only the requested fixture object.
 func (d *memDriver) DeleteFile(p string) error { return os.Remove(d.abs(p)) }
+
+// Rename delegates to the filesystem so the FTP adapter exercises a server-side rename.
 func (d *memDriver) Rename(from, to string) error {
 	return os.Rename(d.abs(from), d.abs(to))
 }
+
+// MakeDir creates missing ancestors because object paths may arrive before explicit directory markers.
 func (d *memDriver) MakeDir(p string) error {
 	return os.MkdirAll(d.abs(p), 0o755)
 }
+
+// GetFile serves complete objects because the storage contract does not request resumed downloads.
 func (d *memDriver) GetFile(p string, _ int64) (int64, io.ReadCloser, error) {
 	f, err := os.Open(d.abs(p))
 	if err != nil {
@@ -492,6 +515,8 @@ func (d *memDriver) GetFile(p string, _ int64) (int64, io.ReadCloser, error) {
 	info, _ := f.Stat()
 	return info.Size(), f, nil
 }
+
+// PutFile truncates existing objects to match storage Put replacement semantics.
 func (d *memDriver) PutFile(p string, r io.Reader, _ bool) (int64, error) {
 	fp := d.abs(p)
 	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
@@ -505,6 +530,7 @@ func (d *memDriver) PutFile(p string, r io.Reader, _ bool) (int64, error) {
 	return io.Copy(f, r)
 }
 
+// abs maps FTP-root-relative paths into the test's isolated filesystem.
 func (d *memDriver) abs(p string) string {
 	if p == "" || p == "." || p == "/" {
 		return d.root
@@ -516,9 +542,13 @@ type fileInfo struct {
 	os.FileInfo
 }
 
+// Owner supplies stable metadata required by the embedded FTP server.
 func (f fileInfo) Owner() string { return "user" }
+
+// Group supplies stable metadata required by the embedded FTP server.
 func (f fileInfo) Group() string { return "group" }
 
+// pickPort asks the kernel for an ephemeral port to reduce collisions between concurrent suites.
 func pickPort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -529,6 +559,7 @@ func pickPort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
+// startEmbeddedFTPServer exposes the temporary fixture tree through a real FTP protocol boundary.
 func startEmbeddedFTPServer(t *testing.T, host string, port int, root string) *server.Server {
 	t.Helper()
 	srv := server.NewServer(&server.ServerOpts{

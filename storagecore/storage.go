@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Storage defines the synchronous object and directory operations implemented by every driver.
 type Storage interface {
 	Get(p string) ([]byte, error)
 	Put(p string, contents []byte) error
@@ -22,6 +23,7 @@ type Storage interface {
 	URL(p string) (string, error)
 }
 
+// ContextStorage mirrors Storage while allowing callers to cancel bounded work.
 type ContextStorage interface {
 	GetContext(ctx context.Context, p string) ([]byte, error)
 	PutContext(ctx context.Context, p string, contents []byte) error
@@ -36,6 +38,7 @@ type ContextStorage interface {
 	URLContext(ctx context.Context, p string) (string, error)
 }
 
+// ListPageResult contains one deterministic window from a directory listing.
 type ListPageResult struct {
 	Entries []Entry
 	Offset  int
@@ -43,14 +46,25 @@ type ListPageResult struct {
 	HasMore bool
 }
 
+// PagedStorage is implemented by drivers that expose synchronous listing windows.
 type PagedStorage interface {
 	ListPage(p string, offset, limit int) (ListPageResult, error)
 }
 
+// ContextPagedStorage is implemented by drivers that expose cancellable listing windows.
 type ContextPagedStorage interface {
 	ListPageContext(ctx context.Context, p string, offset, limit int) (ListPageResult, error)
 }
 
+// normalizeContext keeps context methods nil-safe without changing the public compatibility surface.
+func normalizeContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+// Entry describes a logical object or directory without exposing backend-specific metadata.
 type Entry struct {
 	Path  string
 	Size  int64
@@ -58,13 +72,18 @@ type Entry struct {
 }
 
 var (
-	ErrNotFound    = errors.New("storage: not found")
-	ErrForbidden   = errors.New("storage: forbidden")
+	// ErrNotFound reports that a requested logical object or directory does not exist.
+	ErrNotFound = errors.New("storage: not found")
+	// ErrForbidden reports an invalid operation or a backend permission denial.
+	ErrForbidden = errors.New("storage: forbidden")
+	// ErrUnsupported reports an operation that a backend cannot safely provide.
 	ErrUnsupported = errors.New("storage: unsupported operation")
 )
 
+// DiskName identifies a configured disk in manager lookups.
 type DiskName string
 
+// ResolvedConfig is the driver-neutral configuration passed through the registry boundary.
 type ResolvedConfig struct {
 	Driver string
 
@@ -108,8 +127,12 @@ type ResolvedConfig struct {
 	RedisDB       int
 }
 
+// NormalizePath converts separators and rejects paths that cannot be represented portably.
 func NormalizePath(p string) (string, error) {
 	cleanedInput := strings.TrimSpace(p)
+	if strings.ContainsRune(cleanedInput, '\x00') {
+		return "", fmt.Errorf("%w: invalid path", ErrForbidden)
+	}
 	cleanedInput = strings.ReplaceAll(cleanedInput, "\\", "/")
 	cleaned := path.Clean(cleanedInput)
 	cleaned = strings.TrimPrefix(cleaned, "/")
@@ -122,6 +145,7 @@ func NormalizePath(p string) (string, error) {
 	return cleaned, nil
 }
 
+// JoinPrefix combines an already-normalized backend prefix with a logical path.
 func JoinPrefix(prefix, p string) string {
 	if prefix == "" {
 		return p
@@ -132,6 +156,7 @@ func JoinPrefix(prefix, p string) string {
 	return path.Join(prefix, p)
 }
 
+// PaginateEntries clamps caller-provided bounds so even extreme values cannot panic.
 func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
 	if offset < 0 {
 		offset = 0
@@ -142,10 +167,12 @@ func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
 	if offset > len(entries) {
 		offset = len(entries)
 	}
-	end := offset + limit
-	if end > len(entries) {
-		end = len(entries)
+	pageSize := limit
+	remaining := len(entries) - offset
+	if pageSize > remaining {
+		pageSize = remaining
 	}
+	end := offset + pageSize
 	pageEntries := make([]Entry, end-offset)
 	copy(pageEntries, entries[offset:end])
 	return ListPageResult{

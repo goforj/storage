@@ -15,6 +15,7 @@ type memoryStorage struct {
 	conf *goconfig.ConfigFile
 }
 
+// newMemoryStorage parses inline rclone configuration into a synchronized in-memory store.
 func newMemoryStorage(data string) (*memoryStorage, error) {
 	conf, err := goconfig.LoadFromReader(strings.NewReader(data))
 	if err != nil {

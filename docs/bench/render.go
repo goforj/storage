@@ -21,17 +21,17 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/goforj/storage"
-	ftpstorage "github.com/goforj/storage/driver/ftpstorage"
-	gcsstorage "github.com/goforj/storage/driver/gcsstorage"
-	localstorage "github.com/goforj/storage/driver/localstorage"
-	memorystorage "github.com/goforj/storage/driver/memorystorage"
-	rclonestorage "github.com/goforj/storage/driver/rclonestorage"
-	redisstorage "github.com/goforj/storage/driver/redisstorage"
-	s3storage "github.com/goforj/storage/driver/s3storage"
-	sftpstorage "github.com/goforj/storage/driver/sftpstorage"
+	"github.com/goforj/storage/driver/ftpstorage"
+	"github.com/goforj/storage/driver/gcsstorage"
+	"github.com/goforj/storage/driver/localstorage"
+	"github.com/goforj/storage/driver/memorystorage"
+	"github.com/goforj/storage/driver/rclonestorage"
+	"github.com/goforj/storage/driver/redisstorage"
+	"github.com/goforj/storage/driver/s3storage"
+	"github.com/goforj/storage/driver/sftpstorage"
 	"github.com/goforj/storage/storagetest"
 	"github.com/goftp/server"
-	testcontainers "github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -69,6 +69,7 @@ type benchmarkFixture struct {
 
 var uniqueID uint64
 
+// RenderBenchmarks collects or loads benchmark rows, writes charts, and refreshes the README embed.
 func RenderBenchmarks() {
 	root := findRoot()
 	ctx := context.Background()
@@ -113,6 +114,7 @@ func RenderBenchmarks() {
 	fmt.Println("✔ Benchmarks dashboard updated")
 }
 
+// benchmarkCases builds the selected backend fixtures and marks explicitly requested drivers as required.
 func benchmarkCases(ctx context.Context) []benchmarkCase {
 	include := selectedBenchDrivers()
 	withDocker := os.Getenv("BENCH_WITH_DOCKER") == "1"
@@ -363,6 +365,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	return cases
 }
 
+// benchmarkStoreOps registers the shared operation set with setup outside each timed loop.
 func benchmarkStoreOps(b *testing.B, store storage.Storage) {
 	b.Helper()
 	for _, op := range benchmarkOps() {
@@ -383,6 +386,7 @@ func benchmarkStoreOps(b *testing.B, store storage.Storage) {
 	}
 }
 
+// runBenchmarks measures every selected driver operation while isolating stores and cleanup per run.
 func runBenchmarks(ctx context.Context) map[string][]benchRow {
 	results := make(map[string][]benchRow)
 	cases := benchmarkCases(ctx)
@@ -443,6 +447,7 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 	return results
 }
 
+// benchOp adapts a shared storage benchmark to Go's calibrated benchmark result metrics.
 func benchOp(ctx context.Context, store storage.Storage, run func(*testing.B, context.Context, storage.Storage)) (float64, float64, float64, int64) {
 	res := testing.Benchmark(func(b *testing.B) {
 		run(b, ctx, store)
@@ -450,6 +455,7 @@ func benchOp(ctx context.Context, store storage.Storage, run func(*testing.B, co
 	return float64(res.NsPerOp()), float64(res.AllocedBytesPerOp()), float64(res.AllocsPerOp()), int64(res.N)
 }
 
+// renderOp samples an operation for a bounded driver-specific window to keep rendering predictable.
 func renderOp(ctx context.Context, driver string, store storage.Storage, op benchmarkOp) (float64, float64, float64, int64, error) {
 	duration := renderDurationForDriver(driver)
 	if duration <= 0 {
@@ -482,6 +488,7 @@ func renderOp(ctx context.Context, driver string, store storage.Storage, op benc
 	return float64(total.Nanoseconds()) / float64(ops), bytesPerOp, allocsPerOp, ops, nil
 }
 
+// runRenderOpWithTimeout prevents an unresponsive remote backend from stalling documentation generation.
 func runRenderOpWithTimeout(
 	ctx context.Context,
 	store storage.Storage,
@@ -501,6 +508,7 @@ func runRenderOpWithTimeout(
 	}
 }
 
+// benchmarkOps defines the stable cross-driver operation set and its required fixtures.
 func benchmarkOps() []benchmarkOp {
 	return []benchmarkOp{
 		{
@@ -602,35 +610,43 @@ func benchmarkOps() []benchmarkOp {
 	}
 }
 
+// putContext scopes a benchmark write to the supplied context without replacing the base store.
 func putContext(store storage.Storage, ctx context.Context, path string, contents []byte) error {
 	return store.WithContext(ctx).Put(path, contents)
 }
 
+// getContext scopes a benchmark read to the supplied context without replacing the base store.
 func getContext(store storage.Storage, ctx context.Context, path string) ([]byte, error) {
 	return store.WithContext(ctx).Get(path)
 }
 
+// existsContext scopes a benchmark existence check to the supplied context.
 func existsContext(store storage.Storage, ctx context.Context, path string) (bool, error) {
 	return store.WithContext(ctx).Exists(path)
 }
 
+// listContext scopes a benchmark listing to the supplied context.
 func listContext(store storage.Storage, ctx context.Context, path string) ([]storage.Entry, error) {
 	return store.WithContext(ctx).List(path)
 }
 
+// walkContext scopes a benchmark traversal to the supplied context.
 func walkContext(store storage.Storage, ctx context.Context, path string, fn func(storage.Entry) error) error {
 	return store.WithContext(ctx).Walk(path, fn)
 }
 
+// deleteContext scopes a benchmark deletion to the supplied context.
 func deleteContext(store storage.Storage, ctx context.Context, path string) error {
 	return store.WithContext(ctx).Delete(path)
 }
 
+// nextBenchPath returns a process-unique object path so write benchmarks never overwrite prior samples.
 func nextBenchPath(prefix string) string {
 	n := atomic.AddUint64(&uniqueID, 1)
 	return fmt.Sprintf("%s/item-%d.txt", prefix, n)
 }
 
+// selectedBenchDrivers applies BENCH_DRIVER while keeping the default suite local and Docker-free.
 func selectedBenchDrivers() func(string) bool {
 	want := strings.TrimSpace(strings.ToLower(os.Getenv("BENCH_DRIVER")))
 	if want == "" || want == "all" {
@@ -653,6 +669,7 @@ func selectedBenchDrivers() func(string) bool {
 	return func(name string) bool { return selected[strings.ToLower(name)] }
 }
 
+// renderDurationForDriver balances stable samples against the relative cost of each backend.
 func renderDurationForDriver(driver string) time.Duration {
 	if raw := strings.TrimSpace(os.Getenv("BENCH_RENDER_MS")); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
@@ -671,6 +688,7 @@ func renderDurationForDriver(driver string) time.Duration {
 	}
 }
 
+// benchOpTimeout returns the per-operation deadline, with an environment override for slow systems.
 func benchOpTimeout() time.Duration {
 	if raw := strings.TrimSpace(os.Getenv("BENCH_OP_TIMEOUT_MS")); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
@@ -680,6 +698,7 @@ func benchOpTimeout() time.Duration {
 	return 5 * time.Second
 }
 
+// saveBenchmarkRows writes the reproducible JSON snapshot consumed by render-only runs.
 func saveBenchmarkRows(path string, rows map[string][]benchRow) error {
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
@@ -688,6 +707,7 @@ func saveBenchmarkRows(path string, rows map[string][]benchRow) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// loadBenchmarkRows decodes a prior benchmark snapshot for render-only generation.
 func loadBenchmarkRows(path string) (map[string][]benchRow, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -700,6 +720,7 @@ func loadBenchmarkRows(path string) (map[string][]benchRow, error) {
 	return rows, nil
 }
 
+// renderReadmeSection describes the benchmark protocol and links cache-busted chart assets.
 func renderReadmeSection(cacheBuster int64) string {
 	chartPath := func(name string) string {
 		return fmt.Sprintf("docs/bench/%s?t=%d", name, cacheBuster)
@@ -727,6 +748,7 @@ func renderReadmeSection(cacheBuster int64) string {
 		fmt.Sprintf("![Storage benchmark allocs chart](%s)", chartPath("benchmarks_allocs.svg")))
 }
 
+// injectBenchSection replaces only content delimited by the README benchmark markers.
 func injectBenchSection(readme, section string) (string, error) {
 	start := strings.Index(readme, benchStart)
 	end := strings.Index(readme, benchEnd)
@@ -738,6 +760,7 @@ func injectBenchSection(readme, section string) (string, error) {
 	return prefix + "\n\n" + section + suffix, nil
 }
 
+// writeDashboard renders the four documented benchmark metrics from one row set.
 func writeDashboard(root string, rows map[string][]benchRow) error {
 	charts := []struct {
 		fileName string
@@ -758,6 +781,7 @@ func writeDashboard(root string, rows map[string][]benchRow) error {
 	return nil
 }
 
+// renderSVG emits a deterministic grouped bar chart with optional outlier scale splitting.
 func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) float64) string {
 	drivers := orderedDrivers(rows)
 	ops := orderedOps(rows)
@@ -880,6 +904,7 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 	return svg.String()
 }
 
+// outlierSplitScale uses the interquartile range to keep a dominant outlier from flattening other bars.
 func outlierSplitScale(rows map[string][]benchRow, value func(benchRow) float64, maxVal float64) (bool, float64) {
 	var vals []float64
 	for _, list := range rows {
@@ -907,6 +932,7 @@ func outlierSplitScale(rows map[string][]benchRow, value func(benchRow) float64,
 	return true, cutoff
 }
 
+// formatChartValue abbreviates axis labels without discarding useful small-value precision.
 func formatChartValue(v float64) string {
 	switch {
 	case v >= 1_000_000:
@@ -924,6 +950,7 @@ func formatChartValue(v float64) string {
 	}
 }
 
+// orderedDrivers places known backends in documentation order and unknown backends alphabetically.
 func orderedDrivers(rows map[string][]benchRow) []string {
 	seen := map[string]bool{}
 	var drivers []string
@@ -967,6 +994,7 @@ func orderedDrivers(rows map[string][]benchRow) []string {
 	return drivers
 }
 
+// orderedOps filters the canonical operation order to metrics present in the row set.
 func orderedOps(rows map[string][]benchRow) []string {
 	order := []string{"put_small", "get_small", "exists", "list", "walk", "delete"}
 	var ops []string
@@ -978,6 +1006,7 @@ func orderedOps(rows map[string][]benchRow) []string {
 	return ops
 }
 
+// caseNames projects selected fixtures to the names used in progress output.
 func caseNames(cases []benchmarkCase) []string {
 	names := make([]string, 0, len(cases))
 	for _, bc := range cases {
@@ -986,6 +1015,7 @@ func caseNames(cases []benchmarkCase) []string {
 	return names
 }
 
+// findRoot walks upward until both README and workspace markers identify the repository root.
 func findRoot() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -1005,6 +1035,7 @@ func findRoot() string {
 	}
 }
 
+// pickPort asks the kernel for an available loopback port for an embedded fixture.
 func pickPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1014,6 +1045,7 @@ func pickPort() (int, error) {
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
+// startEmbeddedFTPServer starts a filesystem-backed FTP fixture and waits until it accepts connections.
 func startEmbeddedFTPServer(host string, port int, root string) (*server.Server, error) {
 	opts := &server.ServerOpts{
 		Factory:  &memFactory{root: root},
@@ -1042,6 +1074,7 @@ type memFactory struct {
 	root string
 }
 
+// NewDriver creates an isolated FTP driver rooted at the fixture directory.
 func (f *memFactory) NewDriver() (server.Driver, error) {
 	return &memDriver{root: f.root, perm: server.NewSimplePerm("user", "group")}, nil
 }
@@ -1051,8 +1084,10 @@ type memDriver struct {
 	perm server.Perm
 }
 
+// Init performs no session setup because the fixture keeps all state in its filesystem root.
 func (d *memDriver) Init(*server.Conn) {}
 
+// Stat exposes rooted filesystem metadata through the FTP server contract.
 func (d *memDriver) Stat(p string) (server.FileInfo, error) {
 	fi, err := os.Stat(d.abs(p))
 	if err != nil {
@@ -1061,6 +1096,7 @@ func (d *memDriver) Stat(p string) (server.FileInfo, error) {
 	return fileInfo{FileInfo: fi}, nil
 }
 
+// ChangeDir accepts only existing directories within the fixture root.
 func (d *memDriver) ChangeDir(p string) error {
 	fi, err := os.Stat(d.abs(p))
 	if err != nil {
@@ -1072,6 +1108,7 @@ func (d *memDriver) ChangeDir(p string) error {
 	return nil
 }
 
+// ListDir streams immediate rooted filesystem children through the FTP callback contract.
 func (d *memDriver) ListDir(p string, cb func(server.FileInfo) error) error {
 	entries, err := os.ReadDir(d.abs(p))
 	if err != nil {
@@ -1089,16 +1126,23 @@ func (d *memDriver) ListDir(p string, cb func(server.FileInfo) error) error {
 	return nil
 }
 
-func (d *memDriver) DeleteDir(p string) error  { return os.RemoveAll(d.abs(p)) }
+// DeleteDir recursively removes a directory within the FTP fixture root.
+func (d *memDriver) DeleteDir(p string) error { return os.RemoveAll(d.abs(p)) }
+
+// DeleteFile removes one file within the FTP fixture root.
 func (d *memDriver) DeleteFile(p string) error { return os.Remove(d.abs(p)) }
+
+// Rename moves a rooted FTP fixture path without crossing the fixture boundary.
 func (d *memDriver) Rename(from, to string) error {
 	return os.Rename(d.abs(from), d.abs(to))
 }
 
+// MakeDir creates the requested rooted directory and any missing parents.
 func (d *memDriver) MakeDir(p string) error {
 	return os.MkdirAll(d.abs(p), 0o755)
 }
 
+// GetFile opens a rooted fixture file and reports the size expected by the FTP server.
 func (d *memDriver) GetFile(p string, _ int64) (int64, io.ReadCloser, error) {
 	f, err := os.Open(d.abs(p))
 	if err != nil {
@@ -1108,6 +1152,7 @@ func (d *memDriver) GetFile(p string, _ int64) (int64, io.ReadCloser, error) {
 	return info.Size(), f, nil
 }
 
+// PutFile creates missing parents and streams a request body into the rooted fixture file.
 func (d *memDriver) PutFile(p string, r io.Reader, _ bool) (int64, error) {
 	fp := d.abs(p)
 	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
@@ -1121,6 +1166,7 @@ func (d *memDriver) PutFile(p string, r io.Reader, _ bool) (int64, error) {
 	return io.Copy(f, r)
 }
 
+// abs maps fixture-relative FTP paths beneath the temporary filesystem root.
 func (d *memDriver) abs(p string) string {
 	if p == "" || p == "." {
 		return d.root
@@ -1132,9 +1178,13 @@ type fileInfo struct {
 	os.FileInfo
 }
 
+// Owner returns stable synthetic ownership metadata for FTP listings.
 func (f fileInfo) Owner() string { return "user" }
+
+// Group returns stable synthetic group metadata for FTP listings.
 func (f fileInfo) Group() string { return "group" }
 
+// startMinioContainer launches the S3-compatible benchmark dependency and returns its endpoint.
 func startMinioContainer(ctx context.Context) (testcontainers.Container, string, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "minio/minio:latest",
@@ -1163,6 +1213,7 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 	return container, fmt.Sprintf("http://%s:%s", host, port.Port()), nil
 }
 
+// startRedisContainer launches the Redis benchmark dependency and returns its mapped address.
 func startRedisContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "redis:7-alpine",
@@ -1194,6 +1245,7 @@ func startRedisContainer(ctx context.Context) (testcontainers.Container, string,
 	return container, host, parsed, nil
 }
 
+// startSFTPContainer launches the SFTP benchmark dependency and returns its mapped address.
 func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "atmoz/sftp:latest",

@@ -10,6 +10,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestGCSStorageWithFakeServer verifies CRUD, listing, walking, and emulator URL behavior over HTTP.
 func TestGCSStorageWithFakeServer(t *testing.T) {
 	host := "127.0.0.1"
 	port := uint16(pickPort(t))
@@ -89,6 +90,7 @@ func TestGCSStorageWithFakeServer(t *testing.T) {
 	}
 }
 
+// pickPort asks the kernel for an available loopback port for the fake GCS server.
 func pickPort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

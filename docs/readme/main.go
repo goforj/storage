@@ -1,6 +1,7 @@
 //go:build ignore
 // +build ignore
 
+// Command readme regenerates the storage README from public API documentation.
 package main
 
 import (
@@ -21,6 +22,7 @@ const (
 	apiEnd   = "<!-- api:embed:end -->"
 )
 
+// main refreshes the generated API reference and reports failures to the shell.
 func main() {
 	if err := run(); err != nil {
 		fmt.Println("Error:", err)
@@ -29,6 +31,7 @@ func main() {
 	fmt.Println("✔ API section updated in README.md")
 }
 
+// run regenerates only the README section delimited by API embed markers.
 func run() error {
 	root, err := findRoot()
 	if err != nil {
@@ -56,6 +59,7 @@ func run() error {
 	return os.WriteFile(readmePath, []byte(out), 0o644)
 }
 
+// FuncDoc records an API declaration in the form consumed by the README renderer.
 type FuncDoc struct {
 	Name        string
 	DisplayName string
@@ -65,6 +69,7 @@ type FuncDoc struct {
 	Examples    []Example
 }
 
+// Example records one documented code block and its source order.
 type Example struct {
 	Label string
 	Code  string
@@ -76,6 +81,7 @@ var (
 	exampleHeader = regexp.MustCompile(`(?i)^\s*Example:\s*(.*)$`)
 )
 
+// parseFuncs collects documented APIs from the root and supported driver packages.
 func parseFuncs(root string) ([]*FuncDoc, error) {
 	funcs := map[string]*FuncDoc{}
 
@@ -108,6 +114,7 @@ func parseFuncs(root string) ([]*FuncDoc, error) {
 	return out, nil
 }
 
+// parseFuncsInDir merges one package's exported declarations into the documentation index.
 func parseFuncsInDir(funcs map[string]*FuncDoc, dir string) error {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(
@@ -233,6 +240,7 @@ func parseFuncsInDir(funcs map[string]*FuncDoc, dir string) error {
 	return nil
 }
 
+// extractGroup returns the documented API group or the stable Other fallback.
 func extractGroup(group *ast.CommentGroup) string {
 	for _, c := range group.List {
 		line := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
@@ -243,6 +251,7 @@ func extractGroup(group *ast.CommentGroup) string {
 	return "Other"
 }
 
+// extractGroupWithDefault lets interface methods inherit their type's documentation group.
 func extractGroupWithDefault(group *ast.CommentGroup, fallback string) string {
 	if group == nil {
 		return fallback
@@ -256,6 +265,7 @@ func extractGroupWithDefault(group *ast.CommentGroup, fallback string) string {
 	return fallback
 }
 
+// extractDescription excludes group directives and examples from reader-facing prose.
 func extractDescription(group *ast.CommentGroup) string {
 	var lines []string
 	for _, c := range group.List {
@@ -271,10 +281,12 @@ func extractDescription(group *ast.CommentGroup) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
+// extractExamples delegates function comment parsing to the shared block extractor.
 func extractExamples(fset *token.FileSet, fn *ast.FuncDecl) []Example {
 	return extractExamplesFromGroup(fset, fn.Doc)
 }
 
+// extractExamplesFromGroup splits labeled examples and preserves their source order.
 func extractExamplesFromGroup(fset *token.FileSet, group *ast.CommentGroup) []Example {
 	var out []Example
 	var current []string
@@ -316,6 +328,7 @@ func extractExamplesFromGroup(fset *token.FileSet, group *ast.CommentGroup) []Ex
 	return out
 }
 
+// extractReceiverName returns the named receiver used to qualify documented methods.
 func extractReceiverName(fn *ast.FuncDecl) string {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return ""
@@ -323,6 +336,7 @@ func extractReceiverName(fn *ast.FuncDecl) string {
 	return recvTypeName(fn.Recv.List[0].Type)
 }
 
+// recvTypeName unwraps receiver syntax to its named type.
 func recvTypeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -340,6 +354,7 @@ func recvTypeName(expr ast.Expr) string {
 	}
 }
 
+// selectPackage deterministically chooses the primary non-main package in a directory.
 func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 	if len(pkgs) == 0 {
 		return "", fmt.Errorf("no packages found")
@@ -371,6 +386,7 @@ func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 	return candidates[0].name, nil
 }
 
+// renderAPI emits a stable grouped index and reference from parsed declarations.
 func renderAPI(funcs []*FuncDoc) string {
 	byGroup := map[string][]*FuncDoc{}
 	for _, fd := range funcs {
@@ -421,6 +437,7 @@ func renderAPI(funcs []*FuncDoc) string {
 	return strings.TrimRight(buf.String(), "\n")
 }
 
+// replaceAPISection updates content between API markers while preserving the surrounding README.
 func replaceAPISection(readme, api string) (string, error) {
 	start := strings.Index(readme, apiStart)
 	end := strings.Index(readme, apiEnd)
@@ -436,6 +453,7 @@ func replaceAPISection(readme, api string) (string, error) {
 	return out.String(), nil
 }
 
+// findRoot locates the repository from each working directory supported by the generator.
 func findRoot() (string, error) {
 	wd, _ := os.Getwd()
 	for _, c := range []string{wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", "..")} {
@@ -447,11 +465,13 @@ func findRoot() (string, error) {
 	return "", fmt.Errorf("could not find project root")
 }
 
+// fileExists reports whether a candidate repository marker is present.
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
 
+// normalizeIndent removes shared leading whitespace without changing relative code layout.
 func normalizeIndent(lines []string) []string {
 	min := -1
 	for _, l := range lines {
@@ -477,6 +497,7 @@ func normalizeIndent(lines []string) []string {
 	return out
 }
 
+// trimDisplayExample removes trailing compile-only discard assignments from rendered snippets.
 func trimDisplayExample(code string) string {
 	lines := strings.Split(code, "\n")
 
@@ -499,6 +520,7 @@ func trimDisplayExample(code string) string {
 	return strings.Join(lines, "\n")
 }
 
+// discardAssignment recognizes the non-empty `_ = value` scaffolding omitted from documentation.
 func discardAssignment(line string) bool {
 	if !strings.HasPrefix(line, "_ = ") {
 		return false

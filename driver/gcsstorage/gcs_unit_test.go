@@ -5,15 +5,18 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
+	"strings"
 	"testing"
 
-	gcsapi "cloud.google.com/go/storage"
+	"cloud.google.com/go/storage"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestGCSConstructors verifies bucket, prefix, and emulator URL validation.
 func TestGCSConstructors(t *testing.T) {
 	t.Run("new missing bucket", func(t *testing.T) {
 		_, err := New(Config{})
@@ -38,6 +41,7 @@ func TestGCSConstructors(t *testing.T) {
 	})
 }
 
+// TestGCSKeyAndPrefixHelpers verifies prefix joining and exact-component stripping.
 func TestGCSKeyAndPrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	k, err := d.key("file.txt")
@@ -52,8 +56,9 @@ func TestGCSKeyAndPrefixHelpers(t *testing.T) {
 	}
 }
 
+// TestGCSWrapError verifies native and HTTP absence retain ErrNotFound identity.
 func TestGCSWrapError(t *testing.T) {
-	if err := wrapError(gcsapi.ErrObjectNotExist); !errors.Is(err, storagecore.ErrNotFound) {
+	if err := wrapError(storage.ErrObjectNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if !isNotFound(&googleapi.Error{Code: 404}) {
@@ -67,6 +72,7 @@ func TestGCSWrapError(t *testing.T) {
 	}
 }
 
+// TestGCSContextCancellation verifies canceled calls stop before accessing a bucket.
 func TestGCSContextCancellation(t *testing.T) {
 	d := &driver{prefix: "pre", emulator: false}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,6 +107,7 @@ func TestGCSContextCancellation(t *testing.T) {
 	}
 }
 
+// TestGCSHelpers verifies resolved settings, path validation, and implied parent generation.
 func TestGCSHelpers(t *testing.T) {
 	cfg := Config{Bucket: "bucket", CredentialsJSON: "{}", Endpoint: "http://127.0.0.1:4443", Prefix: "pre"}
 	resolved := cfg.ResolvedConfig()
@@ -127,39 +134,64 @@ type fakeGCSClient struct {
 	bucket *fakeGCSBucket
 }
 
+// Bucket returns the fake bucket shared by driver tests.
 func (f fakeGCSClient) Bucket(string) gcsBucketHandle { return f.bucket }
+
+// Close makes fake client cleanup succeed.
+func (f fakeGCSClient) Close() error { return nil }
 
 type fakeGCSBucket struct {
 	object      *fakeGCSObject
-	objects     []*gcsapi.ObjectAttrs
+	objects     []*storage.ObjectAttrs
 	objectsErr  error
 	signedURL   string
 	signedErr   error
 	queryPrefix string
 }
 
+// Object returns the fake object shared by bucket operations.
 func (f *fakeGCSBucket) Object(string) gcsObjectHandle { return f.object }
-func (f *fakeGCSBucket) Objects(_ context.Context, q *gcsapi.Query) gcsObjectIterator {
+
+// Objects filters fixture metadata by query prefix and records that prefix.
+func (f *fakeGCSBucket) Objects(_ context.Context, q *storage.Query) gcsObjectIterator {
+	items := f.objects
 	if q != nil {
 		f.queryPrefix = q.Prefix
+		items = nil
+		for _, item := range f.objects {
+			name := item.Name
+			if name == "" {
+				name = item.Prefix
+			}
+			if strings.HasPrefix(name, q.Prefix) {
+				items = append(items, item)
+			}
+		}
 	}
-	return &fakeGCSIterator{items: f.objects, err: f.objectsErr}
+	return &fakeGCSIterator{items: items, err: f.objectsErr}
 }
-func (f *fakeGCSBucket) SignedURL(string, *gcsapi.SignedURLOptions) (string, error) {
+
+// SignedURL returns the configured link or signing failure.
+func (f *fakeGCSBucket) SignedURL(string, *storage.SignedURLOptions) (string, error) {
 	return f.signedURL, f.signedErr
 }
 
 type fakeGCSObject struct {
-	readData  string
-	readErr   error
-	readBody  io.ReadCloser
-	writeErr  error
-	writeBuf  bytes.Buffer
-	deleteErr error
-	attrs     *gcsapi.ObjectAttrs
-	attrsErr  error
+	readData   string
+	readErr    error
+	readBody   io.ReadCloser
+	writeErr   error
+	abortErr   error
+	abortWith  error
+	closeCalls int
+	abortCalls int
+	writeBuf   bytes.Buffer
+	deleteErr  error
+	attrs      *storage.ObjectAttrs
+	attrsErr   error
 }
 
+// NewReader opens the configured body, payload, or read failure.
 func (f *fakeGCSObject) NewReader(context.Context) (io.ReadCloser, error) {
 	if f.readErr != nil {
 		return nil, f.readErr
@@ -170,15 +202,18 @@ func (f *fakeGCSObject) NewReader(context.Context) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewBufferString(f.readData)), nil
 }
 
+// NewWriter returns a writer that records commit and abort behavior on its object.
 func (f *fakeGCSObject) NewWriter(context.Context) gcsWriter {
 	return &fakeGCSWriter{parent: f}
 }
 
+// Delete returns the configured object-removal failure.
 func (f *fakeGCSObject) Delete(context.Context) error {
 	return f.deleteErr
 }
 
-func (f *fakeGCSObject) Attrs(context.Context) (*gcsapi.ObjectAttrs, error) {
+// Attrs returns configured object metadata or lookup failure.
+func (f *fakeGCSObject) Attrs(context.Context) (*storage.ObjectAttrs, error) {
 	if f.attrsErr != nil {
 		return nil, f.attrsErr
 	}
@@ -189,6 +224,7 @@ type fakeGCSWriter struct {
 	parent *fakeGCSObject
 }
 
+// Write captures uploaded bytes unless a configured transfer failure occurs.
 func (w *fakeGCSWriter) Write(p []byte) (int, error) {
 	if w.parent.writeErr != nil {
 		return 0, w.parent.writeErr
@@ -196,17 +232,27 @@ func (w *fakeGCSWriter) Write(p []byte) (int, error) {
 	return w.parent.writeBuf.Write(p)
 }
 
+// Close records a committed writer close and returns its configured failure.
 func (w *fakeGCSWriter) Close() error {
+	w.parent.closeCalls++
 	return w.parent.writeErr
 }
 
+// CloseWithError records the abort cause and returns any configured cleanup failure.
+func (w *fakeGCSWriter) CloseWithError(err error) error {
+	w.parent.abortCalls++
+	w.parent.abortWith = err
+	return w.parent.abortErr
+}
+
 type fakeGCSIterator struct {
-	items []*gcsapi.ObjectAttrs
+	items []*storage.ObjectAttrs
 	err   error
 	idx   int
 }
 
-func (it *fakeGCSIterator) Next() (*gcsapi.ObjectAttrs, error) {
+// Next yields configured metadata in order before returning iterator.Done.
+func (it *fakeGCSIterator) Next() (*storage.ObjectAttrs, error) {
 	if it.err != nil {
 		return nil, it.err
 	}
@@ -218,14 +264,15 @@ func (it *fakeGCSIterator) Next() (*gcsapi.ObjectAttrs, error) {
 	return item, nil
 }
 
+// TestGCSFakeBackedOperations verifies core storage operations through the GCS adapter boundary.
 func TestGCSFakeBackedOperations(t *testing.T) {
 	object := &fakeGCSObject{
 		readData: "hello",
-		attrs:    &gcsapi.ObjectAttrs{Name: "pre/file.txt", Size: 5},
+		attrs:    &storage.ObjectAttrs{Name: "pre/file.txt", Size: 5},
 	}
 	bucket := &fakeGCSBucket{
 		object: object,
-		objects: []*gcsapi.ObjectAttrs{
+		objects: []*storage.ObjectAttrs{
 			{Prefix: "pre/dir/"},
 			{Name: "pre/dir/file.txt", Size: 5},
 		},
@@ -274,12 +321,13 @@ func TestGCSFakeBackedOperations(t *testing.T) {
 	}
 }
 
+// TestGCSFakeWalkAndErrorBranches verifies traversal, root guards, same-path copy, and cleanup failures.
 func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 	t.Run("walk file path", func(t *testing.T) {
-		object := &fakeGCSObject{attrs: &gcsapi.ObjectAttrs{Name: "pre/file.txt", Size: 4}}
+		object := &fakeGCSObject{attrs: &storage.ObjectAttrs{Name: "pre/file.txt", Size: 4}}
 		bucket := &fakeGCSBucket{
 			object:  object,
-			objects: []*gcsapi.ObjectAttrs{},
+			objects: []*storage.ObjectAttrs{},
 		}
 		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "pre"}
 
@@ -296,10 +344,10 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 	})
 
 	t.Run("walk recursive and callback error", func(t *testing.T) {
-		object := &fakeGCSObject{attrsErr: gcsapi.ErrObjectNotExist}
+		object := &fakeGCSObject{attrsErr: storage.ErrObjectNotExist}
 		bucket := &fakeGCSBucket{
 			object: object,
-			objects: []*gcsapi.ObjectAttrs{
+			objects: []*storage.ObjectAttrs{
 				{Name: "pre/folder/file-a.txt", Size: 1},
 				{Name: "pre/folder/file-b.txt", Size: 2},
 			},
@@ -318,9 +366,27 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("walk omits requested ancestors", func(t *testing.T) {
+		object := &fakeGCSObject{attrsErr: storage.ErrObjectNotExist}
+		bucket := &fakeGCSBucket{object: object, objects: []*storage.ObjectAttrs{
+			{Name: "pre/move-dir/source/file.txt", Size: 1},
+		}}
+		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "pre"}
+		var paths []string
+		if err := d.Walk("move-dir/source", func(entry storagecore.Entry) error {
+			paths = append(paths, entry.Path)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		if slices.Contains(paths, "move-dir") || slices.Contains(paths, "move-dir/source") {
+			t.Fatalf("Walk returned its root or an ancestor: %v", paths)
+		}
+	})
+
 	t.Run("get put delete stat exists list url errors", func(t *testing.T) {
 		object := &fakeGCSObject{
-			readErr:   gcsapi.ErrObjectNotExist,
+			readErr:   storage.ErrObjectNotExist,
 			writeErr:  errors.New("write boom"),
 			deleteErr: errors.New("delete boom"),
 			attrsErr:  errors.New("attrs boom"),
@@ -366,8 +432,111 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 			t.Fatal("Get returned nil error")
 		}
 	})
+
+	t.Run("put aborts writer without committing after write failure", func(t *testing.T) {
+		writeErr := errors.New("write boom")
+		abortErr := errors.New("abort boom")
+		object := &fakeGCSObject{writeErr: writeErr, abortErr: abortErr}
+		d := &driver{
+			client: fakeGCSClient{bucket: &fakeGCSBucket{object: object}},
+			bucket: "bucket",
+			prefix: "pre",
+		}
+		err := d.Put("file.txt", []byte("payload"))
+		if !errors.Is(err, writeErr) || !errors.Is(err, abortErr) {
+			t.Fatalf("Put error = %v", err)
+		}
+		if object.abortCalls != 1 || object.closeCalls != 0 || !errors.Is(object.abortWith, writeErr) {
+			t.Fatalf("writer abortCalls=%d closeCalls=%d abortWith=%v", object.abortCalls, object.closeCalls, object.abortWith)
+		}
+	})
+
+	t.Run("logical root mutations are rejected", func(t *testing.T) {
+		object := &fakeGCSObject{attrs: &storage.ObjectAttrs{Name: "pre"}}
+		bucket := &fakeGCSBucket{object: object}
+		d := &driver{
+			client: fakeGCSClient{bucket: bucket},
+			bucket: "bucket",
+			prefix: "pre",
+		}
+		if err := d.MakeDir(""); err != nil {
+			t.Fatalf("MakeDir root: %v", err)
+		}
+		entry, err := d.Stat("")
+		if err != nil || !entry.IsDir || entry.Path != "" {
+			t.Fatalf("Stat root = %+v err=%v", entry, err)
+		}
+		if err := d.Walk("", func(storagecore.Entry) error { return nil }); err != nil {
+			t.Fatalf("Walk empty root: %v", err)
+		}
+		if err := d.Put("", []byte("payload")); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Put root error = %v", err)
+		}
+		if err := d.Delete(""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Delete root error = %v", err)
+		}
+		if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Get root error = %v", err)
+		}
+		if _, err := d.URL(""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("URL root error = %v", err)
+		}
+		if err := d.Copy("", "copy.txt"); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Copy source root error = %v", err)
+		}
+		if err := d.Copy("file.txt", ""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Copy target root error = %v", err)
+		}
+		if object.closeCalls != 0 {
+			t.Fatalf("logical root Put committed %d writers", object.closeCalls)
+		}
+		if err := d.Move("file.txt", "file.txt"); err != nil {
+			t.Fatalf("Move same path: %v", err)
+		}
+	})
+
+	t.Run("walk root confines configured prefix", func(t *testing.T) {
+		object := &fakeGCSObject{attrsErr: storage.ErrObjectNotExist}
+		bucket := &fakeGCSBucket{
+			object: object,
+			objects: []*storage.ObjectAttrs{
+				{Name: "assets/file.txt", Size: 1},
+				{Name: "assets2/leak.txt", Size: 1},
+			},
+		}
+		d := &driver{client: fakeGCSClient{bucket: bucket}, bucket: "bucket", prefix: "assets"}
+		var paths []string
+		if err := d.Walk("", func(entry storagecore.Entry) error {
+			paths = append(paths, entry.Path)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk root: %v", err)
+		}
+		if bucket.queryPrefix != "assets/" {
+			t.Fatalf("Walk query prefix = %q", bucket.queryPrefix)
+		}
+		if len(paths) != 1 || paths[0] != "file.txt" {
+			t.Fatalf("Walk paths = %v", paths)
+		}
+	})
+
+	t.Run("same-path copy validates without writing", func(t *testing.T) {
+		object := &fakeGCSObject{readData: "payload"}
+		d := &driver{client: fakeGCSClient{bucket: &fakeGCSBucket{object: object}}, bucket: "bucket"}
+		if err := d.Copy("file.txt", "file.txt"); err != nil {
+			t.Fatalf("Copy same path: %v", err)
+		}
+		if object.closeCalls != 0 {
+			t.Fatalf("same-path Copy committed %d writers", object.closeCalls)
+		}
+		object.readErr = storage.ErrObjectNotExist
+		if err := d.Copy("missing.txt", "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("Copy missing same path error = %v", err)
+		}
+	})
 }
 
 type errReader struct{}
 
+// Read injects a deterministic transfer failure after a reader opens successfully.
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("read boom") }

@@ -2,6 +2,9 @@
 set -euo pipefail
 
 published_modules=(
+  "."
+  "storagecore"
+  "storagetest"
   "driver/dropboxstorage"
   "driver/ftpstorage"
   "driver/gcsstorage"
@@ -41,9 +44,9 @@ for dir in "${published_modules[@]}"; do
     status=1
   fi
 
-  if find_matches '^replace github\.com/goforj/storage' "$modfile" >/dev/null; then
+  if find_matches '^[[:space:]]*(replace[[:space:]]+)?github\.com/goforj/storage[^[:space:]]*[[:space:]]*=>' "$modfile" >/dev/null; then
     echo "invalid committed sibling replace in $modfile" >&2
-    find_matches '^replace github\.com/goforj/storage' "$modfile" >&2
+    find_matches '^[[:space:]]*(replace[[:space:]]+)?github\.com/goforj/storage[^[:space:]]*[[:space:]]*=>' "$modfile" >&2
     status=1
   fi
 done

@@ -12,6 +12,7 @@ import (
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 )
 
+// TestRcloneStorageBuildsLocalAndS3Backends verifies rendered local and S3 remotes construct usable stores.
 func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 	root := t.TempDir()
 	remoteRoot := filepath.Join(root, "remote")

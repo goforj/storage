@@ -7,6 +7,7 @@ import (
 	"github.com/goforj/storage/driver/memorystorage"
 )
 
+// TestFake verifies that the default fake provides an immediately usable in-memory disk.
 func TestFake(t *testing.T) {
 	store := Fake(t)
 	if err := store.Put("photo.jpg", []byte("ok")); err != nil {
@@ -21,6 +22,7 @@ func TestFake(t *testing.T) {
 	}
 }
 
+// TestFakeWithPrefix verifies that configured prefixes remain hidden from logical listings.
 func TestFakeWithPrefix(t *testing.T) {
 	store := FakeWithPrefix(t, "avatars")
 	if err := store.Put("one.jpg", []byte("ok")); err != nil {
@@ -35,6 +37,7 @@ func TestFakeWithPrefix(t *testing.T) {
 	}
 }
 
+// TestFakeManagerDefaults verifies that omitted manager options create one usable default disk.
 func TestFakeManagerDefaults(t *testing.T) {
 	mgr := FakeManager(t, "", nil)
 	store := mgr.Default()
@@ -50,6 +53,7 @@ func TestFakeManagerDefaults(t *testing.T) {
 	}
 }
 
+// TestFakeManagerNamedDisks verifies that named fake disks retain independent prefixed state.
 func TestFakeManagerNamedDisks(t *testing.T) {
 	mgr := FakeManager(t, "photos", map[storage.DiskName]memorystorage.Config{
 		"photos":  {Prefix: "photos"},

@@ -11,6 +11,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestLocalResolvedConfigAndPrefixValidation verifies config mapping and prefix traversal rejection.
 func TestLocalResolvedConfigAndPrefixValidation(t *testing.T) {
 	cfg := Config{Root: "/tmp/storage", Prefix: "assets"}
 	resolved := cfg.ResolvedConfig()
@@ -23,6 +24,7 @@ func TestLocalResolvedConfigAndPrefixValidation(t *testing.T) {
 	}
 }
 
+// TestLocalCRUDBranches verifies object, directory, listing, and deletion edge cases.
 func TestLocalCRUDBranches(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(Config{Root: root, Prefix: "pre"})
@@ -125,6 +127,7 @@ func TestLocalCRUDBranches(t *testing.T) {
 	}
 }
 
+// TestLocalCopyAndMoveBranches verifies atomic replacement, same-path validation, and missing sources.
 func TestLocalCopyAndMoveBranches(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(Config{Root: root, Prefix: "pre"})
@@ -180,6 +183,7 @@ func TestLocalCopyAndMoveBranches(t *testing.T) {
 	}
 }
 
+// TestLocalListPageContext verifies pagination bounds over the sorted local listing.
 func TestLocalListPageContext(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(Config{Root: root, Prefix: "pre"})
@@ -224,6 +228,7 @@ func TestLocalListPageContext(t *testing.T) {
 	}
 }
 
+// TestLocalModTimeAndRelativeEdgeCases verifies metadata errors and logical path projection.
 func TestLocalModTimeAndRelativeEdgeCases(t *testing.T) {
 	root := t.TempDir()
 	d := &driver{root: root, prefix: "pre"}

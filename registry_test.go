@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestRegisterDriverDuplicatePanics protects the process-wide registry from silent replacement.
 func TestRegisterDriverDuplicatePanics(t *testing.T) {
 	name := "stub-duplicate"
 	RegisterDriver(name, func(_ context.Context, _ ResolvedConfig) (Storage, error) {

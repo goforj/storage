@@ -13,8 +13,11 @@ import (
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/stretchr/testify/require"
+
+	"github.com/goforj/storage/storagecore"
 )
 
+// TestS3StorageWithFakeS3 exercises the public driver contract against an HTTP-compatible S3 server.
 func TestS3StorageWithFakeS3(t *testing.T) {
 	fake := gofakes3.New(s3mem.New())
 	server := fakeServer(t, fake)
@@ -38,8 +41,22 @@ func TestS3StorageWithFakeS3(t *testing.T) {
 	got, err := fs.Get("hello.txt")
 	require.NoError(t, err)
 	require.Equal(t, "s3", string(got))
+
+	require.NoError(t, fs.MakeDir("empty"))
+	entry, err := fs.Stat("empty")
+	require.NoError(t, err)
+	require.True(t, entry.IsDir)
+	require.NoError(t, fs.Delete("empty"))
+	_, err = fs.Stat("empty")
+	require.ErrorIs(t, err, storagecore.ErrNotFound)
+
+	require.NoError(t, fs.MakeDir("nonempty"))
+	require.NoError(t, fs.Put("nonempty/file.txt", []byte("child")))
+	err = fs.Delete("nonempty")
+	require.ErrorIs(t, err, storagecore.ErrForbidden)
 }
 
+// fakeServer binds IPv4 explicitly so endpoint tests do not depend on host IPv6 availability.
 func fakeServer(t *testing.T, fake *gofakes3.GoFakeS3) *httptest.Server {
 	t.Helper()
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -52,6 +69,7 @@ func fakeServer(t *testing.T, fake *gofakes3.GoFakeS3) *httptest.Server {
 	return ts
 }
 
+// ensureBucket creates the fixture through the same path-style endpoint configuration used by the driver.
 func ensureBucket(t *testing.T, endpoint, bucket string) {
 	awsCfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion("us-east-1"),
