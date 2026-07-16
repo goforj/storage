@@ -24,6 +24,8 @@ Repo support modules:
 
 These are allowed to use local `replace` directives for sibling modules. That is intentional. They are repo-local tooling and verification surfaces, not the public dependency contract.
 
+Release tooling keeps their sibling requirements coordinated for tidy verification, but `tag-all-modules.sh` never tags them.
+
 ## Why
 
 Go only honors `replace` directives from the main module being built.
@@ -52,17 +54,20 @@ make release-modules v0.2.3
 1. Rewrites intra-repo module requirements to the target version.
 2. Runs `scripts/check-published-modules.sh`.
 3. Creates a release commit containing the touched `go.mod` files.
-4. Pushes the current branch to the remote.
-5. Tags every module from the resulting commit and pushes the tags.
+4. Tags every selected module from the release commit and pushes the tags.
+5. Refreshes sibling `go.sum` entries from those immutable tags and creates a checksum follow-up commit when needed.
+6. Pushes the current branch at the checksum-clean commit.
 
 ## Important Constraints
 
 - Published driver modules must never depend on sibling `v0.0.0`.
 - Published driver modules must never rely on committed sibling `replace`.
 - Support modules may keep local `replace` directives.
-- The release commit must be pushed before or along with the tags.
+- Release tags remain on the manifest commit; the checksum follow-up is intentionally untagged because dependency `go.sum` files are not part of the consumer contract.
+- If checksum synchronization fails after tag publication, do not move or recreate tags. Fix the branch and rerun with `--skip-existing`.
+- A `--skip-existing` retry synchronizes every selected module with sibling requirements, even when its manifest already names the target version.
 
-If tags are pushed but the release commit is not, the Go proxy can fail to resolve released module versions correctly.
+Pushing a tag transfers its release commit even before the branch advances. Keeping tags immutable ensures proxy and consumer resolution remain stable while the branch records post-tag checksums.
 
 ## Validation
 

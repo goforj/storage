@@ -276,8 +276,8 @@ github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9L
 github.com/go-viper/mapstructure/v2 v2.4.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=
 github.com/goccy/go-json v0.10.5/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
-github.com/goforj/storage/storagecore v0.4.4 h1:k9NVN1g0AXnNfjfXyQAt8GRaejjHSXN2wUPIdOjqyas=
-github.com/goforj/storage/storagecore v0.4.4/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
+github.com/goforj/storage/storagecore v0.5.0 h1:1NHEDS/P6BOEOk0DIq5gQsvgz/Zew3v1ZG2XZ3pZ9Zw=
+github.com/goforj/storage/storagecore v0.5.0/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
 github.com/gofrs/flock v0.13.0 h1:95JolYOvGMqeH31+FC7D2+uULf6mG61mEZ/A8dRYMzw=
 github.com/gofrs/flock v0.13.0/go.mod h1:jxeyy9R1auM5S6JYDBhDt+E2TCo7DkratH4Pgi8P+Z0=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=

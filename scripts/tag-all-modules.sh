@@ -14,7 +14,8 @@ Examples:
 
 Behavior:
   - Tags root module as: vX.Y.Z
-  - Tags each submodule as: <relative/module/path>/vX.Y.Z
+  - Tags each published submodule as: <relative/module/path>/vX.Y.Z
+  - Skips repo-only docs/bench, examples, and integration modules
   - Uses the current HEAD commit for all tags
   - --exclude supports exact module dirs and prefixes (for example: driver excludes all driver/* modules)
 USAGE
@@ -32,6 +33,11 @@ dry_run=0
 allow_dirty=0
 skip_existing=0
 excludes=()
+repo_support_modules=(
+  "docs/bench"
+  "examples"
+  "integration"
+)
 
 normalize_module_dir() {
   local dir="$1"
@@ -45,6 +51,13 @@ normalize_module_dir() {
 
 module_is_excluded() {
   local dir="$1"
+  local support
+  for support in "${repo_support_modules[@]}"; do
+    if [[ "$dir" == "$support" ]]; then
+      return 0
+    fi
+  done
+
   local ex
   for ex in "${excludes[@]-}"; do
     if [[ "$dir" == "$ex" ]] || [[ "$dir" == "$ex/"* ]]; then

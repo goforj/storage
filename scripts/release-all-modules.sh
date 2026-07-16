@@ -16,11 +16,12 @@ Behavior:
   - Rewrites intra-repo module requirements to the target version
   - Verifies published driver manifests
   - Optionally creates a release commit
-  - When --push is set, pushes the current branch before pushing tags
-  - Tags the resulting commit using scripts/tag-all-modules.sh
+  - Tags the release commit using scripts/tag-all-modules.sh
+  - When --push is set, pushes tags, syncs sibling checksums, then pushes the branch
 
 Notes:
   - Tagging only happens after the rewritten module files are committed.
+  - A checksum follow-up commit is intentionally not included in the release tags.
   - Without --commit, the script stops after rewriting/checking so you can review.
 USAGE
 }
@@ -34,6 +35,11 @@ dry_run=0
 allow_dirty=0
 skip_existing=0
 excludes=()
+repo_support_modules=(
+  "docs/bench"
+  "examples"
+  "integration"
+)
 
 normalize_module_dir() {
   local dir="$1"
@@ -50,6 +56,17 @@ module_is_excluded() {
   local ex
   for ex in "${excludes[@]-}"; do
     if [[ "$dir" == "$ex" ]] || [[ "$dir" == "$ex/"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+module_is_repo_support() {
+  local dir="$1"
+  local support
+  for support in "${repo_support_modules[@]}"; do
+    if [[ "$dir" == "$support" ]]; then
       return 0
     fi
   done
@@ -191,7 +208,7 @@ module_dir_for_path() {
 
 while IFS= read -r dir; do
   dir="$(normalize_module_dir "$dir")"
-  if module_is_excluded "$dir"; then
+  if module_is_excluded "$dir" && ! module_is_repo_support "$dir"; then
     continue
   fi
 
@@ -217,7 +234,7 @@ if [[ ${#module_dirs[@]} -eq 0 ]]; then
   exit 1
 fi
 
-declare -a changed_modules=()
+declare -a sibling_modules=()
 declare -a planned_updates=()
 declare -a release_files=()
 
@@ -245,7 +262,7 @@ for dir in "${module_dirs[@]}"; do
   done < <(module_requires "$modfile")
 
   if [[ "$updated" -eq 1 ]]; then
-    changed_modules+=("$dir")
+    sibling_modules+=("$dir")
     release_files+=("$dir/go.mod")
   fi
 done
@@ -287,7 +304,7 @@ if [[ "$dry_run" -eq 1 ]]; then
   exit 0
 fi
 
-if [[ ${#changed_modules[@]} -eq 0 ]]; then
+if [[ ${#release_files[@]} -eq 0 ]] || git diff --quiet HEAD -- "${release_files[@]}"; then
   echo "no module changes produced"
 else
   if [[ "$commit_release" -eq 1 ]]; then
@@ -303,13 +320,13 @@ else
   fi
 fi
 
+current_branch=""
 if [[ "$push" -eq 1 ]]; then
   current_branch="$(git rev-parse --abbrev-ref HEAD)"
   if [[ "$current_branch" == "HEAD" ]]; then
-    echo "error: cannot push release commit from detached HEAD" >&2
+    echo "error: cannot publish a release from detached HEAD" >&2
     exit 1
   fi
-  git push "$remote" "$current_branch"
 fi
 
 tag_args=("$version")
@@ -330,3 +347,44 @@ if [[ ${#excludes[@]} -gt 0 ]]; then
 fi
 
 bash scripts/tag-all-modules.sh "${tag_args[@]}"
+
+if [[ "$push" -eq 1 ]] && [[ ${#sibling_modules[@]} -gt 0 ]]; then
+  echo "==> Sync release checksums"
+
+  root_module_path="$(module_path_for_dir ".")"
+  release_gonosumdb="${root_module_path}*"
+  if [[ -n "${GONOSUMDB:-}" ]]; then
+    release_gonosumdb="${GONOSUMDB},${release_gonosumdb}"
+  fi
+
+  checksum_files=()
+  for dir in "${sibling_modules[@]}"; do
+    modfile="$dir/go.mod"
+    sumfile="$dir/go.sum"
+
+    (
+      cd "$dir"
+      GOWORK=off GONOSUMDB="$release_gonosumdb" go mod tidy
+    )
+
+    if ! git diff --quiet -- "$modfile"; then
+      echo "error: checksum sync changed $modfile after its release tag was created" >&2
+      echo "restore the tag commit and prepare the complete manifest before retrying" >&2
+      exit 1
+    fi
+
+    if [[ -f "$sumfile" ]]; then
+      checksum_files+=("$sumfile")
+    fi
+  done
+
+  if [[ ${#checksum_files[@]} -gt 0 ]] &&
+    [[ -n "$(git status --porcelain --untracked-files=all -- "${checksum_files[@]}")" ]]; then
+    git add -- "${checksum_files[@]}"
+    git commit -m "chore: sync $version module checksums" -- "${checksum_files[@]}"
+  fi
+fi
+
+if [[ "$push" -eq 1 ]]; then
+  git push "$remote" "$current_branch"
+fi
