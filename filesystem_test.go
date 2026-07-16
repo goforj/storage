@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// TestNormalizePath covers separator normalization, logical roots, and traversal rejection.
 func TestNormalizePath(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -34,6 +35,7 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
+// TestJoinPrefix verifies empty and nested components join without introducing extra separators.
 func TestJoinPrefix(t *testing.T) {
 	tests := []struct {
 		prefix string

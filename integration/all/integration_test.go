@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// selectedIntegrationDrivers narrows the container matrix when a developer needs to isolate one backend.
 func selectedIntegrationDrivers() map[string]bool {
 	selected := map[string]bool{
 		"ftp":          true,
@@ -37,6 +38,7 @@ func selectedIntegrationDrivers() map[string]bool {
 	return selected
 }
 
+// integrationDriverEnabled keeps driver-name matching case-insensitive for command-line selection.
 func integrationDriverEnabled(name string) bool {
 	return selectedIntegrationDrivers()[strings.ToLower(name)]
 }

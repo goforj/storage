@@ -12,39 +12,15 @@ type fakeDriverConfig struct {
 	resolved ResolvedConfig
 }
 
+// DriverName exposes the registry key selected by each construction test.
 func (c fakeDriverConfig) DriverName() string { return c.name }
+
+// ResolvedConfig returns the payload used to exercise config normalization.
 func (c fakeDriverConfig) ResolvedConfig() ResolvedConfig {
 	return c.resolved
 }
 
-type fakeStorage struct{}
-
-func (fakeStorage) WithContext(context.Context) Storage                    { return fakeStorage{} }
-func (fakeStorage) Get(string) ([]byte, error)                          { return nil, nil }
-func (fakeStorage) Put(string, []byte) error                            { return nil }
-func (fakeStorage) MakeDir(string) error                                { return nil }
-func (fakeStorage) Delete(string) error                                 { return nil }
-func (fakeStorage) Stat(string) (Entry, error)                          { return Entry{}, nil }
-func (fakeStorage) Exists(string) (bool, error)                         { return false, nil }
-func (fakeStorage) List(string) ([]Entry, error)                        { return nil, nil }
-func (fakeStorage) Walk(string, func(Entry) error) error                { return nil }
-func (fakeStorage) Copy(string, string) error                           { return nil }
-func (fakeStorage) Move(string, string) error                           { return nil }
-func (fakeStorage) URL(string) (string, error)                          { return "", nil }
-func (fakeStorage) GetContext(context.Context, string) ([]byte, error)  { return nil, nil }
-func (fakeStorage) PutContext(context.Context, string, []byte) error    { return nil }
-func (fakeStorage) MakeDirContext(context.Context, string) error        { return nil }
-func (fakeStorage) DeleteContext(context.Context, string) error         { return nil }
-func (fakeStorage) StatContext(context.Context, string) (Entry, error)  { return Entry{}, nil }
-func (fakeStorage) ExistsContext(context.Context, string) (bool, error) { return false, nil }
-func (fakeStorage) ListContext(context.Context, string) ([]Entry, error) {
-	return nil, nil
-}
-func (fakeStorage) WalkContext(context.Context, string, func(Entry) error) error { return nil }
-func (fakeStorage) CopyContext(context.Context, string, string) error            { return nil }
-func (fakeStorage) MoveContext(context.Context, string, string) error            { return nil }
-func (fakeStorage) URLContext(context.Context, string) (string, error)           { return "", nil }
-
+// TestBuild verifies registry construction fills the resolved driver name and returns a usable handle.
 func TestBuild(t *testing.T) {
 	driverName := fmt.Sprintf("fake-build-%s", t.Name())
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
@@ -54,7 +30,7 @@ func TestBuild(t *testing.T) {
 		if cfg.Driver != driverName {
 			t.Fatalf("unexpected resolved driver %q", cfg.Driver)
 		}
-		return fakeStorage{}, nil
+		return stubFS{}, nil
 	})
 
 	cfg := fakeDriverConfig{name: driverName}
@@ -67,6 +43,7 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+// TestBuildContext propagates a canceled construction context into the registered factory.
 func TestBuildContext(t *testing.T) {
 	driverName := fmt.Sprintf("fake-build-context-%s", t.Name())
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
@@ -82,6 +59,7 @@ func TestBuildContext(t *testing.T) {
 	}
 }
 
+// TestBuildErrors covers nil configs, mismatched names, and missing registry entries.
 func TestBuildErrors(t *testing.T) {
 	t.Run("nil config", func(t *testing.T) {
 		_, err := Build(nil)
@@ -108,10 +86,11 @@ func TestBuildErrors(t *testing.T) {
 	})
 }
 
+// TestManagerNewAndDefault verifies named disks and the configured default are both retrievable.
 func TestManagerNewAndDefault(t *testing.T) {
 	driverName := fmt.Sprintf("fake-manager-%s", t.Name())
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
-		return fakeStorage{}, nil
+		return stubFS{}, nil
 	})
 
 	mgr, err := New(Config{
@@ -138,6 +117,7 @@ func TestManagerNewAndDefault(t *testing.T) {
 	}
 }
 
+// TestManagerErrors covers invalid configuration, missing lookups, and the Default panic contract.
 func TestManagerErrors(t *testing.T) {
 	t.Run("missing default", func(t *testing.T) {
 		_, err := New(Config{Disks: map[DiskName]DriverConfig{"x": fakeDriverConfig{name: "fake"}}})
@@ -154,7 +134,7 @@ func TestManagerErrors(t *testing.T) {
 	})
 
 	t.Run("missing disk lookup", func(t *testing.T) {
-		mgr := &Manager{defaultDisk: "default", disks: map[DiskName]Storage{"default": fakeStorage{}}}
+		mgr := &Manager{defaultDisk: "default", disks: map[DiskName]Storage{"default": stubFS{}}}
 		_, err := mgr.Disk("missing")
 		if err == nil || err.Error() != `storage: disk "missing" not found` {
 			t.Fatalf("Disk missing error = %v", err)
@@ -172,6 +152,7 @@ func TestManagerErrors(t *testing.T) {
 	})
 }
 
+// TestResolveDriverConfig fills an omitted resolved name and rejects a missing typed name.
 func TestResolveDriverConfig(t *testing.T) {
 	t.Run("fills driver from config name", func(t *testing.T) {
 		name, resolved, err := resolveDriverConfig(fakeDriverConfig{name: "fake"})

@@ -11,6 +11,7 @@ require (
 	github.com/fsouza/fake-gcs-server v1.52.3
 	github.com/goforj/storage v0.4.4
 	github.com/goforj/storage/driver/memorystorage v0.4.4
+	github.com/goforj/storage/storagecore v0.4.4
 	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
 	google.golang.org/api v0.264.0
 )
@@ -85,9 +86,3 @@ require (
 	google.golang.org/grpc v1.79.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/goforj/storage => ..
-
-replace github.com/goforj/storage/storagecore => ../storagecore
-
-replace github.com/goforj/storage/driver/memorystorage => ../driver/memorystorage

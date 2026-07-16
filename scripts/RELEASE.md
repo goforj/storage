@@ -10,8 +10,9 @@ This repo is a multi-module Go repo. Release mechanics are different for:
 Published runtime modules:
 
 - `github.com/goforj/storage`
-- `github.com/goforj/storage/driver/*`
+- `github.com/goforj/storage/storagecore`
 - `github.com/goforj/storage/storagetest`
+- `github.com/goforj/storage/driver/*`
 
 These must be valid for external consumers without relying on local `replace`.
 

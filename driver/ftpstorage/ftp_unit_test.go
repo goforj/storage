@@ -7,13 +7,16 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"slices"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/goforj/storage/storagecore"
 	"github.com/jlaffaye/ftp"
 )
 
+// TestFTPConstructors verifies registry identity, required host validation, and TLS option constraints.
 func TestFTPConstructors(t *testing.T) {
 	if got := (Config{}).DriverName(); got != "ftp" {
 		t.Fatalf("DriverName = %q", got)
@@ -35,8 +38,16 @@ func TestFTPConstructors(t *testing.T) {
 			t.Fatal("NewContext returned nil storage")
 		}
 	})
+
+	t.Run("TLS options require TLS", func(t *testing.T) {
+		_, err := NewContext(context.Background(), Config{Host: "127.0.0.1", InsecureSkipVerify: true})
+		if err == nil {
+			t.Fatal("NewContext accepted a TLS-only option without TLS")
+		}
+	})
 }
 
+// TestFTPPrefixHelpers verifies exact-component stripping and traversal rejection.
 func TestFTPPrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	if got := d.stripPrefix("pre/path/to"); got != "path/to" {
@@ -50,12 +61,19 @@ func TestFTPPrefixHelpers(t *testing.T) {
 	}
 }
 
+// TestFTPWrapError verifies FTP text replies retain portable absence and permission identities.
 func TestFTPWrapError(t *testing.T) {
 	if err := wrapError(errors.New("file not found")); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if err := wrapError(errors.New("File not available")); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for case-insensitive match")
+	}
+	if err := wrapError(&textproto.Error{Code: 550, Msg: "Permission denied"}); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden before generic 550 classification, got %v", err)
+	}
+	if err := wrapError(&textproto.Error{Code: 550, Msg: "Directory not empty"}); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for non-empty directory, got %v", err)
 	}
 	if err := wrapError(nil); err != nil {
 		t.Fatalf("wrapError(nil) = %v", err)
@@ -65,6 +83,7 @@ func TestFTPWrapError(t *testing.T) {
 	}
 }
 
+// TestFTPContextCancellation verifies canceled operations stop before touching a connection.
 func TestFTPContextCancellation(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -102,6 +121,7 @@ func TestFTPContextCancellation(t *testing.T) {
 	}
 }
 
+// TestShouldReconnectFTP verifies retries are limited to transient control and transport failures.
 func TestShouldReconnectFTP(t *testing.T) {
 	tests := []struct {
 		name string
@@ -129,28 +149,57 @@ func TestShouldReconnectFTP(t *testing.T) {
 }
 
 type fakeFTPConn struct {
-	loginErr    error
-	quitErr     error
-	retrData    string
-	retrReader  io.ReadCloser
-	retrErr     error
-	stored      bytes.Buffer
-	storErr     error
-	deleteErr   error
-	listEntries []*ftp.Entry
-	listErr     error
-	fileSize    int64
-	fileSizeErr error
-	makeDirErr  error
+	loginErr       error
+	quitErr        error
+	retrData       string
+	retrReader     io.ReadCloser
+	retrErr        error
+	stored         bytes.Buffer
+	storErr        error
+	deleteErr      error
+	removeDirErr   error
+	removeDirCalls int
+	listEntries    []*ftp.Entry
+	listErr        error
+	listFn         func(string) ([]*ftp.Entry, error)
+	fileSize       int64
+	fileSizeErr    error
+	makeDirErr     error
 }
 
-func (f *fakeFTPConn) Login(string, string) error        { return f.loginErr }
-func (f *fakeFTPConn) Quit() error                       { return f.quitErr }
-func (f *fakeFTPConn) Delete(string) error               { return f.deleteErr }
-func (f *fakeFTPConn) FileSize(string) (int64, error)    { return f.fileSize, f.fileSizeErr }
-func (f *fakeFTPConn) MakeDir(string) error              { return f.makeDirErr }
-func (f *fakeFTPConn) Rename(string, string) error       { return f.storErr }
-func (f *fakeFTPConn) List(string) ([]*ftp.Entry, error) { return f.listEntries, f.listErr }
+// Login returns the configured authentication failure.
+func (f *fakeFTPConn) Login(string, string) error { return f.loginErr }
+
+// Quit returns the configured connection-cleanup failure.
+func (f *fakeFTPConn) Quit() error { return f.quitErr }
+
+// Delete returns the configured file-removal failure.
+func (f *fakeFTPConn) Delete(string) error { return f.deleteErr }
+
+// RemoveDir records non-recursive directory removal and returns its configured failure.
+func (f *fakeFTPConn) RemoveDir(string) error {
+	f.removeDirCalls++
+	return f.removeDirErr
+}
+
+// FileSize returns configured object metadata for existence and walk probes.
+func (f *fakeFTPConn) FileSize(string) (int64, error) { return f.fileSize, f.fileSizeErr }
+
+// MakeDir returns the configured recursive-parent creation result.
+func (f *fakeFTPConn) MakeDir(string) error { return f.makeDirErr }
+
+// Rename reuses the configured mutation failure for move tests.
+func (f *fakeFTPConn) Rename(string, string) error { return f.storErr }
+
+// List returns configured entries or delegates path-sensitive fixture behavior.
+func (f *fakeFTPConn) List(path string) ([]*ftp.Entry, error) {
+	if f.listFn != nil {
+		return f.listFn(path)
+	}
+	return f.listEntries, f.listErr
+}
+
+// Retr opens the configured download stream or payload.
 func (f *fakeFTPConn) Retr(string) (io.ReadCloser, error) {
 	if f.retrErr != nil {
 		return nil, f.retrErr
@@ -160,6 +209,8 @@ func (f *fakeFTPConn) Retr(string) (io.ReadCloser, error) {
 	}
 	return io.NopCloser(bytes.NewBufferString(f.retrData)), nil
 }
+
+// Stor captures an upload unless a configured failure interrupts it.
 func (f *fakeFTPConn) Stor(_ string, r io.Reader) error {
 	if f.storErr != nil {
 		return f.storErr
@@ -168,6 +219,7 @@ func (f *fakeFTPConn) Stor(_ string, r io.Reader) error {
 	return err
 }
 
+// TestFTPFakeBackedOperations verifies core object operations against the FTP adapter boundary.
 func TestFTPFakeBackedOperations(t *testing.T) {
 	conn := &fakeFTPConn{
 		retrData: "hello",
@@ -210,6 +262,94 @@ func TestFTPFakeBackedOperations(t *testing.T) {
 	}
 }
 
+// TestFTPDirectoryDeleteAndRootGuards verifies directory deletion is non-recursive and root mutations fail.
+func TestFTPDirectoryDeleteAndRootGuards(t *testing.T) {
+	conn := &fakeFTPConn{
+		listEntries: []*ftp.Entry{{Name: "folder", Type: ftp.EntryTypeFolder}},
+	}
+	d := &driver{prefix: "pre", conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+	if err := d.Delete("folder"); err != nil {
+		t.Fatalf("Delete directory: %v", err)
+	}
+	if conn.removeDirCalls != 1 {
+		t.Fatalf("RemoveDir calls = %d want 1", conn.removeDirCalls)
+	}
+	for name, err := range map[string]error{
+		"put":         d.Put("", []byte("root")),
+		"get":         func() error { _, err := d.Get(""); return err }(),
+		"copy source": d.Copy("", "folder"),
+		"copy target": d.Copy("folder", ""),
+		"move source": d.Move("", "other"),
+		"move target": d.Move("folder", ""),
+		"delete":      d.Delete(""),
+	} {
+		if !errors.Is(err, storagecore.ErrForbidden) {
+			t.Errorf("%s root error = %v", name, err)
+		}
+	}
+}
+
+// TestFTPLogicalRootIsSynthetic verifies missing prefixes and exact backend objects remain outside the namespace.
+func TestFTPLogicalRootIsSynthetic(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix string
+		conn   *fakeFTPConn
+	}{
+		{name: "unprefixed root", conn: &fakeFTPConn{}},
+		{name: "missing or exact prefix", prefix: "pre", conn: &fakeFTPConn{
+			listErr:     &textproto.Error{Code: 550, Msg: "not found"},
+			fileSize:    7,
+			fileSizeErr: nil,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &driver{prefix: tt.prefix, conn: tt.conn, dialFn: func() (ftpConn, error) { return tt.conn, nil }}
+			entry, err := d.Stat("")
+			if err != nil || entry.Path != "" || !entry.IsDir {
+				t.Fatalf("Stat root = %+v err=%v", entry, err)
+			}
+			if exists, err := d.Exists(""); err != nil || exists {
+				t.Fatalf("Exists root = %v err=%v", exists, err)
+			}
+			if entries, err := d.List(""); err != nil || len(entries) != 0 {
+				t.Fatalf("List root = %+v err=%v", entries, err)
+			}
+			called := false
+			if err := d.Walk("", func(storagecore.Entry) error { called = true; return nil }); err != nil || called {
+				t.Fatalf("Walk root called=%v err=%v", called, err)
+			}
+			if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("Get root error = %v", err)
+			}
+			if err := d.Copy("", "copy.txt"); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("Copy source root error = %v", err)
+			}
+		})
+	}
+}
+
+// TestFTPSamePathMoveValidatesSource verifies no-op moves still require an existing source.
+func TestFTPSamePathMoveValidatesSource(t *testing.T) {
+	for _, prefix := range []string{"", "pre"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			conn := &fakeFTPConn{
+				listEntries: []*ftp.Entry{{Name: "file.txt", Size: 7, Type: ftp.EntryTypeFile}},
+			}
+			d := &driver{prefix: prefix, conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+			if err := d.Move("file.txt", "file.txt"); err != nil {
+				t.Fatalf("Move same path: %v", err)
+			}
+			conn.listEntries = nil
+			if err := d.Move("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+				t.Fatalf("Move missing same path error = %v", err)
+			}
+		})
+	}
+}
+
+// TestFTPFakeWalkAndErrors verifies file fallback, recursive ordering, callbacks, and adapter failures.
 func TestFTPFakeWalkAndErrors(t *testing.T) {
 	t.Run("walk file path fallback", func(t *testing.T) {
 		conn := &fakeFTPConn{
@@ -232,9 +372,14 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 
 	t.Run("walk recursive callback error", func(t *testing.T) {
 		conn := &fakeFTPConn{
-			listEntries: []*ftp.Entry{
-				{Name: "sub", Type: ftp.EntryTypeFolder},
-				{Name: "file.txt", Size: 1, Type: ftp.EntryTypeFile},
+			listFn: func(path string) ([]*ftp.Entry, error) {
+				if path == "pre/sub" {
+					return nil, nil
+				}
+				return []*ftp.Entry{
+					{Name: "sub", Type: ftp.EntryTypeFolder},
+					{Name: "file.txt", Size: 1, Type: ftp.EntryTypeFile},
+				}, nil
 			},
 		}
 		d := &driver{prefix: "pre", dialFn: func() (ftpConn, error) { return conn, nil }}
@@ -247,6 +392,78 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 		})
 		if !errors.Is(err, stop) {
 			t.Fatalf("Walk callback error = %v", err)
+		}
+	})
+
+	t.Run("walk callback can re-enter driver", func(t *testing.T) {
+		conn := &fakeFTPConn{
+			retrData: "payload",
+			listEntries: []*ftp.Entry{
+				{Name: "file.txt", Size: 7, Type: ftp.EntryTypeFile},
+			},
+		}
+		d := &driver{prefix: "pre", conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+		done := make(chan error, 1)
+		go func() {
+			done <- d.Walk("", func(entry storagecore.Entry) error {
+				data, err := d.Get(entry.Path)
+				if err != nil {
+					return err
+				}
+				if string(data) != "payload" {
+					return errors.New("unexpected re-entrant payload")
+				}
+				return nil
+			})
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("Walk re-entry: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("Walk callback deadlocked while re-entering the driver")
+		}
+	})
+
+	t.Run("walk retry does not duplicate callbacks", func(t *testing.T) {
+		first := &fakeFTPConn{
+			listFn: func(path string) ([]*ftp.Entry, error) {
+				if path == "pre/tree" {
+					return nil, io.EOF
+				}
+				return []*ftp.Entry{{Name: "tree", Type: ftp.EntryTypeFolder}}, nil
+			},
+		}
+		second := &fakeFTPConn{
+			listFn: func(path string) ([]*ftp.Entry, error) {
+				if path == "pre/tree" {
+					return []*ftp.Entry{{Name: "leaf.txt", Size: 1, Type: ftp.EntryTypeFile}}, nil
+				}
+				return []*ftp.Entry{{Name: "tree", Type: ftp.EntryTypeFolder}}, nil
+			},
+		}
+		calls := 0
+		d := &driver{
+			prefix: "pre",
+			dialFn: func() (ftpConn, error) {
+				calls++
+				if calls == 1 {
+					return first, nil
+				}
+				return second, nil
+			},
+		}
+		var got []string
+		if err := d.Walk("", func(entry storagecore.Entry) error {
+			got = append(got, entry.Path)
+			return nil
+		}); err != nil {
+			t.Fatalf("Walk: %v", err)
+		}
+		want := []string{"tree", "tree/leaf.txt"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("Walk callbacks = %v want %v", got, want)
 		}
 	})
 

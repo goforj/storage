@@ -1,9 +1,13 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"reflect"
+)
 
+// resolveDriverConfig validates and normalizes a typed driver configuration.
 func resolveDriverConfig(cfg DriverConfig) (string, ResolvedConfig, error) {
-	if cfg == nil {
+	if isNil(cfg) {
 		return "", ResolvedConfig{}, fmt.Errorf("storage: driver config is required")
 	}
 
@@ -21,4 +25,18 @@ func resolveDriverConfig(cfg DriverConfig) (string, ResolvedConfig, error) {
 	}
 
 	return name, resolved, nil
+}
+
+// isNil reports whether an interface is nil or contains a typed nil value.
+func isNil(value any) bool {
+	if value == nil {
+		return true
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }

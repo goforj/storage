@@ -10,6 +10,11 @@ import (
 	"github.com/goforj/storage"
 )
 
+// contextBinder captures context binding without requiring older storage releases to expose it on Storage.
+type contextBinder interface {
+	WithContext(context.Context) storage.Storage
+}
+
 // RunStorageContractTests executes the shared contract against any Storage implementation.
 func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	t.Helper()
@@ -251,9 +256,13 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 
 	t.Run("context-handling", func(t *testing.T) {
+		binder, ok := fsys.(contextBinder)
+		if !ok {
+			t.Skip("storage implementation does not expose context binding")
+		}
 		canceled, cancel := context.WithCancel(context.Background())
 		cancel()
-		scoped := fsys.WithContext(canceled)
+		scoped := binder.WithContext(canceled)
 		if _, err := scoped.Get("ctx/file.txt"); err == nil {
 			t.Fatalf("expected context cancellation from Get")
 		}
@@ -316,6 +325,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	})
 }
 
+// extractPaths projects entries to paths while preserving backend list order.
 func extractPaths(entries []storage.Entry) []string {
 	paths := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -324,6 +334,7 @@ func extractPaths(entries []storage.Entry) []string {
 	return paths
 }
 
+// requireNoError fails the active contract case with operation context when err is non-nil.
 func requireNoError(t *testing.T, err error, msg string) {
 	t.Helper()
 	if err != nil {
@@ -331,6 +342,7 @@ func requireNoError(t *testing.T, err error, msg string) {
 	}
 }
 
+// requireTrue fails the active contract case when its required condition is false.
 func requireTrue(t *testing.T, cond bool, msg string) {
 	t.Helper()
 	if !cond {
@@ -338,6 +350,7 @@ func requireTrue(t *testing.T, cond bool, msg string) {
 	}
 }
 
+// requireFalse fails the active contract case when its forbidden condition is true.
 func requireFalse(t *testing.T, cond bool, msg string) {
 	t.Helper()
 	if cond {
@@ -345,6 +358,7 @@ func requireFalse(t *testing.T, cond bool, msg string) {
 	}
 }
 
+// requireEqual reports comparable contract values with their operation context.
 func requireEqual[T comparable](t *testing.T, want, got T, msg string) {
 	t.Helper()
 	if got != want {
@@ -352,6 +366,7 @@ func requireEqual[T comparable](t *testing.T, want, got T, msg string) {
 	}
 }
 
+// requireContains verifies that a backend listing includes the required path.
 func requireContains(t *testing.T, values []string, want string, msg string) {
 	t.Helper()
 	if !slices.Contains(values, want) {
@@ -359,6 +374,7 @@ func requireContains(t *testing.T, values []string, want string, msg string) {
 	}
 }
 
+// requireErrorIs verifies that a backend failure preserves the required sentinel classification.
 func requireErrorIs(t *testing.T, err error, target error, msg string) {
 	t.Helper()
 	if err == nil || !errors.Is(err, target) {

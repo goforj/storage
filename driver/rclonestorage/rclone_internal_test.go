@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	stdfs "io/fs"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestInitRcloneConfigData verifies inline configuration installs once and permits identical reuse.
 func TestInitRcloneConfigData(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -33,8 +34,8 @@ func TestInitRcloneConfigData(t *testing.T) {
 	if initConfigPath != "inline-rclone.conf" {
 		t.Fatalf("expected inline config path, got %q", initConfigPath)
 	}
-	if initConfigData != conf {
-		t.Fatalf("expected config data to be captured")
+	if initConfigDataHash == ([32]byte{}) {
+		t.Fatalf("expected config identity hash to be captured")
 	}
 	if config.Data() == nil {
 		t.Fatalf("expected config storage to be set")
@@ -44,6 +45,7 @@ func TestInitRcloneConfigData(t *testing.T) {
 	}
 }
 
+// TestInitRcloneConfigDataConflict verifies a second inline config identity is rejected process-wide.
 func TestInitRcloneConfigDataConflict(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -56,6 +58,7 @@ func TestInitRcloneConfigDataConflict(t *testing.T) {
 	}
 }
 
+// TestInitRcloneConfigDataSetConfigPathError verifies inline path-install failures become sticky initialization errors.
 func TestInitRcloneConfigDataSetConfigPathError(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -73,6 +76,7 @@ func TestInitRcloneConfigDataSetConfigPathError(t *testing.T) {
 	}
 }
 
+// TestInitRcloneConfigPathConflict verifies path, inline, and default config identities cannot be mixed.
 func TestInitRcloneConfigPathConflict(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -87,6 +91,33 @@ func TestInitRcloneConfigPathConflict(t *testing.T) {
 	}
 }
 
+// TestInitRcloneDefaultConfigRequiresExactIdentity verifies ambient config cannot reuse explicit process credentials.
+func TestInitRcloneDefaultConfigRequiresExactIdentity(t *testing.T) {
+	conf := "[localdisk]\ntype = local\n"
+	tests := []struct {
+		name   string
+		first  storagecore.ResolvedConfig
+		second storagecore.ResolvedConfig
+	}{
+		{name: "inline then default", first: storagecore.ResolvedConfig{RcloneConfigData: conf}},
+		{name: "path then default", first: storagecore.ResolvedConfig{RcloneConfigPath: filepath.Join(t.TempDir(), "explicit.conf")}},
+		{name: "default then inline", second: storagecore.ResolvedConfig{RcloneConfigData: conf}},
+		{name: "default then path", second: storagecore.ResolvedConfig{RcloneConfigPath: filepath.Join(t.TempDir(), "explicit.conf")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetRcloneInit(t)
+			if err := initRclone(tt.first); err != nil {
+				t.Fatalf("first initRclone: %v", err)
+			}
+			if err := initRclone(tt.second); err == nil {
+				t.Fatal("second initRclone reused a different config identity")
+			}
+		})
+	}
+}
+
+// TestInitRcloneConfigPathSetConfigPathError verifies file path-install failures remain observable.
 func TestInitRcloneConfigPathSetConfigPathError(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -104,6 +135,7 @@ func TestInitRcloneConfigPathSetConfigPathError(t *testing.T) {
 	}
 }
 
+// TestInitRcloneReturnsInitErr verifies a prior process-global initialization failure is returned unchanged.
 func TestInitRcloneReturnsInitErr(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -115,6 +147,7 @@ func TestInitRcloneReturnsInitErr(t *testing.T) {
 	}
 }
 
+// TestInitRcloneEmptyConfig verifies default rclone configuration can initialize once.
 func TestInitRcloneEmptyConfig(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -123,12 +156,14 @@ func TestInitRcloneEmptyConfig(t *testing.T) {
 	}
 }
 
+// TestNewMissingRemote verifies constructors require an rclone remote name.
 func TestNewMissingRemote(t *testing.T) {
 	if _, err := New(Config{}); err == nil {
 		t.Fatalf("expected error for missing remote")
 	}
 }
 
+// TestNewInitRcloneError verifies constructor setup preserves global initialization failures.
 func TestNewInitRcloneError(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -141,6 +176,7 @@ func TestNewInitRcloneError(t *testing.T) {
 	}
 }
 
+// TestNewCreateFsError verifies remote filesystem construction failures retain context.
 func TestNewCreateFsError(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -155,6 +191,7 @@ func TestNewCreateFsError(t *testing.T) {
 	}
 }
 
+// TestDriverContextErrors verifies canceled operations stop before accessing rclone.
 func TestDriverContextErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -181,6 +218,7 @@ func TestDriverContextErrors(t *testing.T) {
 	}
 }
 
+// TestDriverGetNotFound verifies missing rclone objects map to ErrNotFound.
 func TestDriverGetNotFound(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -193,6 +231,7 @@ func TestDriverGetNotFound(t *testing.T) {
 	}
 }
 
+// TestDriverGetInvalidPath verifies traversal is rejected before object lookup.
 func TestDriverGetInvalidPath(t *testing.T) {
 	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.Get("../escape"); err == nil {
@@ -200,6 +239,7 @@ func TestDriverGetInvalidPath(t *testing.T) {
 	}
 }
 
+// TestDriverFullPathInvalid verifies internal path resolution rejects namespace escape.
 func TestDriverFullPathInvalid(t *testing.T) {
 	d := &driver{prefix: "root"}
 	if _, err := d.fullPath("../escape"); err == nil {
@@ -207,6 +247,7 @@ func TestDriverFullPathInvalid(t *testing.T) {
 	}
 }
 
+// TestDriverListPrefixEntry verifies the configured prefix itself is omitted from logical listings.
 func TestDriverListPrefixEntry(t *testing.T) {
 	fake := newFakeFs()
 	fake.listEntries = fs.DirEntries{
@@ -218,17 +259,12 @@ func TestDriverListPrefixEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-	if entries[0].Path != "prefix" {
-		t.Fatalf("expected entry path to be prefix, got %q", entries[0].Path)
-	}
-	if !entries[0].IsDir {
-		t.Fatalf("expected entry to be directory")
+	if len(entries) != 0 {
+		t.Fatalf("expected namespace object to be hidden, got %+v", entries)
 	}
 }
 
+// TestDriverListInvalidPath verifies invalid listing paths never reach the backend.
 func TestDriverListInvalidPath(t *testing.T) {
 	fake := newFakeFs()
 	d := &driver{fs: fake, prefix: "root"}
@@ -237,6 +273,7 @@ func TestDriverListInvalidPath(t *testing.T) {
 	}
 }
 
+// TestDriverURLNotFound verifies public-link absence maps to ErrNotFound.
 func TestDriverURLNotFound(t *testing.T) {
 	fake := newFakeFs()
 	fake.features.PublicLink = func(ctx context.Context, remote string, expire fs.Duration, unlink bool) (string, error) {
@@ -249,6 +286,7 @@ func TestDriverURLNotFound(t *testing.T) {
 	}
 }
 
+// TestDriverURLUnsupported verifies backends without PublicLink report ErrUnsupported.
 func TestDriverURLUnsupported(t *testing.T) {
 	d := &driver{fs: newFakeFs()}
 	if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
@@ -256,6 +294,7 @@ func TestDriverURLUnsupported(t *testing.T) {
 	}
 }
 
+// TestDriverURLForbidden verifies public-link permission failures map to ErrForbidden.
 func TestDriverURLForbidden(t *testing.T) {
 	fake := newFakeFs()
 	fake.features.PublicLink = func(ctx context.Context, remote string, expire fs.Duration, unlink bool) (string, error) {
@@ -268,6 +307,34 @@ func TestDriverURLForbidden(t *testing.T) {
 	}
 }
 
+// TestDriverURLPreservesTransientErrors verifies unknown public-link failures remain unclassified.
+func TestDriverURLPreservesTransientErrors(t *testing.T) {
+	fake := newFakeFs()
+	sentinel := errors.New("transient public-link failure")
+	fake.features.PublicLink = func(context.Context, string, fs.Duration, bool) (string, error) {
+		return "", sentinel
+	}
+	d := &driver{fs: fake}
+	if _, err := d.URL("file.txt"); !errors.Is(err, sentinel) || errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("URL error = %v", err)
+	}
+}
+
+// TestDriverURLKnownUnsupportedErrors verifies rclone sharing limitations map to ErrUnsupported.
+func TestDriverURLKnownUnsupportedErrors(t *testing.T) {
+	for _, unsupported := range []error{fs.ErrorCantShareDirectories, fs.ErrorNotImplemented} {
+		fake := newFakeFs()
+		fake.features.PublicLink = func(context.Context, string, fs.Duration, bool) (string, error) {
+			return "", unsupported
+		}
+		d := &driver{fs: fake}
+		if _, err := d.URL("file.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
+			t.Fatalf("URL error for %v = %v", unsupported, err)
+		}
+	}
+}
+
+// TestDriverURLSuccess verifies PublicLink results are returned unchanged.
 func TestDriverURLSuccess(t *testing.T) {
 	fake := newFakeFs()
 	fake.features.PublicLink = func(ctx context.Context, remote string, expire fs.Duration, unlink bool) (string, error) {
@@ -284,6 +351,7 @@ func TestDriverURLSuccess(t *testing.T) {
 	}
 }
 
+// TestDriverURLInvalidPath verifies link generation rejects traversal before backend access.
 func TestDriverURLInvalidPath(t *testing.T) {
 	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.URL("../escape"); err == nil {
@@ -291,6 +359,7 @@ func TestDriverURLInvalidPath(t *testing.T) {
 	}
 }
 
+// TestWrapErrorPassthrough verifies unrelated backend errors are preserved exactly.
 func TestWrapErrorPassthrough(t *testing.T) {
 	sentinel := errors.New("other")
 	if err := wrapError(sentinel); !errors.Is(err, sentinel) {
@@ -298,6 +367,7 @@ func TestWrapErrorPassthrough(t *testing.T) {
 	}
 }
 
+// TestDriverGetOpenError verifies object-open failures propagate with storage classification.
 func TestDriverGetOpenError(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -313,6 +383,7 @@ func TestDriverGetOpenError(t *testing.T) {
 	}
 }
 
+// TestDriverGetReadError verifies download failures remain observable after cleanup.
 func TestDriverGetReadError(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -328,6 +399,7 @@ func TestDriverGetReadError(t *testing.T) {
 	}
 }
 
+// TestDriverGetSuccess verifies complete object downloads return the expected bytes.
 func TestDriverGetSuccess(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -347,6 +419,7 @@ func TestDriverGetSuccess(t *testing.T) {
 	}
 }
 
+// TestDriverPutMkdirError verifies parent creation failure prevents an upload.
 func TestDriverPutMkdirError(t *testing.T) {
 	fake := newFakeFs()
 	fake.mkdirFunc = func(ctx context.Context, dir string) error {
@@ -359,6 +432,7 @@ func TestDriverPutMkdirError(t *testing.T) {
 	}
 }
 
+// TestDriverPutError verifies rclone upload failures propagate to callers.
 func TestDriverPutError(t *testing.T) {
 	fake := newFakeFs()
 	fake.putFunc = func(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
@@ -371,8 +445,10 @@ func TestDriverPutError(t *testing.T) {
 	}
 }
 
+// TestDriverDeleteObjectNotFound verifies missing deletion targets map to ErrNotFound.
 func TestDriverDeleteObjectNotFound(t *testing.T) {
 	fake := newFakeFs()
+	fake.listErr = fs.ErrorDirNotFound
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
 		return nil, fs.ErrorObjectNotFound
 	}
@@ -383,6 +459,7 @@ func TestDriverDeleteObjectNotFound(t *testing.T) {
 	}
 }
 
+// TestDriverDeleteRemoveError verifies object removal failures are retained.
 func TestDriverDeleteRemoveError(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -398,6 +475,7 @@ func TestDriverDeleteRemoveError(t *testing.T) {
 	}
 }
 
+// TestDriverDeleteSuccess verifies a concrete object is removed once.
 func TestDriverDeleteSuccess(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -412,6 +490,7 @@ func TestDriverDeleteSuccess(t *testing.T) {
 	}
 }
 
+// TestDriverDeleteInvalidPath verifies deletion rejects traversal before backend access.
 func TestDriverDeleteInvalidPath(t *testing.T) {
 	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if err := d.Delete("../escape"); err == nil {
@@ -419,6 +498,7 @@ func TestDriverDeleteInvalidPath(t *testing.T) {
 	}
 }
 
+// TestDriverExistsNotFound verifies absent objects produce false without an error.
 func TestDriverExistsNotFound(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -435,6 +515,7 @@ func TestDriverExistsNotFound(t *testing.T) {
 	}
 }
 
+// TestDriverExistsInvalidPath verifies invalid existence probes are rejected.
 func TestDriverExistsInvalidPath(t *testing.T) {
 	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.Exists("../escape"); err == nil {
@@ -442,6 +523,7 @@ func TestDriverExistsInvalidPath(t *testing.T) {
 	}
 }
 
+// TestDriverExistsTrue verifies concrete rclone objects report present.
 func TestDriverExistsTrue(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -460,6 +542,7 @@ func TestDriverExistsTrue(t *testing.T) {
 	}
 }
 
+// TestDriverExistsError verifies non-absence lookup failures propagate.
 func TestDriverExistsError(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -472,6 +555,7 @@ func TestDriverExistsError(t *testing.T) {
 	}
 }
 
+// TestDriverListError verifies backend listing failures retain their storage identity.
 func TestDriverListError(t *testing.T) {
 	fake := newFakeFs()
 	fake.listErr = fs.ErrorDirNotFound
@@ -482,6 +566,7 @@ func TestDriverListError(t *testing.T) {
 	}
 }
 
+// TestDriverListEntries verifies object and directory metadata becomes sorted logical entries.
 func TestDriverListEntries(t *testing.T) {
 	fake := newFakeFs()
 	fake.listEntries = fs.DirEntries{
@@ -504,6 +589,7 @@ func TestDriverListEntries(t *testing.T) {
 	}
 }
 
+// TestDriverModTimeError verifies missing object timestamps retain ErrNotFound identity.
 func TestDriverModTimeError(t *testing.T) {
 	fake := newFakeFs()
 	fake.newObjectFunc = func(ctx context.Context, remote string) (fs.Object, error) {
@@ -516,6 +602,7 @@ func TestDriverModTimeError(t *testing.T) {
 	}
 }
 
+// TestDriverModTimeInvalidPath verifies timestamp lookup rejects traversal.
 func TestDriverModTimeInvalidPath(t *testing.T) {
 	d := &driver{fs: newFakeFs(), prefix: "root"}
 	if _, err := d.ModTime(context.Background(), "../escape"); err == nil {
@@ -523,6 +610,7 @@ func TestDriverModTimeInvalidPath(t *testing.T) {
 	}
 }
 
+// TestDriverModTimeSuccess verifies backend modification times are normalized to UTC.
 func TestDriverModTimeSuccess(t *testing.T) {
 	fake := newFakeFs()
 	want := time.Now().UTC().Truncate(time.Second)
@@ -542,15 +630,157 @@ func TestDriverModTimeSuccess(t *testing.T) {
 	}
 }
 
+// TestRcloneLocalDirectoryAndRootContracts verifies real local-backend directory semantics and root guards.
+func TestRcloneLocalDirectoryAndRootContracts(t *testing.T) {
+	for _, prefix := range []string{"", "tenant"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			localFS, err := fs.NewFs(context.Background(), t.TempDir())
+			if err != nil {
+				t.Fatalf("NewFs: %v", err)
+			}
+			d := &driver{fs: localFS, prefix: prefix}
+
+			if err := d.MakeDir("empty"); err != nil {
+				t.Fatalf("MakeDir empty: %v", err)
+			}
+			if err := d.Delete("empty"); err != nil {
+				t.Fatalf("Delete empty: %v", err)
+			}
+			if err := d.MakeDir("nonempty"); err != nil {
+				t.Fatalf("MakeDir nonempty: %v", err)
+			}
+			if err := d.Put("nonempty/file.txt", []byte("payload")); err != nil {
+				t.Fatalf("Put nonempty file: %v", err)
+			}
+			if err := d.Delete("nonempty"); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("Delete nonempty error = %v", err)
+			}
+
+			if err := d.MakeDir("source/nested"); err != nil {
+				t.Fatalf("MakeDir source: %v", err)
+			}
+			if err := d.Put("source/nested/file.txt", []byte("tree")); err != nil {
+				t.Fatalf("Put source: %v", err)
+			}
+			if err := d.Move("source", "destination"); err != nil {
+				t.Fatalf("Move directory: %v", err)
+			}
+			if data, err := d.Get("destination/nested/file.txt"); err != nil || string(data) != "tree" {
+				t.Fatalf("Get moved file = %q err=%v", data, err)
+			}
+			if _, err := d.Stat("source"); !errors.Is(err, storagecore.ErrNotFound) {
+				t.Fatalf("Stat moved source error = %v", err)
+			}
+
+			if err := d.Put("same.txt", []byte("same")); err != nil {
+				t.Fatalf("Put same: %v", err)
+			}
+			if err := d.Copy("same.txt", "same.txt"); err != nil {
+				t.Fatalf("Copy same path: %v", err)
+			}
+			if err := d.Move("same.txt", "same.txt"); err != nil {
+				t.Fatalf("Move same path: %v", err)
+			}
+			if data, err := d.Get("same.txt"); err != nil || string(data) != "same" {
+				t.Fatalf("Get same path = %q err=%v", data, err)
+			}
+			if err := d.Move("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+				t.Fatalf("Move missing same path error = %v", err)
+			}
+
+			for name, err := range map[string]error{
+				"put":         d.Put("", []byte("root")),
+				"get":         func() error { _, err := d.Get(""); return err }(),
+				"copy source": d.Copy("", "same.txt"),
+				"copy target": d.Copy("same.txt", ""),
+				"move source": d.Move("", "other"),
+				"move target": d.Move("same.txt", ""),
+				"delete":      d.Delete(""),
+			} {
+				if !errors.Is(err, storagecore.ErrForbidden) {
+					t.Errorf("%s root error = %v", name, err)
+				}
+			}
+		})
+	}
+}
+
+// TestRcloneLogicalRootIsSynthetic verifies an absent prefix or exact backend object cannot become a logical file.
+func TestRcloneLogicalRootIsSynthetic(t *testing.T) {
+	fake := newFakeFs()
+	fake.listErr = fs.ErrorDirNotFound
+	fake.newObjectFunc = func(context.Context, string) (fs.Object, error) {
+		return &fakeObject{fakeDirEntry: fakeDirEntry{remote: "tenant", fsys: fake, size: 7}}, nil
+	}
+	d := &driver{fs: fake, prefix: "tenant"}
+	if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Get root error = %v", err)
+	}
+	entry, err := d.Stat("")
+	if err != nil || entry.Path != "" || !entry.IsDir {
+		t.Fatalf("Stat root = %+v err=%v", entry, err)
+	}
+	if exists, err := d.Exists(""); err != nil || exists {
+		t.Fatalf("Exists root = %v err=%v", exists, err)
+	}
+	if entries, err := d.List(""); err != nil || len(entries) != 0 {
+		t.Fatalf("List root = %+v err=%v", entries, err)
+	}
+	called := false
+	if err := d.Walk("", func(storagecore.Entry) error { called = true; return nil }); err != nil || called {
+		t.Fatalf("Walk root called=%v err=%v", called, err)
+	}
+	if err := d.Copy("", "copy.txt"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Copy source root error = %v", err)
+	}
+	if _, err := d.URL(""); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("URL root error = %v", err)
+	}
+	if _, err := d.ModTime(context.Background(), ""); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ModTime root error = %v", err)
+	}
+}
+
+// TestRcloneCloseOwnsBackendLifecycle verifies Shutdown is bounded, idempotent, and terminal.
+func TestRcloneCloseOwnsBackendLifecycle(t *testing.T) {
+	fake := newFakeFs()
+	shutdownErr := errors.New("shutdown failed")
+	calls := 0
+	fake.features.Shutdown = func(ctx context.Context) error {
+		calls++
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("Shutdown context has no deadline")
+		}
+		return shutdownErr
+	}
+	d := &driver{fs: fake}
+	for i := 0; i < 2; i++ {
+		if err := d.Close(); !errors.Is(err, shutdownErr) {
+			t.Fatalf("Close %d error = %v", i, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("Shutdown calls = %d", calls)
+	}
+	if _, err := d.Get("file.txt"); !errors.Is(err, stdfs.ErrClosed) {
+		t.Fatalf("Get after Close error = %v", err)
+	}
+}
+
+// resetRcloneInit restores all process-global rclone hooks and identity state after each test.
 func resetRcloneInit(t *testing.T) {
 	t.Helper()
-	initOnce = sync.Once{}
+	rcloneConfigMu.Lock()
+	defer rcloneConfigMu.Unlock()
+	rcloneConfigured = false
 	initErr = nil
+	initConfigKind = ""
 	initConfigPath = ""
-	initConfigData = ""
+	initConfigDataHash = [32]byte{}
 	_ = config.SetConfigPath("")
 	setConfigPath = config.SetConfigPath
 	installConfig = configfile.Install
+	newRcloneFS = fs.NewFs
 }
 
 type fakeFs struct {
@@ -562,38 +792,47 @@ type fakeFs struct {
 	mkdirFunc     func(ctx context.Context, dir string) error
 }
 
+// newFakeFs creates an rclone filesystem double with an empty feature set.
 func newFakeFs() *fakeFs {
 	return &fakeFs{features: &fs.Features{}}
 }
 
+// Name returns the stable backend identifier required by fs.Info.
 func (f *fakeFs) Name() string {
 	return "fake"
 }
 
+// Root keeps fake remotes relative to the logical backend root.
 func (f *fakeFs) Root() string {
 	return ""
 }
 
+// String returns a stable diagnostic label for the fake filesystem.
 func (f *fakeFs) String() string {
 	return "fake"
 }
 
+// Precision advertises nanosecond timestamps for metadata assertions.
 func (f *fakeFs) Precision() time.Duration {
 	return time.Nanosecond
 }
 
+// Hashes reports no supported object hash algorithms.
 func (f *fakeFs) Hashes() hash.Set {
 	return hash.NewHashSet()
 }
 
+// Features exposes mutable backend capabilities to each test.
 func (f *fakeFs) Features() *fs.Features {
 	return f.features
 }
 
+// List returns the configured directory entries or listing failure.
 func (f *fakeFs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 	return f.listEntries, f.listErr
 }
 
+// NewObject delegates path-sensitive lookups and otherwise reports absence.
 func (f *fakeFs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	if f.newObjectFunc != nil {
 		return f.newObjectFunc(ctx, remote)
@@ -601,6 +840,7 @@ func (f *fakeFs) NewObject(ctx context.Context, remote string) (fs.Object, error
 	return nil, fs.ErrorObjectNotFound
 }
 
+// Put delegates uploads to the configured fixture hook.
 func (f *fakeFs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
 	if f.putFunc != nil {
 		return f.putFunc(ctx, in, src, options...)
@@ -608,6 +848,7 @@ func (f *fakeFs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, optio
 	return nil, errors.New("not implemented")
 }
 
+// Mkdir delegates directory creation when a fixture hook is installed.
 func (f *fakeFs) Mkdir(ctx context.Context, dir string) error {
 	if f.mkdirFunc != nil {
 		return f.mkdirFunc(ctx, dir)
@@ -615,6 +856,7 @@ func (f *fakeFs) Mkdir(ctx context.Context, dir string) error {
 	return nil
 }
 
+// Rmdir makes fake empty-directory removal succeed.
 func (f *fakeFs) Rmdir(ctx context.Context, dir string) error {
 	return nil
 }
@@ -626,18 +868,22 @@ type fakeDirEntry struct {
 	modTime time.Time
 }
 
+// Fs returns the configured backend metadata for this fake entry.
 func (d *fakeDirEntry) Fs() fs.Info {
 	return d.fsys
 }
 
+// String renders the fake entry's remote path for diagnostics.
 func (d *fakeDirEntry) String() string {
 	return d.remote
 }
 
+// Remote returns the fake entry's backend-relative path.
 func (d *fakeDirEntry) Remote() string {
 	return d.remote
 }
 
+// ModTime returns the configured timestamp for metadata assertions.
 func (d *fakeDirEntry) ModTime(ctx context.Context) time.Time {
 	if d.modTime.IsZero() {
 		return time.Time{}
@@ -645,6 +891,7 @@ func (d *fakeDirEntry) ModTime(ctx context.Context) time.Time {
 	return d.modTime
 }
 
+// Size returns the configured byte length for this fake entry.
 func (d *fakeDirEntry) Size() int64 {
 	return d.size
 }
@@ -653,10 +900,12 @@ type fakeDirectory struct {
 	fakeDirEntry
 }
 
+// Items reports an unknown child count for the fake directory.
 func (d *fakeDirectory) Items() int64 {
 	return -1
 }
 
+// ID reports no backend-specific identifier for the fake directory.
 func (d *fakeDirectory) ID() string {
 	return ""
 }
@@ -668,18 +917,22 @@ type fakeObject struct {
 	removeErr error
 }
 
+// Hash reports unsupported hashing for the fake object.
 func (o *fakeObject) Hash(ctx context.Context, ty hash.Type) (string, error) {
 	return "", hash.ErrUnsupported
 }
 
+// Storable marks the fake object as eligible for backend storage.
 func (o *fakeObject) Storable() bool {
 	return true
 }
 
+// SetModTime accepts timestamp updates without mutating fixture metadata.
 func (o *fakeObject) SetModTime(ctx context.Context, t time.Time) error {
 	return nil
 }
 
+// Open returns the configured download stream or open failure.
 func (o *fakeObject) Open(ctx context.Context, options ...fs.OpenOption) (io.ReadCloser, error) {
 	if o.openErr != nil {
 		return nil, o.openErr
@@ -690,10 +943,12 @@ func (o *fakeObject) Open(ctx context.Context, options ...fs.OpenOption) (io.Rea
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
+// Update accepts replacement content because upload behavior is tested at the filesystem boundary.
 func (o *fakeObject) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
 	return nil
 }
 
+// Remove returns the configured object-deletion result.
 func (o *fakeObject) Remove(ctx context.Context) error {
 	if o.removeErr != nil {
 		return o.removeErr
@@ -705,14 +960,17 @@ type errReadCloser struct {
 	err error
 }
 
+// Read injects the configured download failure.
 func (e errReadCloser) Read(_ []byte) (int, error) {
 	return 0, e.err
 }
 
+// Close makes cleanup of the failing test reader succeed.
 func (e errReadCloser) Close() error {
 	return nil
 }
 
+// TestInitRcloneInvalidConfigData verifies malformed inline configuration fails initialization.
 func TestInitRcloneInvalidConfigData(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -722,6 +980,7 @@ func TestInitRcloneInvalidConfigData(t *testing.T) {
 	}
 }
 
+// TestDriverStripPrefixEmpty verifies unprefixed remote paths remain unchanged.
 func TestDriverStripPrefixEmpty(t *testing.T) {
 	d := &driver{prefix: ""}
 	if got := d.stripPrefix("file.txt"); got != "file.txt" {
@@ -729,6 +988,7 @@ func TestDriverStripPrefixEmpty(t *testing.T) {
 	}
 }
 
+// TestInitRclonePathAlreadySetNoConflict verifies identical config paths can be reused.
 func TestInitRclonePathAlreadySetNoConflict(t *testing.T) {
 	resetRcloneInit(t)
 
@@ -741,6 +1001,7 @@ func TestInitRclonePathAlreadySetNoConflict(t *testing.T) {
 	}
 }
 
+// TestNewInvalidPrefix verifies constructor prefix traversal is rejected.
 func TestNewInvalidPrefix(t *testing.T) {
 	_, err := New(Config{Remote: "localdisk:", Prefix: "../escape"})
 	if err == nil {
@@ -748,6 +1009,7 @@ func TestNewInvalidPrefix(t *testing.T) {
 	}
 }
 
+// TestInitRcloneConfigDataSetsConfigPath verifies inline config installs the synthetic path expected by rclone.
 func TestInitRcloneConfigDataSetsConfigPath(t *testing.T) {
 	resetRcloneInit(t)
 

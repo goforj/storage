@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// TestSFTPWithEmbeddedServer verifies a real SSH/SFTP session can upload and download data.
 func TestSFTPWithEmbeddedServer(t *testing.T) {
 	root := t.TempDir()
 
@@ -65,6 +66,7 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 	}
 }
 
+// acceptLoop upgrades accepted loopback connections into embedded SSH sessions.
 func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root string) {
 	for {
 		conn, err := ln.Accept()
@@ -83,6 +85,7 @@ func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root strin
 	}
 }
 
+// handleChannels accepts only session channels that request the SFTP subsystem.
 func handleChannels(t *testing.T, chans <-chan ssh.NewChannel, root string) {
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
@@ -122,6 +125,7 @@ func handleChannels(t *testing.T, chans <-chan ssh.NewChannel, root string) {
 	}
 }
 
+// generateSigner creates an ephemeral RSA host key for the embedded SSH server.
 func generateSigner() (ssh.Signer, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

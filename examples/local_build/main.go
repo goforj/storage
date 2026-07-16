@@ -1,3 +1,4 @@
+// Command local_build demonstrates direct construction of a local storage disk.
 package main
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/goforj/storage/driver/localstorage"
 )
 
+// main constructs an isolated local disk and demonstrates a write/read round trip.
 func main() {
 	root, err := os.MkdirTemp("", "storage-local-build-*")
 	if err != nil {

@@ -7,8 +7,13 @@ on:
     branches: [main]
 
 jobs:
-  unit:
+  quality:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.24.x", "stable"]
 
     steps:
       - name: Checkout
@@ -17,39 +22,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version: ${{ matrix.go-version }}
           cache: true
           cache-dependency-path: |
             go.sum
+            docs/bench/go.mod
+            docs/bench/go.sum
             storagecore/go.mod
             driver/*/go.mod
+            examples/go.mod
             examples/go.sum
+            integration/go.mod
             integration/go.sum
+            storagetest/go.mod
             storagetest/go.sum
             driver/*/go.sum
 
-      - name: Download dependencies
-        run: |
-          go mod download
-          for module in examples storagetest integration driver/*; do
-            if [ -f "$module/go.mod" ]; then
-              (cd "$module" && go mod download)
-            fi
-          done
-
-      - name: Verify published module manifests
-        run: scripts/check-published-modules.sh
-
-      - name: Run tests
-        run: |
-          go test ./... -v
-          cd storagetest
-          go test ./... -v
-
-      - name: Verify generated examples compile
-        run: |
-          cd examples
-          GOWORK=off go test ./... -run TestExamplesBuild -count=1 -v
+      - name: Check every module
+        run: scripts/check-quality.sh
 
   integration:
     runs-on: ubuntu-latest
@@ -65,10 +55,15 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
+            docs/bench/go.mod
+            docs/bench/go.sum
             storagecore/go.mod
             driver/*/go.mod
+            examples/go.mod
             examples/go.sum
+            integration/go.mod
             integration/go.sum
+            storagetest/go.mod
             storagetest/go.sum
             driver/*/go.sum
 
@@ -92,10 +87,15 @@ jobs:
           cache-dependency-path: |
             .github/cache-keys/coverage-go.txt
             go.sum
+            docs/bench/go.mod
+            docs/bench/go.sum
             storagecore/go.mod
             driver/*/go.mod
+            examples/go.mod
             examples/go.sum
+            integration/go.mod
             integration/go.sum
+            storagetest/go.mod
             storagetest/go.sum
             driver/*/go.sum
 

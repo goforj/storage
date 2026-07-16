@@ -1,6 +1,9 @@
 package storage
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type fileCounterWalker interface {
 	Walk(p string, fn func(Entry) error) error
@@ -36,8 +39,12 @@ func CountFiles(disk fileCounterWalker, p string) (int, error) {
 // path using the caller-provided context.
 // @group Context
 func CountFilesContext(ctx context.Context, disk any, p string) (int, error) {
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return 0, err
+	}
+	if isNil(disk) {
+		return 0, fmt.Errorf("storage: count files requires a non-nil disk")
 	}
 	var count int
 	walk := func(entry Entry) error {
@@ -51,6 +58,9 @@ func CountFilesContext(ctx context.Context, disk any, p string) (int, error) {
 	}
 	if scoped, ok := disk.(interface{ WithContext(context.Context) Storage }); ok {
 		bound := scoped.WithContext(ctx)
+		if isNil(bound) {
+			return 0, fmt.Errorf("storage: WithContext returned a nil storage")
+		}
 		if walker, ok := bound.(fileCounterWalker); ok {
 			if err := walker.Walk(p, walk); err != nil {
 				return 0, err

@@ -1,3 +1,4 @@
+// Command rclone_local demonstrates rclone storage backed by a local remote.
 package main
 
 import (
@@ -14,8 +15,9 @@ const inlineConfig = `
 type = local
 `
 
+// main builds an inline local rclone remote and demonstrates a write/read round trip.
 func main() {
-	// Create a temp directory to act as the local backend root.
+	// A temporary backend keeps the runnable example from leaving files behind.
 	root, err := os.MkdirTemp("", "rclone-local-*")
 	if err != nil {
 		log.Fatalf("temp dir: %v", err)

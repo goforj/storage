@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestRenderS3Validation verifies remote names, regions, and credential pairs are required.
 func TestRenderS3Validation(t *testing.T) {
 	_, err := RenderS3(S3Remote{})
 	if err == nil {
@@ -20,6 +21,7 @@ func TestRenderS3Validation(t *testing.T) {
 	}
 }
 
+// TestRenderS3Output verifies defaults and optional S3 directives render canonically.
 func TestRenderS3Output(t *testing.T) {
 	out, err := RenderS3(S3Remote{
 		Name:               "remote",
@@ -52,6 +54,7 @@ func TestRenderS3Output(t *testing.T) {
 	}
 }
 
+// TestMustRenderS3Panics verifies invalid S3 configuration triggers the convenience panic.
 func TestMustRenderS3Panics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
@@ -61,6 +64,7 @@ func TestMustRenderS3Panics(t *testing.T) {
 	_ = MustRenderS3(S3Remote{})
 }
 
+// contains matches a complete rendered configuration line.
 func contains(body, needle string) bool {
 	return strings.Contains(body, needle)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestRcloneWrapError verifies rclone sentinels retain portable storage identities.
 func TestRcloneWrapError(t *testing.T) {
 	if err := wrapError(fs.ErrorObjectNotFound); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
@@ -22,6 +23,7 @@ func TestRcloneWrapError(t *testing.T) {
 	}
 }
 
+// TestRcloneIsNotFound verifies every rclone absence sentinel is recognized.
 func TestRcloneIsNotFound(t *testing.T) {
 	if !isNotFound(fs.ErrorObjectNotFound) {
 		t.Fatalf("expected true for object not found")
@@ -34,6 +36,7 @@ func TestRcloneIsNotFound(t *testing.T) {
 	}
 }
 
+// TestRclonePrefixHelpers verifies normalized prefix joining and exact-component stripping.
 func TestRclonePrefixHelpers(t *testing.T) {
 	d := &driver{prefix: "pre"}
 	fp, err := d.fullPath("file.txt")

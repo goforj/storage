@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestRenderLocal verifies name validation and canonical local-remote output.
 func TestRenderLocal(t *testing.T) {
 	_, err := RenderLocal(LocalRemote{})
 	if err == nil {
@@ -23,6 +24,7 @@ func TestRenderLocal(t *testing.T) {
 	}
 }
 
+// TestMustRenderLocalPanics verifies invalid local configuration triggers the convenience panic.
 func TestMustRenderLocalPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
@@ -32,6 +34,7 @@ func TestMustRenderLocalPanics(t *testing.T) {
 	_ = MustRenderLocal(LocalRemote{Name: ""})
 }
 
+// containsLine matches a complete rendered configuration line.
 func containsLine(body, line string) bool {
 	return strings.Contains("\n"+body+"\n", "\n"+line+"\n")
 }

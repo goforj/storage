@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/goforj/storage/storagecore"
-	testcontainers "github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// TestRedisStorageBuildAndIO verifies a real Redis container supports construction and object round trips.
 func TestRedisStorageBuildAndIO(t *testing.T) {
 	ctx := context.Background()
 	container, addr := startRedisContainer(t, ctx)
@@ -47,6 +48,7 @@ func TestRedisStorageBuildAndIO(t *testing.T) {
 	}
 }
 
+// TestRedisIndexesReflectHierarchy checks every v2 ancestor and child link written for a nested object.
 func TestRedisIndexesReflectHierarchy(t *testing.T) {
 	d := newIntegrationDriver(t)
 	ctx := context.Background()
@@ -55,15 +57,18 @@ func TestRedisIndexesReflectHierarchy(t *testing.T) {
 		t.Fatalf("Put: %v", err)
 	}
 
-	assertSetMembers(t, d, ctx, d.dirChildrenKey(""), []string{encodeDirChild("itest/nested")})
-	assertSetMembers(t, d, ctx, d.dirChildrenKey("itest/nested"), []string{encodeDirChild("itest/nested/leaf")})
-	assertSetMembers(t, d, ctx, d.dirChildrenKey("itest/nested/leaf"), []string{encodeFileChild("itest/nested/leaf/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey(""), []string{encodeDirChild("itest")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest"), []string{encodeDirChild("itest/nested")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest/nested"), []string{encodeDirChild("itest/nested/leaf")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest/nested/leaf"), []string{encodeFileChild("itest/nested/leaf/file.txt")})
 
-	assertSetMembers(t, d, ctx, d.dirObjectsKey(""), []string{"itest/nested/leaf/file.txt"})
-	assertSetMembers(t, d, ctx, d.dirObjectsKey("itest/nested"), []string{"itest/nested/leaf/file.txt"})
-	assertSetMembers(t, d, ctx, d.dirObjectsKey("itest/nested/leaf"), []string{"itest/nested/leaf/file.txt"})
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey(""), []string{objectMember("itest/nested/leaf/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey("itest"), []string{objectMember("itest/nested/leaf/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey("itest/nested"), []string{objectMember("itest/nested/leaf/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey("itest/nested/leaf"), []string{objectMember("itest/nested/leaf/file.txt")})
 }
 
+// TestRedisDeletePrunesEmptyDirectories verifies object deletion removes now-empty v2 ancestor indexes.
 func TestRedisDeletePrunesEmptyDirectories(t *testing.T) {
 	d := newIntegrationDriver(t)
 	ctx := context.Background()
@@ -75,14 +80,17 @@ func TestRedisDeletePrunesEmptyDirectories(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	assertSetMembers(t, d, ctx, d.dirObjectsKey(""), nil)
-	assertKeyMissing(t, d, ctx, d.dirObjectsKey("itest/nested"))
-	assertKeyMissing(t, d, ctx, d.dirObjectsKey("itest/nested/leaf"))
-	assertKeyMissing(t, d, ctx, d.dirChildrenKey("itest/nested"))
-	assertKeyMissing(t, d, ctx, d.dirChildrenKey("itest/nested/leaf"))
-	assertSetMembers(t, d, ctx, d.dirChildrenKey(""), nil)
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey(""), nil)
+	assertKeyMissing(t, d, ctx, d.versionedDirObjectsKey("itest"))
+	assertKeyMissing(t, d, ctx, d.versionedDirObjectsKey("itest/nested"))
+	assertKeyMissing(t, d, ctx, d.versionedDirObjectsKey("itest/nested/leaf"))
+	assertKeyMissing(t, d, ctx, d.versionedDirChildrenKey("itest"))
+	assertKeyMissing(t, d, ctx, d.versionedDirChildrenKey("itest/nested"))
+	assertKeyMissing(t, d, ctx, d.versionedDirChildrenKey("itest/nested/leaf"))
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey(""), nil)
 }
 
+// TestRedisMoveReindexesDirectories verifies an object move removes source indexes and creates destination indexes.
 func TestRedisMoveReindexesDirectories(t *testing.T) {
 	d := newIntegrationDriver(t)
 	ctx := context.Background()
@@ -95,13 +103,15 @@ func TestRedisMoveReindexesDirectories(t *testing.T) {
 	}
 
 	assertKeyMissing(t, d, ctx, d.objectKey("itest/from/leaf/file.txt"))
-	assertSetMembers(t, d, ctx, d.dirObjectsKey(""), []string{"itest/to/branch/file.txt"})
-	assertSetMembers(t, d, ctx, d.dirChildrenKey(""), []string{encodeDirChild("itest/to")})
-	assertKeyMissing(t, d, ctx, d.dirObjectsKey("itest/from"))
-	assertSetMembers(t, d, ctx, d.dirChildrenKey("itest/to"), []string{encodeDirChild("itest/to/branch")})
-	assertSetMembers(t, d, ctx, d.dirChildrenKey("itest/to/branch"), []string{encodeFileChild("itest/to/branch/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirObjectsKey(""), []string{objectMember("itest/to/branch/file.txt")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey(""), []string{encodeDirChild("itest")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest"), []string{encodeDirChild("itest/to")})
+	assertKeyMissing(t, d, ctx, d.versionedDirObjectsKey("itest/from"))
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest/to"), []string{encodeDirChild("itest/to/branch")})
+	assertSetMembers(t, d, ctx, d.versionedDirChildrenKey("itest/to/branch"), []string{encodeFileChild("itest/to/branch/file.txt")})
 }
 
+// TestRedisListAndWalkUseIndexedHierarchy compares immediate and recursive traversal over real Redis indexes.
 func TestRedisListAndWalkUseIndexedHierarchy(t *testing.T) {
 	d := newIntegrationDriver(t)
 
@@ -142,6 +152,7 @@ func TestRedisListAndWalkUseIndexedHierarchy(t *testing.T) {
 	}
 }
 
+// newIntegrationDriver starts isolated Redis storage with the prefix used by raw-index assertions.
 func newIntegrationDriver(t *testing.T) *driver {
 	t.Helper()
 	ctx := context.Background()
@@ -171,6 +182,7 @@ func newIntegrationDriver(t *testing.T) *driver {
 	return d
 }
 
+// assertSetMembers compares one Redis SET without depending on member order.
 func assertSetMembers(t *testing.T, d *driver, ctx context.Context, key string, want []string) {
 	t.Helper()
 	got, err := d.client.SMembers(ctx, key).Result()
@@ -184,6 +196,7 @@ func assertSetMembers(t *testing.T, d *driver, ctx context.Context, key string, 
 	}
 }
 
+// assertKeyMissing verifies pruning removed a Redis key rather than leaving an empty structure.
 func assertKeyMissing(t *testing.T, d *driver, ctx context.Context, key string) {
 	t.Helper()
 	exists, err := d.client.Exists(ctx, key).Result()
@@ -195,6 +208,7 @@ func assertKeyMissing(t *testing.T, d *driver, ctx context.Context, key string) 
 	}
 }
 
+// assertPaths compares storage entries by path without depending on traversal order.
 func assertPaths(t *testing.T, entries []storagecore.Entry, want []string) {
 	t.Helper()
 	got := make([]string, 0, len(entries))
@@ -208,6 +222,7 @@ func assertPaths(t *testing.T, entries []storagecore.Entry, want []string) {
 	}
 }
 
+// startRedisContainer launches Redis 7 and returns its mapped host address.
 func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
 	t.Helper()
 
@@ -237,6 +252,7 @@ func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	return container, host + ":" + port.Port()
 }
 
+// shutdownContainer bounds container cleanup so a stuck runtime cannot hang the test suite.
 func shutdownContainer(container testcontainers.Container) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

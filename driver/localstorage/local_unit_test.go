@@ -11,6 +11,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestLocalConstructors verifies registry identity and required-root validation.
 func TestLocalConstructors(t *testing.T) {
 	t.Run("new missing remote", func(t *testing.T) {
 		_, err := New(Config{})
@@ -31,6 +32,7 @@ func TestLocalConstructors(t *testing.T) {
 	})
 }
 
+// TestWrapLocalError verifies filesystem absence and permission errors retain portable identities.
 func TestWrapLocalError(t *testing.T) {
 	if err := wrapLocalError(os.ErrNotExist); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
@@ -45,6 +47,7 @@ func TestWrapLocalError(t *testing.T) {
 	}
 }
 
+// TestResolvePathAndTraversal verifies logical paths stay beneath the configured root and prefix.
 func TestResolvePathAndTraversal(t *testing.T) {
 	d := &driver{root: "/tmp/root", prefix: "pre"}
 	// valid path
@@ -61,6 +64,7 @@ func TestResolvePathAndTraversal(t *testing.T) {
 	}
 }
 
+// TestLocalURLUnsupported verifies local files do not advertise public links.
 func TestLocalURLUnsupported(t *testing.T) {
 	d := &driver{}
 	if _, err := d.URL("x"); !errors.Is(err, storagecore.ErrUnsupported) {
@@ -68,6 +72,7 @@ func TestLocalURLUnsupported(t *testing.T) {
 	}
 }
 
+// TestLocalModTimeAndUserRelative verifies metadata timestamps and user-relative diagnostics.
 func TestLocalModTimeAndUserRelative(t *testing.T) {
 	root := t.TempDir()
 	d := &driver{root: root, prefix: "pre"}
@@ -97,6 +102,7 @@ func TestLocalModTimeAndUserRelative(t *testing.T) {
 	}
 }
 
+// TestLocalContextCancellation verifies canceled calls stop before filesystem access.
 func TestLocalContextCancellation(t *testing.T) {
 	root := t.TempDir()
 	d := &driver{root: root, prefix: "pre"}
@@ -124,6 +130,7 @@ func TestLocalContextCancellation(t *testing.T) {
 	}
 }
 
+// TestLocalWalkFileAndCallbackError verifies file-root traversal and callback error propagation.
 func TestLocalWalkFileAndCallbackError(t *testing.T) {
 	root := t.TempDir()
 	d := &driver{root: root, prefix: "pre"}

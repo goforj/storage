@@ -8,6 +8,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestConfigResolvedConfig verifies every Redis config field survives shared resolution.
 func TestConfigResolvedConfig(t *testing.T) {
 	cfg := Config{
 		Addr:     "127.0.0.1:6379",
@@ -37,6 +38,7 @@ func TestConfigResolvedConfig(t *testing.T) {
 	}
 }
 
+// TestNewRequiresAddr rejects configuration before attempting an unusable client connection.
 func TestNewRequiresAddr(t *testing.T) {
 	_, err := New(Config{})
 	if err == nil || err.Error() != "storage: redis storage requires RedisAddr" {
@@ -44,6 +46,7 @@ func TestNewRequiresAddr(t *testing.T) {
 	}
 }
 
+// TestContextCancellation verifies every context-aware operation short-circuits before client access.
 func TestContextCancellation(t *testing.T) {
 	store := &driver{prefix: "itest"}
 
@@ -85,6 +88,7 @@ func TestContextCancellation(t *testing.T) {
 	}
 }
 
+// TestKeyHelpers verifies prefix insertion and removal preserve caller-visible paths.
 func TestKeyHelpers(t *testing.T) {
 	store := &driver{prefix: "sandbox"}
 
@@ -100,6 +104,7 @@ func TestKeyHelpers(t *testing.T) {
 	}
 }
 
+// TestRecursiveParentDirs verifies traversal synthesizes ancestors from root to direct parent.
 func TestRecursiveParentDirs(t *testing.T) {
 	got := recursiveParentDirs("one/two/file.txt")
 	want := []string{"one", "one/two"}
@@ -113,6 +118,7 @@ func TestRecursiveParentDirs(t *testing.T) {
 	}
 }
 
+// TestRedisNamespace preserves the historical DB-zero keyspace while isolating nonzero databases.
 func TestRedisNamespace(t *testing.T) {
 	if got := redisNamespace(storagecore.ResolvedConfig{}); got != "goforj:storage:redis" {
 		t.Fatalf("redisNamespace default = %q", got)

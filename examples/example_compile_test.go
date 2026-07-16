@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestExamplesBuild verifies every documented example remains directly buildable.
 func TestExamplesBuild(t *testing.T) {
 	t.Parallel()
 
@@ -34,6 +35,7 @@ func TestExamplesBuild(t *testing.T) {
 	}
 }
 
+// buildExample compiles one example in module isolation and returns its diagnostic output.
 func buildExample(exampleDir string) error {
 	cmd := exec.Command(
 		"go", "build",

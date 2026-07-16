@@ -1,6 +1,9 @@
 package storage
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Build constructs a single storage backend from a typed driver config without
 // a Manager.
@@ -21,6 +24,10 @@ func Build(cfg DriverConfig) (Storage, error) {
 // using the caller-provided context.
 // @group Context
 func BuildContext(ctx context.Context, cfg DriverConfig) (Storage, error) {
+	ctx = normalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	name, resolved, err := resolveDriverConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -29,5 +36,12 @@ func BuildContext(ctx context.Context, cfg DriverConfig) (Storage, error) {
 	if !ok {
 		return nil, errUnknownDriver(name)
 	}
-	return factory(ctx, resolved)
+	store, err := factory(ctx, resolved)
+	if err != nil {
+		return nil, err
+	}
+	if isNil(store) {
+		return nil, fmt.Errorf("storage: driver %q returned a nil store", name)
+	}
+	return store, nil
 }

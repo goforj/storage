@@ -13,6 +13,7 @@ import (
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 )
 
+// TestGetenvDefault verifies that non-empty environment values override fixture defaults.
 func TestGetenvDefault(t *testing.T) {
 	const key = "STORAGETEST_GETENV_DEFAULT"
 	t.Setenv(key, "")
@@ -26,11 +27,13 @@ func TestGetenvDefault(t *testing.T) {
 	}
 }
 
+// TestRequireIntegrationWhenEnabled verifies that the integration gate permits opted-in tests.
 func TestRequireIntegrationWhenEnabled(t *testing.T) {
 	t.Setenv("RUN_INTEGRATION", "1")
 	RequireIntegration(t)
 }
 
+// TestRequireIntegrationSkipsWhenDisabled verifies that integration helpers skip without explicit opt-in.
 func TestRequireIntegrationSkipsWhenDisabled(t *testing.T) {
 	t.Setenv("RUN_INTEGRATION", "")
 	t.Run("skip", func(t *testing.T) {
@@ -38,6 +41,7 @@ func TestRequireIntegrationSkipsWhenDisabled(t *testing.T) {
 	})
 }
 
+// TestS3Settings verifies that every S3 fixture setting honors its environment override.
 func TestS3Settings(t *testing.T) {
 	t.Setenv("INTEGRATION_S3_ENDPOINT", "http://example")
 	t.Setenv("INTEGRATION_S3_REGION", "region")
@@ -51,6 +55,7 @@ func TestS3Settings(t *testing.T) {
 	}
 }
 
+// TestEnsureS3BucketCanceled verifies that S3 fixture setup respects caller cancellation.
 func TestEnsureS3BucketCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -60,6 +65,7 @@ func TestEnsureS3BucketCanceled(t *testing.T) {
 	}
 }
 
+// TestEnsureS3BucketSuccess verifies that S3 bucket setup is idempotent against an emulator.
 func TestEnsureS3BucketSuccess(t *testing.T) {
 	serverURL := fakeS3ServerURL(t)
 
@@ -71,6 +77,7 @@ func TestEnsureS3BucketSuccess(t *testing.T) {
 	}
 }
 
+// TestGCSSettings verifies that GCS fixture endpoint and bucket overrides are returned together.
 func TestGCSSettings(t *testing.T) {
 	t.Setenv("INTEGRATION_GCS_ENDPOINT", "http://example")
 	t.Setenv("INTEGRATION_GCS_BUCKET", "bucket")
@@ -81,6 +88,7 @@ func TestGCSSettings(t *testing.T) {
 	}
 }
 
+// TestReachable distinguishes an accepting listener from a closed loopback port.
 func TestReachable(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -97,6 +105,7 @@ func TestReachable(t *testing.T) {
 	}
 }
 
+// TestEnsureGCSBucketCanceled verifies cancellation while retaining the emulator host convention.
 func TestEnsureGCSBucketCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -110,6 +119,7 @@ func TestEnsureGCSBucketCanceled(t *testing.T) {
 	}
 }
 
+// TestEnsureGCSBucketSuccess verifies that GCS bucket setup is idempotent against an emulator.
 func TestEnsureGCSBucketSuccess(t *testing.T) {
 	host := "127.0.0.1"
 	port := uint16(pickPort(t))
@@ -132,6 +142,7 @@ func TestEnsureGCSBucketSuccess(t *testing.T) {
 	}
 }
 
+// pickPort reserves an ephemeral loopback port long enough to discover its assigned number.
 func pickPort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -142,6 +153,7 @@ func pickPort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
+// fakeS3ServerURL starts an in-memory S3-compatible HTTP server with test-scoped cleanup.
 func fakeS3ServerURL(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

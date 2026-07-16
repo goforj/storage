@@ -1,6 +1,7 @@
 //go:build ignore
 // +build ignore
 
+// Command examplegen regenerates standalone programs from public storage examples.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"strings"
 )
 
+// main regenerates examples and exits nonzero when extraction or rendering fails.
 func main() {
 	if err := run(); err != nil {
 		fmt.Println("Error:", err)
@@ -25,6 +27,7 @@ func main() {
 	fmt.Println("✔ Examples generated in ./examples/")
 }
 
+// run regenerates standalone examples from documented root and driver APIs.
 func run() error {
 	root, err := findRoot()
 	if err != nil {
@@ -66,10 +69,18 @@ func run() error {
 		}
 	}
 
+	ordered := make([]*FuncDoc, 0, len(funcs))
 	for _, fd := range funcs {
 		sort.Slice(fd.Examples, func(i, j int) bool {
 			return fd.Examples[i].Line < fd.Examples[j].Line
 		})
+		ordered = append(ordered, fd)
+	}
+	// Parent slugs render first because their cleanup patterns also match method example directories.
+	sort.Slice(ordered, func(i, j int) bool {
+		return strings.ToLower(ordered[i].Slug) < strings.ToLower(ordered[j].Slug)
+	})
+	for _, fd := range ordered {
 		if err := writeMain(examplesDir, fd, fd.ImportPath); err != nil {
 			return err
 		}
@@ -78,6 +89,7 @@ func run() error {
 	return nil
 }
 
+// findRoot locates the repository from each working directory supported by the generator.
 func findRoot() (string, error) {
 	wd, _ := os.Getwd()
 	for _, c := range []string{wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", "..")} {
@@ -89,8 +101,10 @@ func findRoot() (string, error) {
 	return "", fmt.Errorf("could not find project root")
 }
 
+// fileExists reports whether a candidate repository marker is present.
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
+// modulePath reads the module directive used to form generated imports.
 func modulePath(root string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
@@ -105,6 +119,7 @@ func modulePath(root string) (string, error) {
 	return "", fmt.Errorf("module path not found in go.mod")
 }
 
+// FuncDoc records an API declaration and its extracted standalone examples.
 type FuncDoc struct {
 	Name        string
 	Slug        string
@@ -114,6 +129,7 @@ type FuncDoc struct {
 	Examples    []Example
 }
 
+// Example records one documented code block and its source-order metadata.
 type Example struct {
 	FuncName string
 	File     string
@@ -135,6 +151,7 @@ type docLine struct {
 	pos  token.Pos
 }
 
+// collectExamplesFromDir parses one package and merges its examples by generated slug.
 func collectExamplesFromDir(funcs map[string]*FuncDoc, dir, importPath, slugPrefix string) error {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
@@ -177,6 +194,7 @@ func collectExamplesFromDir(funcs map[string]*FuncDoc, dir, importPath, slugPref
 	return nil
 }
 
+// extractFuncDocs indexes documented exported types, interface methods, functions, and methods.
 func extractFuncDocs(fset *token.FileSet, filename string, file *ast.File) map[string]*FuncDoc {
 	out := map[string]*FuncDoc{}
 
@@ -247,6 +265,7 @@ func extractFuncDocs(fset *token.FileSet, filename string, file *ast.File) map[s
 	return out
 }
 
+// funcSlug qualifies methods with their receiver type to avoid directory collisions.
 func funcSlug(fn *ast.FuncDecl) string {
 	name := fn.Name.Name
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
@@ -259,6 +278,7 @@ func funcSlug(fn *ast.FuncDecl) string {
 	return recv + "_" + name
 }
 
+// recvTypeName unwraps receiver syntax to the named type used in generated slugs.
 func recvTypeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -276,6 +296,7 @@ func recvTypeName(expr ast.Expr) string {
 	}
 }
 
+// extractGroup returns the documented API group or the stable Other fallback.
 func extractGroup(group *ast.CommentGroup) string {
 	lines := docLines(group)
 	for _, dl := range lines {
@@ -286,6 +307,7 @@ func extractGroup(group *ast.CommentGroup) string {
 	return "Other"
 }
 
+// extractGroupWithDefault lets interface methods inherit their type's documentation group.
 func extractGroupWithDefault(group *ast.CommentGroup, fallback string) string {
 	if group == nil {
 		return fallback
@@ -298,6 +320,7 @@ func extractGroupWithDefault(group *ast.CommentGroup, fallback string) string {
 	return fallback
 }
 
+// extractFuncDescription excludes generator directives and example blocks from summary prose.
 func extractFuncDescription(group *ast.CommentGroup) string {
 	lines := docLines(group)
 	var desc []string
@@ -320,6 +343,7 @@ func extractFuncDescription(group *ast.CommentGroup) string {
 	return strings.Join(desc, "\n")
 }
 
+// docLines normalizes line comments while retaining positions needed for source ordering.
 func docLines(group *ast.CommentGroup) []docLine {
 	var lines []docLine
 	for _, c := range group.List {
@@ -338,6 +362,7 @@ func docLines(group *ast.CommentGroup) []docLine {
 	return lines
 }
 
+// extractExamplesFromGroup splits each labeled example block into a source-ordered record.
 func extractExamplesFromGroup(fset *token.FileSet, filename, funcName string, group *ast.CommentGroup) []Example {
 	var out []Example
 	lines := docLines(group)
@@ -384,6 +409,7 @@ func extractExamplesFromGroup(fset *token.FileSet, filename, funcName string, gr
 	return out
 }
 
+// selectPackage deterministically chooses the primary non-main package in a directory.
 func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 	if len(pkgs) == 0 {
 		return "", fmt.Errorf("no packages found")
@@ -416,6 +442,7 @@ func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 	return candidates[0].name, nil
 }
 
+// writeMain replaces stale generated variants and writes one program per documented example.
 func writeMain(base string, fd *FuncDoc, importPath string) error {
 	if len(fd.Examples) == 0 {
 		return nil
@@ -444,6 +471,7 @@ func writeMain(base string, fd *FuncDoc, importPath string) error {
 	return nil
 }
 
+// writeExampleMain infers imports and formats a deterministic runnable example program.
 func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath string) error {
 	dir := filepath.Join(base, slug)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -452,6 +480,7 @@ func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath str
 
 	var buf bytes.Buffer
 	buf.WriteString("// Code generated by docs/examplegen/main.go. DO NOT EDIT.\n\n")
+	buf.WriteString("// Command " + slug + " is generated so this documented storage example remains directly runnable.\n")
 	buf.WriteString("package main\n\n")
 
 	imports := map[string]bool{importPath: true}
@@ -502,6 +531,7 @@ func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath str
 		buf.WriteString(")\n\n")
 	}
 
+	buf.WriteString("// main keeps this generated storage example executable so documentation drift fails during compilation.\n")
 	buf.WriteString("func main() {\n")
 	if fd.Description != "" {
 		for _, line := range strings.Split(fd.Description, "\n") {
@@ -528,6 +558,7 @@ func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath str
 	return os.WriteFile(filepath.Join(dir, "main.go"), formatted, 0o644)
 }
 
+// removeGeneratedExampleDirs removes matching directories only when they are known generator output.
 func removeGeneratedExampleDirs(base, slug string) error {
 	patterns := []string{
 		filepath.Join(base, strings.ToLower(slug)),
@@ -559,6 +590,7 @@ func removeGeneratedExampleDirs(base, slug string) error {
 	return nil
 }
 
+// slugify converts an example label into a stable path-safe suffix.
 func slugify(label string) string {
 	label = strings.TrimSpace(strings.ToLower(label))
 	if label == "" {

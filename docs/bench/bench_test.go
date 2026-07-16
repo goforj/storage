@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// BenchmarkStorageDrivers applies the same operation suite to every selected backend fixture.
 func BenchmarkStorageDrivers(b *testing.B) {
 	ctx := context.Background()
 	cases := benchmarkCases(ctx)
@@ -18,12 +19,23 @@ func BenchmarkStorageDrivers(b *testing.B) {
 	for _, bc := range cases {
 		bc := bc
 		b.Run(bc.name, func(b *testing.B) {
-			store, cleanup, err := bc.new(context.Background())
+			fixture, err := bc.setup(ctx)
 			if err != nil {
 				if bc.required {
 					b.Fatalf("%s benchmark setup failed: %v", bc.name, err)
 				}
 				b.Skipf("%s benchmark setup unavailable: %v", bc.name, err)
+			}
+			if fixture.cleanup != nil {
+				b.Cleanup(fixture.cleanup)
+			}
+
+			store, cleanup, err := fixture.newStore(ctx)
+			if err != nil {
+				if bc.required {
+					b.Fatalf("%s benchmark store failed: %v", bc.name, err)
+				}
+				b.Skipf("%s benchmark store unavailable: %v", bc.name, err)
 			}
 			if cleanup != nil {
 				b.Cleanup(cleanup)

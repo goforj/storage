@@ -1,6 +1,7 @@
 //go:build ignore
 // +build ignore
 
+// Command testcounts updates documented test metrics from reproducible repository data.
 package main
 
 import (
@@ -24,11 +25,13 @@ const (
 	testCountEnd   = "<!-- test-count:embed:end -->"
 )
 
+// Counts records executed unit and integration test totals for README badges.
 type Counts struct {
 	Unit        int
 	Integration int
 }
 
+// main refreshes executed-test badges and reports failures to the shell.
 func main() {
 	if err := run(); err != nil {
 		fmt.Println("Error:", err)
@@ -37,6 +40,7 @@ func main() {
 	fmt.Println("✔ Test badges updated from executed test runs")
 }
 
+// run executes reproducible test subsets and updates their README badge counts.
 func run() error {
 	root, err := findRoot()
 	if err != nil {
@@ -77,6 +81,7 @@ func run() error {
 	return os.WriteFile(readmePath, []byte(out), 0o644)
 }
 
+// countRunEvents executes a Go test command and counts its structured run events.
 func countRunEvents(root string, args []string) (int, error) {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
@@ -92,6 +97,7 @@ func countRunEvents(root string, args []string) (int, error) {
 	return countRunEventsFromJSON(out.Bytes(), nil)
 }
 
+// countIntegrationRunEvents counts only discovered top-level integration suites and their subtests.
 func countIntegrationRunEvents(integrationDir string, integrationNames map[string]struct{}) (int, error) {
 	runPattern := buildTopLevelRunPattern(integrationNames)
 	if runPattern == "" {
@@ -112,6 +118,7 @@ func countIntegrationRunEvents(integrationDir string, integrationNames map[strin
 	return countRunEventsFromJSON(out.Bytes(), integrationNames)
 }
 
+// integrationTopLevelTests discovers test entry points in integration-tagged source files.
 func integrationTopLevelTests(root string) (map[string]struct{}, error) {
 	names := map[string]struct{}{}
 
@@ -160,11 +167,13 @@ func integrationTopLevelTests(root string) (map[string]struct{}, error) {
 	return names, nil
 }
 
+// hasIntegrationBuildTag recognizes either supported spelling of the integration constraint.
 func hasIntegrationBuildTag(src []byte) bool {
 	text := string(src)
 	return strings.Contains(text, "//go:build integration") || strings.Contains(text, "// +build integration")
 }
 
+// buildTopLevelRunPattern creates a stable exact filter that also admits nested subtests.
 func buildTopLevelRunPattern(names map[string]struct{}) string {
 	if len(names) == 0 {
 		return ""
@@ -181,6 +190,7 @@ func buildTopLevelRunPattern(names map[string]struct{}) string {
 	return "^(" + strings.Join(parts, "|") + ")(/.*)?$"
 }
 
+// countRunEventsFromJSON counts valid run events, optionally restricted to known integration roots.
 func countRunEventsFromJSON(data []byte, topLevelNames map[string]struct{}) (int, error) {
 	var total int
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -217,6 +227,7 @@ func countRunEventsFromJSON(data []byte, topLevelNames map[string]struct{}) (int
 	return total, nil
 }
 
+// updateTestsSection replaces badge markup between test-count markers.
 func updateTestsSection(readme string, counts Counts) (string, error) {
 	start := strings.Index(readme, testCountStart)
 	end := strings.Index(readme, testCountEnd)
@@ -240,6 +251,7 @@ func updateTestsSection(readme string, counts Counts) (string, error) {
 	return before + leading + strings.Join(lines, "\n") + "\n" + after, nil
 }
 
+// findRoot locates the repository from each working directory supported by the generator.
 func findRoot() (string, error) {
 	wd, _ := os.Getwd()
 	for _, c := range []string{wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", ".."), filepath.Join(wd, "..", "..", "..")} {
@@ -251,6 +263,7 @@ func findRoot() (string, error) {
 	return "", fmt.Errorf("could not find project root")
 }
 
+// fileExists reports whether a candidate repository marker is present.
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil

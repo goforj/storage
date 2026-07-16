@@ -119,6 +119,7 @@ func Reachable(addr string) bool {
 	return true
 }
 
+// getenvDefault returns a non-empty environment override or its integration-fixture default.
 func getenvDefault(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
