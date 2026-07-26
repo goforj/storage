@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 )
 
@@ -22,7 +21,7 @@ func (c fakeDriverConfig) ResolvedConfig() ResolvedConfig {
 
 // TestBuild verifies registry construction fills the resolved driver name and returns a usable handle.
 func TestBuild(t *testing.T) {
-	driverName := fmt.Sprintf("fake-build-%s", t.Name())
+	driverName := uniqueTestDriverName("fake-build")
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -45,7 +44,7 @@ func TestBuild(t *testing.T) {
 
 // TestBuildContext propagates a canceled construction context into the registered factory.
 func TestBuildContext(t *testing.T) {
-	driverName := fmt.Sprintf("fake-build-context-%s", t.Name())
+	driverName := uniqueTestDriverName("fake-build-context")
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
 		return nil, ctx.Err()
 	})
@@ -88,7 +87,7 @@ func TestBuildErrors(t *testing.T) {
 
 // TestManagerNewAndDefault verifies named disks and the configured default are both retrievable.
 func TestManagerNewAndDefault(t *testing.T) {
-	driverName := fmt.Sprintf("fake-manager-%s", t.Name())
+	driverName := uniqueTestDriverName("fake-manager")
 	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
