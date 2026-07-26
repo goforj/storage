@@ -100,7 +100,7 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 	t.Run("paged-listing", func(t *testing.T) {
 		paged, ok := fsys.(storage.PagedStorage)
 		if !ok {
-			t.Fatal("storage does not implement PagedStorage")
+			t.Skip("PagedStorage not supported; skipping")
 		}
 		files := []string{
 			"page/a.txt",
@@ -112,6 +112,9 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 
 		first, err := paged.ListPage("page", 0, 2)
+		if errors.Is(err, storage.ErrUnsupported) {
+			t.Skip("PagedStorage not supported; skipping")
+		}
 		requireNoError(t, err, "ListPage first")
 		requireTrue(t, first.HasMore, "first page should have more")
 		requireEqual(t, 0, first.Offset, "first page offset")

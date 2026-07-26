@@ -7,7 +7,7 @@ import (
 
 // TestRegisterDriverDuplicatePanics protects the process-wide registry from silent replacement.
 func TestRegisterDriverDuplicatePanics(t *testing.T) {
-	name := "stub-duplicate"
+	name := uniqueTestDriverName("stub-duplicate")
 	RegisterDriver(name, func(_ context.Context, _ ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
@@ -19,4 +19,14 @@ func TestRegisterDriverDuplicatePanics(t *testing.T) {
 	RegisterDriver(name, func(_ context.Context, _ ResolvedConfig) (Storage, error) {
 		return stubFS{}, nil
 	})
+}
+
+// TestRegisterDriverNilFactoryPanics rejects unusable registry entries at the public boundary.
+func TestRegisterDriverNilFactoryPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for nil factory")
+		}
+	}()
+	RegisterDriver(uniqueTestDriverName("nil-factory"), nil)
 }

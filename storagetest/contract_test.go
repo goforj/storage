@@ -468,9 +468,18 @@ type unsupportedStorage struct {
 	inner *contractMemoryStorage
 }
 
+type unsupportedPagedStorage struct {
+	unsupportedStorage
+}
+
 type boundUnsupportedStorage struct {
 	inner *contractMemoryStorage
 	ctx   context.Context
+}
+
+// ListPage reports optional pagination as unsupported after capability discovery.
+func (unsupportedPagedStorage) ListPage(string, int, int) (storage.ListPageResult, error) {
+	return storage.ListPageResult{}, storage.ErrUnsupported
 }
 
 // WithContext binds required operations while retaining deliberately unsupported optional methods.
@@ -498,11 +507,6 @@ func (s unsupportedStorage) Exists(p string) (bool, error) { return s.inner.Exis
 
 // List preserves the required listing behavior of the inner fixture.
 func (s unsupportedStorage) List(p string) ([]storage.Entry, error) { return s.inner.List(p) }
-
-// ListPage preserves deterministic pagination while optional methods remain unsupported.
-func (s unsupportedStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
-	return s.inner.ListPageContext(context.Background(), p, offset, limit)
-}
 
 // Copy preserves the required copy behavior of the inner fixture.
 func (s unsupportedStorage) Copy(src, dst string) error { return s.inner.Copy(src, dst) }
@@ -554,11 +558,6 @@ func (s boundUnsupportedStorage) List(p string) ([]storage.Entry, error) {
 	return s.inner.ListContext(s.ctx, p)
 }
 
-// ListPage delegates deterministic pagination through the bound context.
-func (s boundUnsupportedStorage) ListPage(p string, offset, limit int) (storage.ListPageResult, error) {
-	return s.inner.ListPageContext(s.ctx, p, offset, limit)
-}
-
 // Copy delegates required duplication through the bound context.
 func (s boundUnsupportedStorage) Copy(src, dst string) error {
 	return s.inner.CopyContext(s.ctx, src, dst)
@@ -590,9 +589,16 @@ func TestRunStorageContractTests(t *testing.T) {
 	RunStorageContractTests(t, newContractMemoryStorage())
 }
 
-// TestRunStorageContractTestsWithUnsupportedOptionals verifies that optional Walk and URL sentinels are accepted.
+// TestRunStorageContractTestsWithUnsupportedOptionals verifies optional pagination, Walk, and URL behavior.
 func TestRunStorageContractTestsWithUnsupportedOptionals(t *testing.T) {
 	RunStorageContractTests(t, unsupportedStorage{inner: newContractMemoryStorage()})
+}
+
+// TestRunStorageContractTestsWithUnsupportedPagination verifies the optional pagination sentinel is accepted.
+func TestRunStorageContractTestsWithUnsupportedPagination(t *testing.T) {
+	RunStorageContractTests(t, unsupportedPagedStorage{
+		unsupportedStorage: unsupportedStorage{inner: newContractMemoryStorage()},
+	})
 }
 
 // TestExtractPaths verifies path projection without reordering entries.
