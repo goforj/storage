@@ -468,9 +468,18 @@ type unsupportedStorage struct {
 	inner *contractMemoryStorage
 }
 
+type unsupportedPagedStorage struct {
+	unsupportedStorage
+}
+
 type boundUnsupportedStorage struct {
 	inner *contractMemoryStorage
 	ctx   context.Context
+}
+
+// ListPage reports optional pagination as unsupported after capability discovery.
+func (unsupportedPagedStorage) ListPage(string, int, int) (storage.ListPageResult, error) {
+	return storage.ListPageResult{}, storage.ErrUnsupported
 }
 
 // WithContext binds required operations while retaining deliberately unsupported optional methods.
@@ -583,6 +592,13 @@ func TestRunStorageContractTests(t *testing.T) {
 // TestRunStorageContractTestsWithUnsupportedOptionals verifies optional pagination, Walk, and URL behavior.
 func TestRunStorageContractTestsWithUnsupportedOptionals(t *testing.T) {
 	RunStorageContractTests(t, unsupportedStorage{inner: newContractMemoryStorage()})
+}
+
+// TestRunStorageContractTestsWithUnsupportedPagination verifies the optional pagination sentinel is accepted.
+func TestRunStorageContractTestsWithUnsupportedPagination(t *testing.T) {
+	RunStorageContractTests(t, unsupportedPagedStorage{
+		unsupportedStorage: unsupportedStorage{inner: newContractMemoryStorage()},
+	})
 }
 
 // TestExtractPaths verifies path projection without reordering entries.
