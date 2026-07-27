@@ -5,3 +5,4 @@ tmp/
 
 # ignore symlinked driver sub-folder repos
 filesystem*
+.DS_Store
