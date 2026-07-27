@@ -341,19 +341,19 @@ Notes:
 
 ### Latency (ns/op)
 
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=1773001729)
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=2df0336b200f)
 
 ### Iterations (N)
 
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=1773001729)
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=2df0336b200f)
 
 ### Allocated Bytes (B/op)
 
-![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=1773001729)
+![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=2df0336b200f)
 
 ### Allocations (allocs/op)
 
-![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=1773001729)
+![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=2df0336b200f)
 <!-- bench:embed:end -->
 
 ## Capability Matrix

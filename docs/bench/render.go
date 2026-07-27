@@ -3,6 +3,7 @@ package bench
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -103,7 +104,11 @@ func RenderBenchmarks() {
 	if err != nil {
 		panic(err)
 	}
-	updated, err := injectBenchSection(string(data), renderReadmeSection(time.Now().Unix()))
+	cacheBuster, err := dashboardCacheBuster(root)
+	if err != nil {
+		panic(err)
+	}
+	updated, err := injectBenchSection(string(data), renderReadmeSection(cacheBuster))
 	if err != nil {
 		panic(err)
 	}
@@ -720,10 +725,25 @@ func loadBenchmarkRows(path string) (map[string][]benchRow, error) {
 	return rows, nil
 }
 
+// dashboardCacheBuster ties README asset URLs to the generated SVG contents without changing on identical renders.
+func dashboardCacheBuster(root string) (string, error) {
+	hash := sha256.New()
+	for _, name := range []string{"benchmarks_ns.svg", "benchmarks_ops.svg", "benchmarks_bytes.svg", "benchmarks_allocs.svg"} {
+		path := filepath.Join(root, "docs", "bench", name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read generated benchmark chart %s: %w", path, err)
+		}
+		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00", name, len(data))
+		_, _ = hash.Write(data)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil))[:12], nil
+}
+
 // renderReadmeSection describes the benchmark protocol and links cache-busted chart assets.
-func renderReadmeSection(cacheBuster int64) string {
+func renderReadmeSection(cacheBuster string) string {
 	chartPath := func(name string) string {
-		return fmt.Sprintf("docs/bench/%s?t=%d", name, cacheBuster)
+		return fmt.Sprintf("docs/bench/%s?t=%s", name, cacheBuster)
 	}
 	return strings.TrimSpace("" +
 		"Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.\n\n" +
@@ -786,12 +806,12 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 	drivers := orderedDrivers(rows)
 	ops := orderedOps(rows)
 	colors := map[string]string{
-		"put_small": "#0f766e",
-		"get_small": "#2563eb",
-		"exists":    "#ea580c",
-		"list":      "#7c3aed",
-		"walk":      "#dc2626",
-		"delete":    "#059669",
+		"put_small": "#FF5E3A",
+		"get_small": "#FFC24D",
+		"exists":    "#7D6EE7",
+		"list":      "#B58AE8",
+		"walk":      "#FFB454",
+		"delete":    "#FF6B85",
 	}
 
 	maxVal := 0.0
@@ -838,30 +858,30 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 
 	var svg bytes.Buffer
 	svg.WriteString(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">`+"\n", width, height, width, height))
-	svg.WriteString(`<rect width="100%" height="100%" fill="#0b1020"/>` + "\n")
-	svg.WriteString(fmt.Sprintf(`<text x="%d" y="52" text-anchor="middle" fill="#f8fafc" font-size="36" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", width/2, title))
+	svg.WriteString(`<rect width="100%" height="100%" rx="8" fill="#1A1620"/>` + "\n")
+	svg.WriteString(fmt.Sprintf(`<text x="%d" y="52" text-anchor="middle" fill="#FFFFFF" font-size="36" font-family="Space Grotesk, Inter, system-ui, sans-serif" font-weight="700" letter-spacing="-1.2">%s</text>`+"\n", width/2, title))
 	if splitScale {
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Outliers are separated into the upper strip so the lower panel stays readable.</text>`+"\n", width/2))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#A9A1B3" font-size="18" font-family="Inter, system-ui, sans-serif">Outliers are separated into the upper strip so the lower panel stays readable.</text>`+"\n", width/2))
 	} else {
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>`+"\n", width/2))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="84" text-anchor="middle" fill="#A9A1B3" font-size="18" font-family="Inter, system-ui, sans-serif">Compact grouped bars by driver. Exact scale shown on the left axis.</text>`+"\n", width/2))
 	}
 
 	if splitScale {
 		for i := 0; i <= 2; i++ {
 			y := upperTop + int(float64(upperHeight)*float64(i)/2.0)
 			v := maxVal - (maxVal-lowerMax)*(float64(i)/2.0)
-			svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#334155" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
-			svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#cbd5e1" font-size="18" text-anchor="end" font-family="Arial, sans-serif">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
+			svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#2A2333" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
+			svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#746C80" font-size="18" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
 		}
-		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#64748b" stroke-width="2" stroke-dasharray="8 8"/>`+"\n", leftPad, upperBottom+26, width-rightPad, upperBottom+26))
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" fill="#94a3b8" font-size="16" font-family="Arial, sans-serif">axis break</text>`+"\n", width/2, upperBottom+20))
+		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#3D3349" stroke-width="2" stroke-dasharray="8 8"/>`+"\n", leftPad, upperBottom+26, width-rightPad, upperBottom+26))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" fill="#746C80" font-size="16" font-family="Inter, system-ui, sans-serif">axis break</text>`+"\n", width/2, upperBottom+20))
 	}
 
 	for i := 0; i <= 4; i++ {
 		y := lowerTop + int(float64(lowerHeight)*float64(i)/4.0)
 		v := lowerMax * (1 - float64(i)/4.0)
-		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#334155" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#cbd5e1" font-size="20" text-anchor="end" font-family="Arial, sans-serif">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
+		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#2A2333" stroke-width="1"/>`+"\n", leftPad, y, width-rightPad, y))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#746C80" font-size="20" text-anchor="end" font-family="JetBrains Mono, ui-monospace, monospace">%s</text>`+"\n", leftPad-16, y+6, formatChartValue(v)))
 	}
 
 	for i, driver := range drivers {
@@ -889,15 +909,15 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 			}
 		}
 		labelX := groupX + (len(ops)*(barWidth+barGap))/2 - 8
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#f8fafc" font-size="19" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700">%s</text>`+"\n", labelX, labelY, driver))
-		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#1e293b" stroke-width="1"/>`+"\n", groupX-12, labelY+18, groupX+len(ops)*(barWidth+barGap)-10, labelY+18))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">%s</text>`+"\n", labelX, labelY, driver))
+		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#2A2333" stroke-width="1"/>`+"\n", groupX-12, labelY+18, groupX+len(ops)*(barWidth+barGap)-10, labelY+18))
 	}
 
 	legendX := leftPad
 	for i, op := range ops {
 		x := legendX + i*255
 		svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="24" height="24" rx="5" fill="%s"/>`+"\n", x, legendY, colors[op]))
-		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#e2e8f0" font-size="19" font-family="Arial, sans-serif">%s</text>`+"\n", x+36, legendY+18, op))
+		svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" fill="#A9A1B3" font-size="19" font-family="Inter, system-ui, sans-serif">%s</text>`+"\n", x+36, legendY+18, op))
 	}
 
 	svg.WriteString(`</svg>` + "\n")
