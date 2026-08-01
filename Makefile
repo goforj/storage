@@ -1,93 +1,62 @@
 # Parse makefile arguments (allows: make target arg1 arg2)
-RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-$(eval $(RUN_ARGS):;@:)
+ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+$(eval $(ARGS):;@:)
 
 # Silence GNU Make unless VERBOSE=1
 ifndef VERBOSE
 MAKEFLAGS += --no-print-directory
 endif
 
-# Terminal colors
-GREEN  := $(shell tput -Txterm setaf 2)
-WHITE  := $(shell tput -Txterm setaf 7)
-YELLOW := $(shell tput -Txterm setaf 3)
-RESET  := $(shell tput -Txterm sgr0)
-
 # Help plumbing
-.PHONY: help
 
-HELP_FUN = \
-%help; \
-while(<>) { \
-  if (/^([a-zA-Z0-9\-\_]+)\s*:.*\#\#(?:@([a-zA-Z0-9\-\_]+))?\s(.*)$$/) { \
-    my $$target = $$1; \
-    my $$cat = $$2 || "other"; \
-    my $$desc = $$3; \
-    push @{$$help{$$cat}}, [$$target, $$desc]; \
-    $$GLOBAL_MAX = length($$target) if length($$target) > $$GLOBAL_MAX; \
-  } \
-} \
-print "\n"; \
-my $$max = $$GLOBAL_MAX; \
-for my $$cat (sort keys %help) { \
-  print "${WHITE}$$cat${RESET}\n"; \
-  for my $$entry (@{$$help{$$cat}}) { \
-    printf "  ${YELLOW}%-*s${RESET}  ${GREEN}%s${RESET}\n", $$max, $$entry->[0], $$entry->[1]; \
-  } \
-} \
-print "";
+HELP_FUN = %help; while (<>) { /^([A-Za-z0-9_-]+)\s*:.*\#\#(?:@([A-Za-z0-9_-]+))?\s(.*)$$/ or next; push @{$$help{$$2 || "other"}}, [$$1, $$3]; $$width = length($$1) if length($$1) > $$width } print "\e[1;97m$(or $(HELP_NAME),$(notdir $(CURDIR)))\e[0m\n\n"; for $$category (sort keys %help) { print "\e[1;97m$$category\e[0m\n"; for $$entry (@{$$help{$$category}}) { printf "  \e[1;32m%-*s\e[0m  \e[90m%s\e[0m\n", $$width, $$entry->[0], $$entry->[1] } }
 
 help: ##@other Show this help.
 	@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)
 
-#----------------------
-# Dev helpers
-#----------------------
-.PHONY: tidy test integration integration-driver examples-test coverage bench bench-render check-modules tag-modules release-modules release-plan
-
-#----------------------
-# Go helpers
-#----------------------
 GO_TEST_FLAGS ?= -count=1
 
-GO_CACHE_ENV = $(if $(GOCACHE),GOCACHE="$(GOCACHE)") $(if $(GOMODCACHE),GOMODCACHE="$(GOMODCACHE)")
+##@maintenance
+tidy: ##@maintenance Run go mod tidy.
+	go mod tidy
 
-tidy: ##@go Run go mod tidy
-	$(GO_CACHE_ENV) go mod tidy
+##@tests
+test: ##@tests Run unit tests.
+	go test $(GO_TEST_FLAGS) ./...
 
-test: ##@go Run unit tests
-	$(GO_CACHE_ENV) go test $(GO_TEST_FLAGS) ./...
+test-examples: ##@tests Run tests in the examples module.
+	cd examples && go test $(GO_TEST_FLAGS) ./...
 
-examples-test: ##@go Run tests in the examples module
-	cd examples && $(GO_CACHE_ENV) go test $(GO_TEST_FLAGS) ./...
+test-coverage: ##@tests Generate combined unit and integration coverage for Codecov.
+	scripts/coverage-codecov.sh
 
-coverage: ##@go Generate combined unit + integration coverage for Codecov
-	$(GO_CACHE_ENV) scripts/coverage-codecov.sh
+test-integration: ##@tests Run integration tests: make test-integration [all|ftp|gcs|local|memory|redis|rclone_local|s3|sftp].
+	cd integration && INTEGRATION_DRIVER="$(or $(firstword $(ARGS)),all)" go test -tags=integration $(GO_TEST_FLAGS) ./all
 
-check-modules: ##@go Verify published module manifests do not rely on local replace wiring
+##@analysis
+modules-check: ##@analysis Verify published module manifests do not rely on local replace wiring.
 	scripts/check-published-modules.sh
 
-integration: ##@go Run the centralized integration matrix in ./integration (may require Docker)
-	cd integration && $(GO_CACHE_ENV) go test -tags=integration $(GO_TEST_FLAGS) ./all
+##@documentation
+docs-watch: ##@documentation Watch source changes and regenerate documentation.
+	sh docs/watcher.sh
 
-integration-driver: ##@go Run a single backend in the centralized integration matrix: make integration-driver gcs
-	test -n "$(RUN_ARGS)" || (echo "usage: make integration-driver <driver>" && exit 1)
-	cd integration && INTEGRATION_DRIVER="$(firstword $(RUN_ARGS))" $(GO_CACHE_ENV) go test -tags=integration $(GO_TEST_FLAGS) ./all
+##@benchmarks
+bench: ##@benchmarks Run benchmark suites in ./docs/bench.
+	cd docs/bench && go test -tags=bench -run '^$$' -bench . -count=1
 
-bench: ##@go Run benchmark suites in ./docs/bench
-	cd docs/bench && $(GO_CACHE_ENV) go test -tags=bench -run '^$$' -bench . -count=1
+bench-render: ##@benchmarks Render benchmark artifacts and update README benchmark embeds.
+	cd docs/bench && go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v
 
-bench-render: ##@go Render benchmark artifacts and update README benchmark embeds
-	cd docs/bench && $(GO_CACHE_ENV) go test -tags=benchrender -run TestRenderBenchmarks -count=1 -v
+##@release
+release-tag: ##@release Tag all Go modules: make release-tag v0.1.0 [-- --dry-run].
+	test -n "$(ARGS)" || (echo "usage: make release-tag <version> [-- --dry-run|--push|--exclude <dir>]" && exit 1)
+	bash scripts/tag-all-modules.sh $(ARGS)
 
-tag-modules: ##@release Tag all Go modules: make tag-modules v0.1.0 [-- --dry-run]
-	test -n "$(RUN_ARGS)" || (echo "usage: make tag-modules <version> [-- --dry-run|--push|--exclude <dir>]" && exit 1)
-	bash scripts/tag-all-modules.sh $(RUN_ARGS)
+release-plan: ##@release Preview version rewrites and tags without changing files: make release-plan v0.1.0 [-- --exclude <dir>].
+	test -n "$(ARGS)" || (echo "usage: make release-plan <version> [-- --exclude <dir>]" && exit 1)
+	bash scripts/release-all-modules.sh $(ARGS) --dry-run --allow-dirty
 
-release-plan: ##@release Preview version rewrites and tags without changing files: make release-plan v0.1.0 [-- --exclude <dir>]
-	test -n "$(RUN_ARGS)" || (echo "usage: make release-plan <version> [-- --exclude <dir>]" && exit 1)
-	bash scripts/release-all-modules.sh $(RUN_ARGS) --dry-run --allow-dirty
-
-release-modules: ##@release Rewrite sibling versions, publish tags, sync checksums, and push the branch: make release-modules v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing]
-	test -n "$(RUN_ARGS)" || (echo "usage: make release-modules <version> [-- --remote <name>|--exclude <dir>|--skip-existing]" && exit 1)
-	bash scripts/release-all-modules.sh $(RUN_ARGS) --commit --push --allow-dirty
+release-publish: ##@release Rewrite sibling versions, publish tags, sync checksums, and push the branch: make release-publish v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing].
+	test -n "$(ARGS)" || (echo "usage: make release-publish <version> [-- --remote <name>|--exclude <dir>|--skip-existing]" && exit 1)
+	bash scripts/release-all-modules.sh $(ARGS) --commit --push --allow-dirty

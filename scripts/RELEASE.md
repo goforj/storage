@@ -46,10 +46,10 @@ make release-plan v0.2.3
 Run the release:
 
 ```sh
-make release-modules v0.2.3
+make release-publish v0.2.3
 ```
 
-`make release-modules` does this:
+`make release-publish` does this:
 
 1. Rewrites intra-repo module requirements to the target version.
 2. Runs `scripts/check-published-modules.sh`.

@@ -1367,30 +1367,6 @@ Current fixture types in the centralized matrix:
 - emulator: `gcs`
 - embedded/local fixtures: `local`, `ftp`, `rclone_local`
 
-Common contributor commands:
+## Development
 
-```bash
-go test ./...
-```
-
-```bash
-cd integration
-go test -tags=integration ./all -count=1
-```
-
-Run a single integration backend:
-
-```bash
-cd integration
-INTEGRATION_DRIVER=gcs go test -tags=integration ./all -count=1
-```
-
-Make targets:
-
-```bash
-make test
-make examples-test
-make coverage
-make integration
-make integration-driver gcs
-```
+Use `make test` for root-module tests, `make test-examples` for the examples module, and `make test-coverage` for the Codecov report. `make test-integration` runs the centralized matrix; pass a driver such as `make test-integration gcs` to select one backend. Integration may require Docker. `make bench` and `make bench-render` retain the benchmark workflow, while the `modules-check`, `release-tag`, `release-plan`, and `release-publish` targets support publication.
