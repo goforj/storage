@@ -108,9 +108,9 @@ Make targets:
 
 ```bash
 make test
-make examples-test
-make integration
-make integration-driver gcs
+make test-examples
+make test-integration
+make test-integration gcs
 ```
 
 ## Current Guidance
