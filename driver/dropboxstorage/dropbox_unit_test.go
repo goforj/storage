@@ -1,6 +1,7 @@
 package dropboxstorage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -101,6 +102,12 @@ type fakeDropbox struct {
 	createErr     error
 	delErr        error
 	deleteHook    func(*files.DeleteArg) error
+	createHook    func()
+	moveHook      func()
+	metaHook      func()
+	listHook      func()
+	continueHook  func()
+	linkHook      func()
 	moveErr       error
 	metaErr       error
 	metaOut       files.IsMetadata
@@ -109,6 +116,7 @@ type fakeDropbox struct {
 	linkErr       error
 	linkURL       string
 	continueOut   *files.ListFolderResult
+	continueErr   error
 	continueSeq   []*files.ListFolderResult
 	continueArgs  []*files.ListFolderContinueArg
 	uploaded      []byte
@@ -121,6 +129,8 @@ type fakeDropbox struct {
 	metadataArgs  []*files.GetMetadataArg
 	metaByPath    map[string]files.IsMetadata
 	metaErrByPath map[string]error
+	metaSeq       []files.IsMetadata
+	metaErrSeq    []error
 }
 
 // Download records its argument and returns the configured body, payload, or failure.
@@ -130,6 +140,9 @@ func (f *fakeDropbox) Download(arg *files.DownloadArg) (*files.FileMetadata, io.
 		f.downloadHook()
 	}
 	if f.getErr != nil {
+		if f.getReader != nil {
+			return nil, f.getReader, f.getErr
+		}
 		return nil, nil, f.getErr
 	}
 	if f.getReader != nil {
@@ -167,6 +180,9 @@ func (f *fakeDropbox) DeleteV2(arg *files.DeleteArg) (*files.DeleteResult, error
 // CreateFolderV2 records folder creation and updates fixture metadata on success.
 func (f *fakeDropbox) CreateFolderV2(arg *files.CreateFolderArg) (*files.CreateFolderResult, error) {
 	f.createArgs = append(f.createArgs, arg)
+	if f.createHook != nil {
+		f.createHook()
+	}
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
@@ -179,6 +195,9 @@ func (f *fakeDropbox) CreateFolderV2(arg *files.CreateFolderArg) (*files.CreateF
 // MoveV2 records relocation arguments and returns the configured failure.
 func (f *fakeDropbox) MoveV2(arg *files.RelocationArg) (*files.RelocationResult, error) {
 	f.moveArgs = append(f.moveArgs, arg)
+	if f.moveHook != nil {
+		f.moveHook()
+	}
 	if f.moveErr != nil {
 		return nil, f.moveErr
 	}
@@ -188,6 +207,22 @@ func (f *fakeDropbox) MoveV2(arg *files.RelocationArg) (*files.RelocationResult,
 // GetMetadata resolves path-specific fixture metadata and failures before shared defaults.
 func (f *fakeDropbox) GetMetadata(arg *files.GetMetadataArg) (files.IsMetadata, error) {
 	f.metadataArgs = append(f.metadataArgs, arg)
+	if f.metaHook != nil {
+		f.metaHook()
+	}
+	if len(f.metaSeq) > 0 || len(f.metaErrSeq) > 0 {
+		var metadata files.IsMetadata
+		var err error
+		if len(f.metaSeq) > 0 {
+			metadata = f.metaSeq[0]
+			f.metaSeq = f.metaSeq[1:]
+		}
+		if len(f.metaErrSeq) > 0 {
+			err = f.metaErrSeq[0]
+			f.metaErrSeq = f.metaErrSeq[1:]
+		}
+		return metadata, err
+	}
 	if err, ok := f.metaErrByPath[arg.Path]; ok {
 		return nil, err
 	}
@@ -206,6 +241,9 @@ func (f *fakeDropbox) GetMetadata(arg *files.GetMetadataArg) (files.IsMetadata, 
 // ListFolder records the initial query and returns its configured page.
 func (f *fakeDropbox) ListFolder(arg *files.ListFolderArg) (*files.ListFolderResult, error) {
 	f.listArgs = append(f.listArgs, arg)
+	if f.listHook != nil {
+		f.listHook()
+	}
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -218,6 +256,12 @@ func (f *fakeDropbox) ListFolder(arg *files.ListFolderArg) (*files.ListFolderRes
 // ListFolderContinue records cursors and consumes configured pages iteratively.
 func (f *fakeDropbox) ListFolderContinue(arg *files.ListFolderContinueArg) (*files.ListFolderResult, error) {
 	f.continueArgs = append(f.continueArgs, arg)
+	if f.continueHook != nil {
+		f.continueHook()
+	}
+	if f.continueErr != nil {
+		return nil, f.continueErr
+	}
 	if len(f.continueSeq) > 0 {
 		out := f.continueSeq[0]
 		f.continueSeq = f.continueSeq[1:]
@@ -231,6 +275,9 @@ func (f *fakeDropbox) ListFolderContinue(arg *files.ListFolderContinueArg) (*fil
 
 // GetTemporaryLink returns the configured public link or signing failure.
 func (f *fakeDropbox) GetTemporaryLink(arg *files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error) {
+	if f.linkHook != nil {
+		f.linkHook()
+	}
 	if f.linkErr != nil {
 		return nil, f.linkErr
 	}
@@ -924,6 +971,35 @@ func TestDropboxTypedErrors(t *testing.T) {
 	if err := wrapError(dropbox.SDKInternalError{StatusCode: 403}); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("HTTP forbidden error = %v", err)
 	}
+	if err := wrapError(dropbox.SDKInternalError{StatusCode: 404}); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("HTTP not-found error = %v", err)
+	}
+
+	lookup := &files.LookupError{Tagged: dropbox.Tagged{Tag: files.LookupErrorNotFound}}
+	lookupErrors := []error{
+		files.DownloadAPIError{EndpointError: &files.DownloadError{Path: lookup}},
+		files.GetTemporaryLinkAPIError{EndpointError: &files.GetTemporaryLinkError{Path: lookup}},
+		files.ListFolderAPIError{EndpointError: &files.ListFolderError{Path: lookup}},
+		files.ListFolderContinueAPIError{EndpointError: &files.ListFolderContinueError{Path: lookup}},
+		files.MoveV2APIError{EndpointError: &files.RelocationError{FromLookup: lookup}},
+	}
+	for index, typedErr := range lookupErrors {
+		if err := wrapError(typedErr); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("typed lookup error %d = %v", index, err)
+		}
+	}
+
+	write := &files.WriteError{Tagged: dropbox.Tagged{Tag: files.WriteErrorMalformedPath}}
+	writeErrors := []error{
+		files.CreateFolderV2APIError{EndpointError: &files.CreateFolderError{Path: write}},
+		files.MoveV2APIError{EndpointError: &files.RelocationError{To: write}},
+		files.MoveV2APIError{EndpointError: &files.RelocationError{FromWrite: write}},
+	}
+	for index, typedErr := range writeErrors {
+		if err := wrapError(typedErr); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("typed write error %d = %v", index, err)
+		}
+	}
 }
 
 // TestDropboxListContinuationIsIterative verifies long pagination chains do not consume call stack.
@@ -943,6 +1019,402 @@ func TestDropboxListContinuationIsIterative(t *testing.T) {
 		t.Fatalf("continuation calls = %d, want %d", len(client.continueArgs), pages)
 	}
 }
+
+// TestDropboxInvalidPathsAndThinWrappers covers validation before any SDK
+// request and the background-context adapters omitted by the shared contract.
+func TestDropboxInvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListPageContext(nil, "../bad", 0, 1); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+		func() error { _, err := d.URLContext(nil, "../bad"); return err },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage invalid path error = %v", err)
+	}
+}
+
+// TestDropboxCancellationAndHelperEdges covers operation cancellation and the
+// stream, pagination, directory, and cleanup branches outside contract tests.
+func TestDropboxCancellationAndHelperEdges(t *testing.T) {
+	t.Run("canceled operations", func(t *testing.T) {
+		d := &driver{client: &fakeDropbox{}, prefix: "pre"}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		calls := []func() error{
+			func() error { _, err := d.GetContext(ctx, "file"); return err },
+			func() error { return d.PutContext(ctx, "file", nil) },
+			func() error { return d.MakeDirContext(ctx, "dir") },
+			func() error { return d.DeleteContext(ctx, "file") },
+			func() error { _, err := d.ExistsContext(ctx, "file"); return err },
+			func() error { _, err := d.ListContext(ctx, ""); return err },
+			func() error { return d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }) },
+			func() error { return d.CopyContext(ctx, "file", "copy") },
+			func() error { return d.MoveContext(ctx, "file", "moved") },
+			func() error { _, err := d.URLContext(ctx, "file"); return err },
+		}
+		for index, call := range calls {
+			if err := call(); !errors.Is(err, context.Canceled) {
+				t.Fatalf("canceled call %d error = %v", index, err)
+			}
+		}
+	})
+
+	t.Run("root and callback guards", func(t *testing.T) {
+		d := &driver{client: &fakeDropbox{}, prefix: "pre"}
+		if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Get root error = %v", err)
+		}
+		if err := d.Put("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Put root error = %v", err)
+		}
+		if err := d.MakeDir(""); err != nil {
+			t.Fatalf("MakeDir root: %v", err)
+		}
+		if entry, err := d.Stat(""); err != nil || !entry.IsDir {
+			t.Fatalf("Stat root = %+v, %v", entry, err)
+		}
+		if exists, err := d.Exists(""); err != nil || exists {
+			t.Fatalf("Exists root = %v, %v", exists, err)
+		}
+		if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Walk nil callback error = %v", err)
+		}
+		if _, err := d.URL(""); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("URL root error = %v", err)
+		}
+	})
+
+	t.Run("directory creation failures", func(t *testing.T) {
+		d := &driver{client: &fakeDropbox{metaErr: errors.New("lookup")}}
+		if err := d.MakeDir("dir"); err == nil {
+			t.Fatal("MakeDir lookup returned nil error")
+		}
+		d = &driver{client: &fakeDropbox{metaErr: errNotFound{}, createErr: errors.New("create")}}
+		if err := d.MakeDir("dir"); err == nil {
+			t.Fatal("MakeDir create returned nil error")
+		}
+		d = &driver{client: &fakeDropbox{metaOut: &files.FileMetadata{}}}
+		if err := d.MakeDir("dir"); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("MakeDir over file error = %v", err)
+		}
+	})
+
+	t.Run("continuation and helper failures", func(t *testing.T) {
+		client := &fakeDropbox{
+			listOut:     &files.ListFolderResult{HasMore: true, Cursor: "next"},
+			continueErr: errors.New("continue"),
+		}
+		d := &driver{client: client}
+		if _, err := d.List(""); err == nil {
+			t.Fatal("List continuation returned nil error")
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var entries []storagecore.Entry
+		if err := d.appendEntries(ctx, []files.IsMetadata{&files.FileMetadata{}}, &entries); !errors.Is(err, context.Canceled) {
+			t.Fatalf("appendEntries canceled error = %v", err)
+		}
+		if _, err := (&contextReader{ctx: ctx, reader: bytes.NewReader(nil)}).Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
+			t.Fatalf("contextReader error = %v", err)
+		}
+		if _, err := copyContext(ctx, io.Discard, bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
+			t.Fatalf("copyContext canceled error = %v", err)
+		}
+		writeErr := errors.New("write")
+		if _, err := copyContext(context.Background(), dropboxFailingWriter{err: writeErr}, bytes.NewReader([]byte("x"))); !errors.Is(err, writeErr) {
+			t.Fatalf("copyContext write error = %v", err)
+		}
+		if _, err := copyContext(context.Background(), dropboxShortWriter{}, bytes.NewReader([]byte("x"))); !errors.Is(err, io.ErrShortWrite) {
+			t.Fatalf("copyContext short write error = %v", err)
+		}
+		primary := errors.New("primary")
+		cleanup := errors.New("cleanup")
+		if err := joinCleanup(primary, cleanup); !errors.Is(err, primary) || !errors.Is(err, cleanup) {
+			t.Fatalf("joinCleanup error = %v", err)
+		}
+		if err := joinCleanup(nil, cleanup); !errors.Is(err, cleanup) {
+			t.Fatalf("joinCleanup cleanup error = %v", err)
+		}
+	})
+}
+
+type dropboxFailingWriter struct {
+	err error
+}
+
+// Write injects a destination failure.
+func (w dropboxFailingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type dropboxShortWriter struct{}
+
+// Write accepts no bytes without error to exercise short-write handling.
+func (dropboxShortWriter) Write([]byte) (int, error) { return 0, nil }
+
+// TestDropboxPostSDKCancellation verifies cancellation wins when it arrives
+// while a non-context-aware Dropbox SDK call is in flight.
+func TestDropboxPostSDKCancellation(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*driver, context.Context) error
+		make func(context.CancelFunc) *fakeDropbox
+	}{
+		{
+			name: "stat",
+			call: func(d *driver, ctx context.Context) error { _, err := d.StatContext(ctx, "file"); return err },
+			make: func(cancel context.CancelFunc) *fakeDropbox {
+				return &fakeDropbox{metaOut: &files.FileMetadata{}, metaHook: cancel}
+			},
+		},
+		{
+			name: "exists",
+			call: func(d *driver, ctx context.Context) error { _, err := d.ExistsContext(ctx, "file"); return err },
+			make: func(cancel context.CancelFunc) *fakeDropbox {
+				return &fakeDropbox{metaOut: &files.FileMetadata{}, metaHook: cancel}
+			},
+		},
+		{
+			name: "list",
+			call: func(d *driver, ctx context.Context) error { _, err := d.ListContext(ctx, ""); return err },
+			make: func(cancel context.CancelFunc) *fakeDropbox { return &fakeDropbox{listHook: cancel} },
+		},
+		{
+			name: "url",
+			call: func(d *driver, ctx context.Context) error { _, err := d.URLContext(ctx, "file"); return err },
+			make: func(cancel context.CancelFunc) *fakeDropbox { return &fakeDropbox{linkHook: cancel} },
+		},
+		{
+			name: "delete metadata",
+			call: func(d *driver, ctx context.Context) error { return d.DeleteContext(ctx, "file") },
+			make: func(cancel context.CancelFunc) *fakeDropbox {
+				return &fakeDropbox{metaOut: &files.FileMetadata{}, metaHook: cancel}
+			},
+		},
+		{
+			name: "delete mutation",
+			call: func(d *driver, ctx context.Context) error { return d.DeleteContext(ctx, "file") },
+			make: func(cancel context.CancelFunc) *fakeDropbox {
+				return &fakeDropbox{metaOut: &files.FileMetadata{}, deleteHook: func(*files.DeleteArg) error { cancel(); return nil }}
+			},
+		},
+		{
+			name: "move mutation",
+			call: func(d *driver, ctx context.Context) error { return d.MoveContext(ctx, "file", "moved") },
+			make: func(cancel context.CancelFunc) *fakeDropbox {
+				return &fakeDropbox{
+					metaByPath: map[string]files.IsMetadata{"/file": &files.FileMetadata{}},
+					moveHook:   cancel,
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			d := &driver{client: test.make(cancel)}
+			if err := test.call(d, ctx); !errors.Is(err, context.Canceled) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+// TestDropboxTransferAndConcurrentDirectoryEdges covers combined SDK cleanup,
+// post-transfer cancellation, pagination, and concurrent folder creation.
+func TestDropboxTransferAndConcurrentDirectoryEdges(t *testing.T) {
+	t.Run("download error closes response", func(t *testing.T) {
+		primary := errors.New("download")
+		cleanup := errors.New("close")
+		body := &trackedReadCloser{reader: strings.NewReader(""), closeErr: cleanup}
+		d := &driver{client: &fakeDropbox{getErr: primary, getReader: body}}
+		_, err := d.Get("file")
+		if !errors.Is(err, primary) || !errors.Is(err, cleanup) || !body.closed {
+			t.Fatalf("Get combined error = %v closed=%v", err, body.closed)
+		}
+	})
+
+	t.Run("post-copy cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		body := &cancelEOFReadCloser{cancel: cancel}
+		d := &driver{client: &fakeDropbox{getReader: body}}
+		if _, err := d.GetContext(ctx, "file"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("GetContext error = %v", err)
+		}
+	})
+
+	t.Run("upload error after existing parent", func(t *testing.T) {
+		putErr := errors.New("upload")
+		client := &fakeDropbox{
+			metaByPath: map[string]files.IsMetadata{"/pre": &files.FolderMetadata{}},
+			putErr:     putErr,
+		}
+		d := &driver{client: client, prefix: "pre"}
+		if err := d.Put("file", nil); !errors.Is(err, putErr) {
+			t.Fatalf("Put upload error = %v", err)
+		}
+	})
+
+	t.Run("concurrent folder creator wins", func(t *testing.T) {
+		createErr := errors.New("already exists")
+		client := &fakeDropbox{
+			metaSeq:    []files.IsMetadata{nil, &files.FolderMetadata{}},
+			metaErrSeq: []error{errNotFound{}, nil},
+			createErr:  createErr,
+		}
+		d := &driver{client: client}
+		if err := d.MakeDir("dir"); err != nil {
+			t.Fatalf("MakeDir concurrent creator: %v", err)
+		}
+	})
+
+	t.Run("pagination and prefix fallback", func(t *testing.T) {
+		client := &fakeDropbox{listOut: &files.ListFolderResult{Entries: []files.IsMetadata{
+			&files.FileMetadata{Metadata: files.Metadata{PathLower: "/pre/a"}},
+			&files.FileMetadata{Metadata: files.Metadata{PathLower: "/pre/b"}},
+		}}}
+		d := &driver{client: client, prefix: "pre"}
+		page, err := d.ListPage("", 0, 1)
+		if err != nil || len(page.Entries) != 1 || !page.HasMore {
+			t.Fatalf("ListPage = %+v, %v", page, err)
+		}
+		if got := d.stripPrefix("unrelated/file"); got != "unrelated/file" {
+			t.Fatalf("stripPrefix unrelated = %q", got)
+		}
+	})
+}
+
+// TestDropboxNestedCancellationEdges verifies pagination and directory repair
+// recheck cancellation at each boundary around the context-free SDK methods.
+func TestDropboxNestedCancellationEdges(t *testing.T) {
+	t.Run("continuation boundaries", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(context.Background())
+		cancel()
+		d := &driver{client: &fakeDropbox{}}
+		var entries []storagecore.Entry
+		if err := d.listContinue(canceled, files.NewListFolderContinueArg("cursor"), &entries); !errors.Is(err, context.Canceled) {
+			t.Fatalf("listContinue initial cancellation = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		d = &driver{client: &fakeDropbox{continueHook: cancel}}
+		if err := d.listContinue(ctx, files.NewListFolderContinueArg("cursor"), &entries); !errors.Is(err, context.Canceled) {
+			t.Fatalf("listContinue post-call cancellation = %v", err)
+		}
+		for _, cancelAt := range []int{3, 4} {
+			ctx := &dropboxStepContext{Context: context.Background(), cancelAt: cancelAt}
+			d = &driver{client: &fakeDropbox{continueOut: &files.ListFolderResult{Entries: []files.IsMetadata{&files.FileMetadata{}}}}}
+			if err := d.listContinue(ctx, files.NewListFolderContinueArg("cursor"), &entries); !errors.Is(err, context.Canceled) {
+				t.Fatalf("listContinue cancellation at %d = %v", cancelAt, err)
+			}
+		}
+	})
+
+	t.Run("initial page boundaries", func(t *testing.T) {
+		for _, cancelAt := range []int{3, 4} {
+			ctx := &dropboxStepContext{Context: context.Background(), cancelAt: cancelAt}
+			d := &driver{client: &fakeDropbox{listOut: &files.ListFolderResult{Entries: []files.IsMetadata{&files.FileMetadata{}}}}}
+			var entries []storagecore.Entry
+			if err := d.listPage(ctx, files.NewListFolderArg(""), &entries); !errors.Is(err, context.Canceled) {
+				t.Fatalf("listPage cancellation at %d = %v", cancelAt, err)
+			}
+		}
+	})
+
+	t.Run("directory creation boundaries", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(context.Background())
+		cancel()
+		d := &driver{client: &fakeDropbox{}}
+		if err := d.ensureSingleDirectory(canceled, "/dir"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ensureSingleDirectory initial cancellation = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		d = &driver{client: &fakeDropbox{metaHook: cancel}}
+		if err := d.ensureSingleDirectory(ctx, "/dir"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ensureSingleDirectory lookup cancellation = %v", err)
+		}
+
+		ctx, cancel = context.WithCancel(context.Background())
+		d = &driver{client: &fakeDropbox{metaErr: errNotFound{}, createHook: cancel}}
+		if err := d.ensureSingleDirectory(ctx, "/dir"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ensureSingleDirectory create cancellation = %v", err)
+		}
+
+		ctx = &dropboxStepContext{Context: context.Background(), cancelAt: 4}
+		d = &driver{client: &fakeDropbox{
+			metaSeq:    []files.IsMetadata{nil, &files.FolderMetadata{}},
+			metaErrSeq: []error{errNotFound{}, nil},
+			createErr:  errors.New("already exists"),
+		}}
+		if err := d.ensureSingleDirectory(ctx, "/dir"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ensureSingleDirectory repair cancellation = %v", err)
+		}
+	})
+
+	t.Run("walk emission cancellation", func(t *testing.T) {
+		ctx := &dropboxStepContext{Context: context.Background(), cancelAt: 5}
+		d := &driver{client: &fakeDropbox{listOut: &files.ListFolderResult{Entries: []files.IsMetadata{
+			&files.FileMetadata{Metadata: files.Metadata{PathDisplay: "/file"}},
+		}}}}
+		if err := d.walkPage(ctx, files.NewListFolderArg(""), func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+			t.Fatalf("walkPage cancellation = %v", err)
+		}
+	})
+}
+
+type dropboxStepContext struct {
+	context.Context
+	calls    int
+	cancelAt int
+}
+
+// Err begins returning context.Canceled at the configured observation count.
+func (c *dropboxStepContext) Err() error {
+	c.calls++
+	if c.calls >= c.cancelAt {
+		return context.Canceled
+	}
+	return nil
+}
+
+type cancelEOFReadCloser struct {
+	cancel context.CancelFunc
+	done   bool
+}
+
+// Read cancels while returning a complete final chunk so cancellation is
+// observed after a successful copy rather than as a transfer error.
+func (r *cancelEOFReadCloser) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	p[0] = 'x'
+	r.cancel()
+	return 1, io.EOF
+}
+
+// Close makes response cleanup succeed.
+func (*cancelEOFReadCloser) Close() error { return nil }
 
 // createPaths projects recorded folder arguments into their API paths for assertions.
 func createPaths(args []*files.CreateFolderArg) []string {

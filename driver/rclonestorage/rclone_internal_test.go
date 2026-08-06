@@ -765,6 +765,24 @@ func TestRcloneCloseOwnsBackendLifecycle(t *testing.T) {
 	if _, err := d.Get("file.txt"); !errors.Is(err, stdfs.ErrClosed) {
 		t.Fatalf("Get after Close error = %v", err)
 	}
+	closedCalls := []func() error{
+		func() error { return d.Put("file.txt", nil) },
+		func() error { return d.MakeDir("dir") },
+		func() error { return d.Delete("file.txt") },
+		func() error { _, err := d.Stat("file.txt"); return err },
+		func() error { _, err := d.Exists("file.txt"); return err },
+		func() error { _, err := d.List(""); return err },
+		func() error { return d.Walk("", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.Copy("file.txt", "copy.txt") },
+		func() error { return d.Move("file.txt", "moved.txt") },
+		func() error { _, err := d.URL("file.txt"); return err },
+		func() error { _, err := d.ModTime(context.Background(), "file.txt"); return err },
+	}
+	for index, call := range closedCalls {
+		if err := call(); !errors.Is(err, stdfs.ErrClosed) {
+			t.Fatalf("closed call %d error = %v", index, err)
+		}
+	}
 }
 
 // resetRcloneInit restores all process-global rclone hooks and identity state after each test.
@@ -1026,3 +1044,111 @@ func TestInitRcloneConfigDataSetsConfigPath(t *testing.T) {
 		t.Fatalf("expected config path to end with inline-rclone.conf, got %q", config.GetConfigPath())
 	}
 }
+
+// TestRcloneInvalidPathsAndThinWrappers covers validation before any backend
+// request and the background-context adapters omitted by the shared contract.
+func TestRcloneInvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+		func() error { _, err := d.URLContext(nil, "../bad"); return err },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage error = %v", err)
+	}
+}
+
+// TestRcloneRemainingHelperEdges covers cancellation, cleanup, stream, and
+// backend capability branches without external remotes.
+func TestRcloneRemainingHelperEdges(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newFromDiskConfig(ctx, storagecore.ResolvedConfig{Remote: "remote:"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("newFromDiskConfig canceled error = %v", err)
+	}
+
+	fake := newFakeFs()
+	d := &driver{fs: fake, prefix: "pre"}
+	if err := d.MakeDir(""); err != nil {
+		t.Fatalf("MakeDir root: %v", err)
+	}
+	mkdirErr := errors.New("mkdir")
+	fake.mkdirFunc = func(context.Context, string) error { return mkdirErr }
+	if err := d.MakeDir("dir"); !errors.Is(err, mkdirErr) {
+		t.Fatalf("MakeDir error = %v", err)
+	}
+	if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Walk nil callback error = %v", err)
+	}
+
+	closeErr := errors.New("close")
+	fake.newObjectFunc = func(context.Context, string) (fs.Object, error) {
+		return &fakeObject{fakeDirEntry: fakeDirEntry{remote: "pre/file", fsys: fake}, openRC: &rcloneCloseReader{closeErr: closeErr}}, nil
+	}
+	if _, err := d.Get("file"); !errors.Is(err, closeErr) {
+		t.Fatalf("Get close error = %v", err)
+	}
+
+	writeErr := errors.New("write")
+	if err := copyContext(context.Background(), rcloneFailingWriter{err: writeErr}, strings.NewReader("x")); !errors.Is(err, writeErr) {
+		t.Fatalf("copyContext write error = %v", err)
+	}
+	if err := copyContext(context.Background(), rcloneShortWriter{}, strings.NewReader("x")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("copyContext short write error = %v", err)
+	}
+	if err := copyContext(ctx, io.Discard, strings.NewReader("x")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("copyContext canceled error = %v", err)
+	}
+	if err := joinCleanup(nil, closeErr); !errors.Is(err, closeErr) {
+		t.Fatalf("joinCleanup cleanup error = %v", err)
+	}
+	if err := joinCleanup(writeErr, closeErr); !errors.Is(err, writeErr) || !errors.Is(err, closeErr) {
+		t.Fatalf("joinCleanup combined error = %v", err)
+	}
+
+	withoutShutdown := &driver{fs: newFakeFs()}
+	if err := withoutShutdown.Close(); err != nil {
+		t.Fatalf("Close without shutdown: %v", err)
+	}
+}
+
+type rcloneCloseReader struct {
+	closeErr error
+}
+
+// Read reports EOF immediately.
+func (*rcloneCloseReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+// Close returns the configured cleanup failure.
+func (r *rcloneCloseReader) Close() error { return r.closeErr }
+
+type rcloneFailingWriter struct {
+	err error
+}
+
+// Write injects a destination failure.
+func (w rcloneFailingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type rcloneShortWriter struct{}
+
+// Write accepts no bytes without error to exercise short-write handling.
+func (rcloneShortWriter) Write([]byte) (int, error) { return 0, nil }

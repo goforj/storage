@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -242,10 +243,48 @@ type fakeSFTPClient struct {
 	statErr       error
 	readDir       []os.FileInfo
 	readDirErr    error
+	closeErr      error
+	openHook      func()
+	removeHook    func()
+	statHook      func()
+}
+
+// TestSFTPInvalidPathsAndThinWrappers covers validation before any client
+// request and the background-context adapters omitted by the shared contract.
+func TestSFTPInvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage error = %v", err)
+	}
 }
 
 // Open returns the configured download body, payload, or open failure.
 func (f *fakeSFTPClient) Open(string) (io.ReadCloser, error) {
+	if f.openHook != nil {
+		f.openHook()
+	}
 	if f.openErr != nil {
 		return nil, f.openErr
 	}
@@ -269,11 +308,16 @@ func (f *fakeSFTPClient) OpenFile(path string, flags int) (io.WriteCloser, error
 }
 
 // MkdirAll returns the configured parent-creation failure.
-func (f *fakeSFTPClient) MkdirAll(string) error { return f.mkdirErr }
+func (f *fakeSFTPClient) MkdirAll(string) error {
+	return f.mkdirErr
+}
 
 // Remove records file and temporary cleanup paths before returning its configured failure.
 func (f *fakeSFTPClient) Remove(path string) error {
 	f.removePaths = append(f.removePaths, path)
+	if f.removeHook != nil {
+		f.removeHook()
+	}
 	return f.removeErr
 }
 
@@ -291,25 +335,36 @@ func (f *fakeSFTPClient) PosixRename(oldname, newname string) error {
 }
 
 // Stat returns configured remote metadata or lookup failure.
-func (f *fakeSFTPClient) Stat(string) (os.FileInfo, error) { return f.statInfo, f.statErr }
+func (f *fakeSFTPClient) Stat(string) (os.FileInfo, error) {
+	if f.statHook != nil {
+		f.statHook()
+	}
+	return f.statInfo, f.statErr
+}
 
 // ReadDir returns configured immediate children or listing failure.
-func (f *fakeSFTPClient) ReadDir(string) ([]os.FileInfo, error) { return f.readDir, f.readDirErr }
+func (f *fakeSFTPClient) ReadDir(string) ([]os.FileInfo, error) {
+	return f.readDir, f.readDirErr
+}
 
 // Close makes fake SFTP client cleanup succeed.
-func (f *fakeSFTPClient) Close() error { return nil }
+func (f *fakeSFTPClient) Close() error { return f.closeErr }
 
 type fakeWriteCloser struct {
 	buf        bytes.Buffer
 	writeErr   error
 	closeErr   error
 	afterWrite func()
+	zeroWrite  bool
 }
 
 // Write captures bytes and can cancel or fail an upload after the write boundary.
 func (f *fakeWriteCloser) Write(p []byte) (int, error) {
 	if f.writeErr != nil {
 		return 0, f.writeErr
+	}
+	if f.zeroWrite {
+		return 0, nil
 	}
 	n, err := f.buf.Write(p)
 	if f.afterWrite != nil {
@@ -651,6 +706,243 @@ func TestSFTPFakeWalkAndErrors(t *testing.T) {
 		}
 	})
 }
+
+// TestSFTPEdgeFailures covers pagination, transfer cleanup, relocation, and
+// closed-client behavior that the shared contract cannot induce.
+func TestSFTPEdgeFailures(t *testing.T) {
+	t.Run("pagination and callback validation", func(t *testing.T) {
+		client := &fakeSFTPClient{readDir: []os.FileInfo{
+			fakeFileInfo{name: "a"}, fakeFileInfo{name: "b"},
+		}}
+		d := &driver{client: client}
+		page, err := d.ListPage("", 0, 1)
+		if err != nil || len(page.Entries) != 1 || !page.HasMore {
+			t.Fatalf("ListPage = %+v, %v", page, err)
+		}
+		if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Walk nil callback error = %v", err)
+		}
+		if err := d.MakeDir(""); err != nil {
+			t.Fatalf("MakeDir root: %v", err)
+		}
+	})
+
+	t.Run("copy and move failures", func(t *testing.T) {
+		client := &fakeSFTPClient{openErr: os.ErrNotExist, statErr: os.ErrNotExist}
+		d := &driver{client: client}
+		if err := d.Copy("missing", "copy"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("Copy missing error = %v", err)
+		}
+		if err := d.Move("missing", "moved"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("Move missing error = %v", err)
+		}
+
+		client = &fakeSFTPClient{statInfo: fakeFileInfo{name: "file"}, renameErr: os.ErrPermission}
+		d = &driver{client: client}
+		if err := d.Move("file", "moved"); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Move rename error = %v", err)
+		}
+	})
+
+	t.Run("temporary cleanup errors are joined", func(t *testing.T) {
+		writeErr := errors.New("write")
+		closeErr := errors.New("close")
+		removeErr := errors.New("remove")
+		client := &fakeSFTPClient{
+			openFile:  &fakeWriteCloser{writeErr: writeErr, closeErr: closeErr},
+			removeErr: removeErr,
+		}
+		d := &driver{client: client}
+		err := d.Put("file", []byte("data"))
+		if !errors.Is(err, writeErr) || !errors.Is(err, closeErr) || !errors.Is(err, removeErr) {
+			t.Fatalf("Put joined error = %v", err)
+		}
+	})
+
+	t.Run("close is terminal", func(t *testing.T) {
+		closeErr := errors.New("close")
+		d := &driver{client: &fakeSFTPClient{closeErr: closeErr}}
+		if err := d.Close(); !errors.Is(err, closeErr) {
+			t.Fatalf("Close error = %v", err)
+		}
+		if err := d.Close(); !errors.Is(err, closeErr) {
+			t.Fatalf("second Close error = %v", err)
+		}
+		calls := []func() error{
+			func() error { _, err := d.Get("file"); return err },
+			func() error { return d.Put("file", nil) },
+			func() error { return d.MakeDir("dir") },
+			func() error { return d.Delete("file") },
+			func() error { _, err := d.Stat("file"); return err },
+			func() error { _, err := d.Exists("file"); return err },
+			func() error { _, err := d.List(""); return err },
+			func() error { return d.Walk("", func(storagecore.Entry) error { return nil }) },
+			func() error { return d.Copy("file", "copy") },
+			func() error { return d.Move("file", "moved") },
+		}
+		for index, call := range calls {
+			if err := call(); err == nil {
+				t.Fatalf("closed call %d returned nil error", index)
+			}
+		}
+	})
+}
+
+// TestSFTPPostClientCancellation verifies cancellation wins when it arrives
+// across an SFTP call boundary that cannot accept a context directly.
+func TestSFTPPostClientCancellation(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*driver, context.Context) error
+		make func(context.CancelFunc) *fakeSFTPClient
+	}{
+		{name: "get", call: func(d *driver, ctx context.Context) error { _, err := d.GetContext(ctx, "file"); return err }, make: func(cancel context.CancelFunc) *fakeSFTPClient {
+			return &fakeSFTPClient{openData: "data", openHook: cancel}
+		}},
+		{name: "delete stat", call: func(d *driver, ctx context.Context) error { return d.DeleteContext(ctx, "file") }, make: func(cancel context.CancelFunc) *fakeSFTPClient {
+			return &fakeSFTPClient{statInfo: fakeFileInfo{name: "file"}, statHook: cancel}
+		}},
+		{name: "delete remove", call: func(d *driver, ctx context.Context) error { return d.DeleteContext(ctx, "file") }, make: func(cancel context.CancelFunc) *fakeSFTPClient {
+			return &fakeSFTPClient{statInfo: fakeFileInfo{name: "file"}, removeHook: cancel}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			d := &driver{client: test.make(cancel)}
+			if err := test.call(d, ctx); !errors.Is(err, context.Canceled) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+// TestSFTPPureHelperEdges covers configuration validation, stream cleanup,
+// and short writes without requiring an SSH server.
+func TestSFTPPureHelperEdges(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newFromDiskConfig(ctx, storagecore.ResolvedConfig{SFTPHost: "host"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("newFromDiskConfig canceled error = %v", err)
+	}
+	if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
+		SFTPHost: "host", SFTPPassword: "secret", SFTPKnownHostsPath: "known", SFTPInsecureIgnoreHostKey: true,
+	}); err == nil {
+		t.Fatal("newFromDiskConfig accepted conflicting host-key settings")
+	}
+	for _, port := range []int{-1, 65536} {
+		if _, err := New(Config{Host: "host", Port: port, Password: "secret", InsecureIgnoreHostKey: true}); err == nil {
+			t.Fatalf("New accepted port %d", port)
+		}
+	}
+	if _, err := buildAuth(storagecore.ResolvedConfig{SFTPKeyPath: filepath.Join(t.TempDir(), "missing")}); err == nil {
+		t.Fatal("buildAuth missing key returned nil error")
+	}
+	if _, err := buildHostKeyCallback(storagecore.ResolvedConfig{SFTPKnownHostsPath: "known", SFTPInsecureIgnoreHostKey: true}); err == nil {
+		t.Fatal("buildHostKeyCallback accepted conflicting settings")
+	}
+	if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{SFTPHost: "host", SFTPInsecureIgnoreHostKey: true}); err == nil {
+		t.Fatal("newFromDiskConfig missing auth returned nil error")
+	}
+	if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{SFTPHost: "host", SFTPPassword: "secret"}); err == nil {
+		t.Fatal("newFromDiskConfig missing host verification returned nil error")
+	}
+
+	closeErr := errors.New("close")
+	writeErr := errors.New("write")
+	d := &driver{client: &fakeSFTPClient{openReader: &sftpTrackedReader{Reader: bytes.NewReader([]byte("data")), closeErr: closeErr}}}
+	if _, err := d.Get("file"); !errors.Is(err, closeErr) {
+		t.Fatalf("Get close error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{openFile: &fakeWriteCloser{zeroWrite: true}}}
+	if err := d.Put("file", []byte("data")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("Put short write error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{mkdirErr: os.ErrPermission}}
+	if err := d.MakeDir("dir"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{openFileErr: os.ErrPermission}}
+	if err := d.Put("file", []byte("data")); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Put open error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{openFile: &fakeWriteCloser{closeErr: closeErr}}}
+	if err := d.Put("file", []byte("data")); !errors.Is(err, closeErr) {
+		t.Fatalf("Put close error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{openFile: &fakeWriteCloser{writeErr: writeErr}, removeErr: os.ErrNotExist}}
+	if err := d.Put("file", []byte("data")); !errors.Is(err, writeErr) {
+		t.Fatalf("Put cleanup not-found error = %v", err)
+	}
+	d = &driver{client: &fakeSFTPClient{statInfo: fakeFileInfo{name: "file"}, mkdirErr: os.ErrPermission}}
+	if err := d.Move("file", "nested/moved"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Move mkdir error = %v", err)
+	}
+
+	if _, err := copyContext(context.Background(), sftpFailingWriter{err: writeErr}, bytes.NewReader([]byte("x"))); !errors.Is(err, writeErr) {
+		t.Fatalf("copyContext write error = %v", err)
+	}
+	if _, err := copyContext(context.Background(), sftpShortWriter{}, bytes.NewReader([]byte("x"))); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("copyContext short write error = %v", err)
+	}
+	if err := joinCleanup(nil, closeErr); !errors.Is(err, closeErr) {
+		t.Fatalf("joinCleanup cleanup error = %v", err)
+	}
+	if err := (&realSFTPClient{}).Close(); err != nil {
+		t.Fatalf("empty real client Close = %v", err)
+	}
+}
+
+// TestSFTPMidIterationCancellation verifies listing and walking recheck the
+// caller context between remote entries.
+func TestSFTPMidIterationCancellation(t *testing.T) {
+	client := &fakeSFTPClient{
+		statInfo: fakeFileInfo{name: "dir", isDir: true},
+		readDir:  []os.FileInfo{fakeFileInfo{name: "a"}, fakeFileInfo{name: "b"}},
+	}
+	d := &driver{client: client}
+	if _, err := d.ListContext(&sftpStepContext{Context: context.Background(), cancelAt: 2}, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListContext cancellation = %v", err)
+	}
+	if err := d.WalkContext(&sftpStepContext{Context: context.Background(), cancelAt: 3}, "dir", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WalkContext cancellation = %v", err)
+	}
+}
+
+type sftpStepContext struct {
+	context.Context
+	calls    int
+	cancelAt int
+}
+
+// Err begins returning context.Canceled at the configured observation count.
+func (c *sftpStepContext) Err() error {
+	c.calls++
+	if c.calls >= c.cancelAt {
+		return context.Canceled
+	}
+	return nil
+}
+
+type sftpTrackedReader struct {
+	io.Reader
+	closeErr error
+}
+
+// Close returns the configured download cleanup failure.
+func (r *sftpTrackedReader) Close() error { return r.closeErr }
+
+type sftpFailingWriter struct {
+	err error
+}
+
+// Write injects a destination failure.
+func (w sftpFailingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type sftpShortWriter struct{}
+
+// Write accepts no bytes without error to exercise short-write handling.
+func (sftpShortWriter) Write([]byte) (int, error) { return 0, nil }
 
 type failingReadCloser struct{}
 

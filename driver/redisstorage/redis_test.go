@@ -3,6 +3,7 @@ package redisstorage
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/goforj/storage/storagecore"
@@ -125,5 +126,97 @@ func TestRedisNamespace(t *testing.T) {
 	}
 	if got := redisNamespace(storagecore.ResolvedConfig{RedisDB: 3}); got != "goforj:storage:redis:db:3" {
 		t.Fatalf("redisNamespace db = %q", got)
+	}
+}
+
+// TestRedisInvalidPathsAndThinWrappers covers validation before any Redis
+// request and the background-context adapters omitted by the shared contract.
+func TestRedisInvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListPageContext(nil, "../bad", 0, 1); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+		func() error { _, err := d.URLContext(nil, "../bad"); return err },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage error = %v", err)
+	}
+}
+
+// TestRedisIndexEncodingEdges verifies malformed persisted index values fail
+// safely and every released and versioned encoding remains distinguishable.
+func TestRedisIndexEncodingEdges(t *testing.T) {
+	d := &driver{namespace: "ns", prefix: "sandbox"}
+	if d.stripPrefix("sandbox") != "" || d.stripPrefix("sandbox/file") != "file" {
+		t.Fatal("stripPrefix returned unexpected values")
+	}
+	if got := (&driver{}).stripPrefix("plain"); got != "plain" {
+		t.Fatalf("unprefixed stripPrefix = %q", got)
+	}
+	if parentDir("") != "" || parentDir("file") != "" || parentDir("a/b") != "a" {
+		t.Fatal("parentDir returned unexpected values")
+	}
+	if objectDirs("") != nil || objectDirs("file") != nil || !slices.Equal(objectDirs("a/b/c"), []string{"a", "a/b"}) {
+		t.Fatalf("objectDirs returned unexpected values")
+	}
+	for _, child := range []string{encodeFileChild("a"), encodeDirChild("b")} {
+		if _, _, err := parseChildEntry(child); err != nil {
+			t.Fatalf("parseChildEntry(%q): %v", child, err)
+		}
+	}
+	if _, _, err := parseChildEntry("bad"); err == nil {
+		t.Fatal("parseChildEntry malformed returned nil error")
+	}
+
+	for _, member := range []string{objectMember("a"), dirMarkerMember("b"), legacyDirMarkerMember("c"), "plain"} {
+		if _, _, err := parseIndexedMember(member); err != nil {
+			t.Fatalf("parseIndexedMember(%q): %v", member, err)
+		}
+	}
+	for _, member := range []string{"storage:v1:object:%", "storage:v1:directory:%"} {
+		if _, _, err := parseIndexedMember(member); err == nil {
+			t.Fatalf("parseIndexedMember(%q) returned nil error", member)
+		}
+	}
+	for _, key := range []string{"storage:v1:object:x", "storage:v1:directory:x", "dirmarker:x"} {
+		if _, ok := unambiguousLegacyObjectMember(key); ok {
+			t.Fatalf("unambiguousLegacyObjectMember(%q) = true", key)
+		}
+	}
+	if got, ok := unambiguousLegacyObjectMember("ordinary"); !ok || got != "ordinary" {
+		t.Fatalf("unambiguousLegacyObjectMember ordinary = %q, %v", got, ok)
+	}
+
+	keys := d.indexedMemberWatchKeys([]indexedMemberRecord{
+		{member: "legacy", schema: legacyIndex},
+		{member: objectMember("object"), schema: versionedIndex},
+		{member: dirMarkerMember("dir"), schema: versionedIndex},
+		{member: legacyDirMarkerMember("old-dir"), schema: legacyIndex},
+		{member: "storage:v1:object:%", schema: versionedIndex},
+	})
+	if len(keys) == 0 || !slices.IsSorted(keys) {
+		t.Fatalf("indexedMemberWatchKeys = %v", keys)
+	}
+	if _, err := d.listEntries(context.Background(), []string{"invalid"}); err == nil {
+		t.Fatal("listEntries malformed child returned nil error")
 	}
 }

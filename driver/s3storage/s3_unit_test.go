@@ -38,11 +38,48 @@ type fakeS3 struct {
 	listInputs   []*s3.ListObjectsV2Input
 	headByKey    map[string]*s3.HeadObjectOutput
 	headErrByKey map[string]error
+	getHook      func()
+	listHook     func()
+}
+
+// TestS3InvalidPathsAndThinWrappers covers validation before any SDK request
+// and the background-context adapters omitted by the shared contract.
+func TestS3InvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+		func() error { _, err := d.URLContext(nil, "../bad"); return err },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage error = %v", err)
+	}
 }
 
 // GetObject records read ownership and returns the configured body or failure for cleanup assertions.
 func (f *fakeS3) GetObject(ctx context.Context, in *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	f.getInputs = append(f.getInputs, in)
+	if f.getHook != nil {
+		f.getHook()
+	}
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
@@ -86,6 +123,9 @@ func (f *fakeS3) HeadObject(ctx context.Context, in *s3.HeadObjectInput, _ ...fu
 // ListObjectsV2 consumes a configured page sequence so pagination and cancellation boundaries stay deterministic.
 func (f *fakeS3) ListObjectsV2(ctx context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	f.listInputs = append(f.listInputs, in)
+	if f.listHook != nil {
+		f.listHook()
+	}
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -816,3 +856,183 @@ func TestS3GetContextReadFailureStillCloses(t *testing.T) {
 		t.Fatal("GetContext did not close failed response body")
 	}
 }
+
+// TestS3ClientFailurePropagation verifies every SDK boundary preserves the
+// operation that failed and does not continue into a later mutation.
+func TestS3ClientFailurePropagation(t *testing.T) {
+	boom := errors.New("sdk failed")
+
+	tests := []struct {
+		name   string
+		driver *driver
+		call   func(*driver) error
+	}{
+		{name: "get", driver: &driver{client: &fakeS3{getErr: boom}}, call: func(d *driver) error { _, err := d.Get("file"); return err }},
+		{name: "put", driver: &driver{client: &fakeS3{putErr: boom}}, call: func(d *driver) error { return d.Put("file", nil) }},
+		{name: "make directory", driver: &driver{client: &fakeS3{putErr: boom}}, call: func(d *driver) error { return d.MakeDir("dir") }},
+		{name: "delete object", driver: &driver{client: &fakeS3{headOK: true, delErr: boom}}, call: func(d *driver) error { return d.Delete("file") }},
+		{name: "delete directory list", driver: &driver{client: &fakeS3{headByKey: map[string]*s3.HeadObjectOutput{"dir/": {}}, listErr: boom}}, call: func(d *driver) error { return d.Delete("dir") }},
+		{name: "stat object", driver: &driver{client: &fakeS3{headErr: boom}}, call: func(d *driver) error { _, err := d.Stat("file"); return err }},
+		{name: "stat directory marker", driver: &driver{client: &fakeS3{headErrByKey: map[string]error{"dir": &types.NotFound{}, "dir/": boom}}}, call: func(d *driver) error { _, err := d.Stat("dir"); return err }},
+		{name: "stat implicit directory", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { _, err := d.Stat("dir"); return err }},
+		{name: "exists", driver: &driver{client: &fakeS3{headErr: boom}}, call: func(d *driver) error { _, err := d.Exists("file"); return err }},
+		{name: "list", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { _, err := d.List(""); return err }},
+		{name: "list page", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { _, err := d.ListPage("", 0, 1); return err }},
+		{name: "walk list", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { return d.Walk("", func(storagecore.Entry) error { return nil }) }},
+		{name: "copy read", driver: &driver{client: &fakeS3{getErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
+		{name: "copy write", driver: &driver{client: &fakeS3{getBody: "x", putErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
+		{name: "move stat", driver: &driver{client: &fakeS3{headErr: boom}}, call: func(d *driver) error { return d.Move("src", "dst") }},
+		{name: "move delete", driver: &driver{client: &fakeS3{headOK: true, getBody: "x", delErr: boom}}, call: func(d *driver) error { return d.Move("src", "dst") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.driver.bucket = "bucket"
+			if err := test.call(test.driver); !errors.Is(err, boom) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+
+	d := &driver{client: &fakeS3{}, bucket: "bucket"}
+	if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Walk nil callback error = %v", err)
+	}
+	if err := d.Walk("missing", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("Walk missing error = %v", err)
+	}
+	implicit := &driver{client: &fakeS3{listOut: &s3.ListObjectsV2Output{Contents: []types.Object{{Key: aws.String("dir/file")}}}}, bucket: "bucket"}
+	entry, err := implicit.Stat("dir")
+	if err != nil || !entry.IsDir {
+		t.Fatalf("Stat implicit directory = %+v, %v", entry, err)
+	}
+}
+
+// TestS3InternalEdgeBranches pins stream, cleanup, root-path, and collision
+// behavior that cannot be reached through a successful object lifecycle.
+func TestS3InternalEdgeBranches(t *testing.T) {
+	d := &driver{client: &fakeS3{}, presign: fakePresign{}, bucket: "bucket", prefix: "pre"}
+	for name, call := range map[string]func() error{
+		"get root": func() error { _, err := d.Get(""); return err },
+		"url root": func() error { _, err := d.URL(""); return err },
+	} {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("%s error = %v", name, err)
+		}
+	}
+	if exists, err := d.Exists(""); err != nil || exists {
+		t.Fatalf("Exists root = %v, %v", exists, err)
+	}
+	if got := d.stripPrefix("pre"); got != "" {
+		t.Fatalf("stripPrefix exact prefix = %q", got)
+	}
+
+	entries := map[string]storagecore.Entry{"file": {Path: "file"}}
+	addDirectoryEntry(entries, "file")
+	if entries["file"].IsDir {
+		t.Fatal("addDirectoryEntry replaced a colliding file")
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := copyContext(canceled, io.Discard, strings.NewReader("x")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("copyContext canceled error = %v", err)
+	}
+	writeErr := errors.New("write failed")
+	if _, err := copyContext(context.Background(), failingWriter{err: writeErr}, strings.NewReader("x")); !errors.Is(err, writeErr) {
+		t.Fatalf("copyContext write error = %v", err)
+	}
+	if _, err := copyContext(context.Background(), shortWriter{}, strings.NewReader("xy")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("copyContext short write error = %v", err)
+	}
+	cleanupErr := errors.New("cleanup")
+	if !errors.Is(joinCleanup(nil, cleanupErr), cleanupErr) {
+		t.Fatal("joinCleanup dropped cleanup-only error")
+	}
+	if got := joinCleanup(writeErr, nil); !errors.Is(got, writeErr) {
+		t.Fatal("joinCleanup dropped primary-only error")
+	}
+	if got := joinCleanup(writeErr, cleanupErr); !errors.Is(got, writeErr) || !errors.Is(got, cleanupErr) {
+		t.Fatal("joinCleanup did not preserve both errors")
+	}
+}
+
+// TestS3PostSDKCancellation verifies cancellation takes precedence when it is
+// observed immediately after an AWS operation completes.
+func TestS3PostSDKCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	d := &driver{client: &fakeS3{getBody: "data", getHook: cancel}, bucket: "bucket"}
+	if _, err := d.GetContext(ctx, "file"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetContext error = %v", err)
+	}
+}
+
+// TestS3ListingCancellationAndFilters covers cancellation between paged
+// entries and suppression of the logical namespace marker.
+func TestS3ListingCancellationAndFilters(t *testing.T) {
+	t.Run("common prefix cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &fakeS3{listHook: cancel, listOut: &s3.ListObjectsV2Output{
+			CommonPrefixes: []types.CommonPrefix{{Prefix: aws.String("pre/dir/")}},
+		}}
+		d := &driver{client: client, bucket: "bucket", prefix: "pre"}
+		if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListContext prefix cancellation = %v", err)
+		}
+	})
+	t.Run("object cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &fakeS3{listHook: cancel, listOut: &s3.ListObjectsV2Output{
+			Contents: []types.Object{{Key: aws.String("pre/file")}},
+		}}
+		d := &driver{client: client, bucket: "bucket", prefix: "pre"}
+		if _, err := d.ListContext(ctx, ""); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListContext object cancellation = %v", err)
+		}
+	})
+	t.Run("logical marker filtering", func(t *testing.T) {
+		client := &fakeS3{listOut: &s3.ListObjectsV2Output{
+			CommonPrefixes: []types.CommonPrefix{{Prefix: aws.String("pre/")}},
+			Contents:       []types.Object{{Key: aws.String("pre")}},
+		}}
+		d := &driver{client: client, bucket: "bucket", prefix: "pre"}
+		entries, err := d.List("")
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("List marker entries = %+v, %v", entries, err)
+		}
+	})
+	t.Run("walk cancellation and callback cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &fakeS3{listHook: cancel, listOut: &s3.ListObjectsV2Output{
+			Contents: []types.Object{{Key: aws.String("file")}},
+		}}
+		d := &driver{client: client, bucket: "bucket"}
+		if err := d.WalkContext(ctx, "", func(storagecore.Entry) error { return nil }); !errors.Is(err, context.Canceled) {
+			t.Fatalf("WalkContext listing cancellation = %v", err)
+		}
+
+		client.listHook = nil
+		client.listOut = &s3.ListObjectsV2Output{Contents: []types.Object{{Key: aws.String("a")}, {Key: aws.String("b")}}}
+		ctx, cancel = context.WithCancel(context.Background())
+		seen := 0
+		err := d.WalkContext(ctx, "", func(storagecore.Entry) error {
+			seen++
+			cancel()
+			return nil
+		})
+		if !errors.Is(err, context.Canceled) || seen != 1 {
+			t.Fatalf("WalkContext callback cancellation = %v after %d entries", err, seen)
+		}
+	})
+}
+
+// failingWriter returns a stable failure from Write.
+type failingWriter struct{ err error }
+
+// Write returns the configured failure without accepting bytes.
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// shortWriter accepts fewer bytes than requested without an explicit error.
+type shortWriter struct{}
+
+// Write reports a deliberately short successful write.
+func (shortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
