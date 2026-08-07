@@ -17,6 +17,358 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
+// TestRedisPublicOperations exercises the complete storage surface against an
+// in-process Redis server so default tests cover behavior formerly limited to
+// integration-tagged container tests.
+func TestRedisPublicOperations(t *testing.T) {
+	d := newMiniRedisDriver(t, "sandbox")
+
+	if err := d.MakeDir("empty"); err != nil {
+		t.Fatalf("MakeDir: %v", err)
+	}
+	if err := d.Put("docs/readme.txt", []byte("hello")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := d.Get("docs/readme.txt")
+	if err != nil || string(got) != "hello" {
+		t.Fatalf("Get = %q, %v", got, err)
+	}
+	if _, err := d.Get(""); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Get root error = %v", err)
+	}
+
+	entry, err := d.Stat("docs/readme.txt")
+	if err != nil || entry.IsDir || entry.Size != 5 {
+		t.Fatalf("Stat file = %+v, %v", entry, err)
+	}
+	entry, err = d.Stat("docs")
+	if err != nil || !entry.IsDir {
+		t.Fatalf("Stat directory = %+v, %v", entry, err)
+	}
+	entry, err = d.Stat("")
+	if err != nil || !entry.IsDir || entry.Path != "" {
+		t.Fatalf("Stat root = %+v, %v", entry, err)
+	}
+	if _, err := d.Stat("missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("Stat missing error = %v", err)
+	}
+	if exists, err := d.Exists("docs/readme.txt"); err != nil || !exists {
+		t.Fatalf("Exists file = %v, %v", exists, err)
+	}
+	if exists, err := d.Exists(""); err != nil || exists {
+		t.Fatalf("Exists root = %v, %v", exists, err)
+	}
+
+	entries, err := d.List("")
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("List root = %+v, %v", entries, err)
+	}
+	page, err := d.ListPage("", 0, 1)
+	if err != nil || len(page.Entries) != 1 || !page.HasMore {
+		t.Fatalf("ListPage = %+v, %v", page, err)
+	}
+	if _, err := d.List("docs/readme.txt"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("List file error = %v", err)
+	}
+	if _, err := d.List("missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("List missing error = %v", err)
+	}
+
+	var walked []string
+	if err := d.Walk("docs", func(entry storagecore.Entry) error {
+		walked = append(walked, entry.Path)
+		return nil
+	}); err != nil || !slices.Equal(walked, []string{"docs/readme.txt"}) {
+		t.Fatalf("Walk = %v, %v", walked, err)
+	}
+	callbackErr := errors.New("stop")
+	if err := d.Walk("", func(storagecore.Entry) error { return callbackErr }); !errors.Is(err, callbackErr) {
+		t.Fatalf("Walk callback error = %v", err)
+	}
+	if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("Walk nil callback error = %v", err)
+	}
+	if err := d.Walk("missing", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("Walk missing error = %v", err)
+	}
+
+	if err := d.Copy("docs/readme.txt", "copies/readme.txt"); err != nil {
+		t.Fatalf("Copy: %v", err)
+	}
+	if err := d.Copy("missing", "copies/missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("Copy missing error = %v", err)
+	}
+	if err := d.Move("copies/readme.txt", "archive/readme.txt"); err != nil {
+		t.Fatalf("Move file: %v", err)
+	}
+	if err := d.Move("docs", "manual"); err != nil {
+		t.Fatalf("Move directory: %v", err)
+	}
+	if _, err := d.URL("manual/readme.txt"); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("URL error = %v", err)
+	}
+	if modTime, err := d.ModTime(context.Background(), "manual/readme.txt"); err != nil || modTime.IsZero() {
+		t.Fatalf("ModTime = %v, %v", modTime, err)
+	}
+	if _, err := d.ModTime(context.Background(), "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("ModTime missing error = %v", err)
+	}
+
+	if err := d.Delete("manual/readme.txt"); err != nil {
+		t.Fatalf("Delete file: %v", err)
+	}
+	if err := d.Delete("manual"); err != nil {
+		t.Fatalf("Delete directory: %v", err)
+	}
+	if err := d.Delete("missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("Delete missing error = %v", err)
+	}
+}
+
+// TestRedisBackendFailures verifies transport failures remain observable from
+// every operation instead of being mistaken for absence or empty results.
+func TestRedisBackendFailures(t *testing.T) {
+	server := miniredis.RunT(t)
+	d := newMiniRedisDriverForServer(t, server, "sandbox")
+	server.Close()
+
+	calls := []func() error{
+		func() error { _, err := d.Get("file"); return err },
+		func() error { return d.Put("file", []byte("data")) },
+		func() error { return d.MakeDir("dir") },
+		func() error { return d.Delete("file") },
+		func() error { _, err := d.Stat("file"); return err },
+		func() error { _, err := d.Exists("file"); return err },
+		func() error { _, err := d.List(""); return err },
+		func() error { _, err := d.ListPage("", 0, 1); return err },
+		func() error { return d.Walk("", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.Copy("file", "copy") },
+		func() error { return d.Move("file", "moved") },
+		func() error { _, err := d.URL("file"); return err },
+		func() error { _, err := d.ModTime(context.Background(), "file"); return err },
+	}
+	for index, call := range calls {
+		if err := call(); err == nil {
+			t.Fatalf("backend failure call %d returned nil error", index)
+		}
+	}
+}
+
+// TestRedisMalformedRecords covers defensive parsing of persisted metadata so
+// corrupted Redis values produce errors rather than fabricated entries.
+func TestRedisMalformedRecords(t *testing.T) {
+	d := newMiniRedisDriver(t, "")
+	ctx := context.Background()
+
+	if err := d.client.HSet(ctx, d.objectKey("bad-time"), "data", "ok", "modtime", "not-a-number").Err(); err != nil {
+		t.Fatalf("seed bad modtime: %v", err)
+	}
+	if _, err := d.ModTime(ctx, "bad-time"); err == nil {
+		t.Fatal("ModTime malformed value returned nil error")
+	}
+	if _, err := d.ModTime(ctx, ""); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ModTime root error = %v", err)
+	}
+}
+
+// TestRedisInternalFailureEdges verifies corrupted Redis key types and
+// adversarial recursion state fail closed throughout index validation.
+func TestRedisInternalFailureEdges(t *testing.T) {
+	d := newMiniRedisDriver(t, "")
+	ctx := context.Background()
+	wrongType := func(key string) {
+		t.Helper()
+		if err := d.client.Set(ctx, key, "not-a-set-or-hash", 0).Err(); err != nil {
+			t.Fatalf("seed wrong type %q: %v", key, err)
+		}
+	}
+
+	wrongType(d.objectKey("bad-object"))
+	if _, err := d.objectSize(ctx, "bad-object"); err == nil {
+		t.Fatal("objectSize wrong type returned nil error")
+	}
+	wrongType(d.dirChildrenKey("bad-children"))
+	if _, err := d.children(ctx, "bad-children"); err == nil {
+		t.Fatal("children wrong type returned nil error")
+	}
+	wrongType(d.dirObjectsKey("bad-descendants"))
+	if _, err := d.descendants(ctx, "bad-descendants"); err == nil {
+		t.Fatal("descendants wrong type returned nil error")
+	}
+	wrongType(d.dirObjectsKey("bad-legacy-marker"))
+	if _, err := d.legacyDirectoryMarkerValid(ctx, "bad-legacy-marker"); err == nil {
+		t.Fatal("legacy marker wrong type returned nil error")
+	}
+	wrongType(d.versionedDirObjectsKey("bad-versioned-marker"))
+	if _, err := d.versionedDirectoryMarkerValid(ctx, "bad-versioned-marker"); err == nil {
+		t.Fatal("versioned marker wrong type returned nil error")
+	}
+
+	if _, err := d.listEntries(ctx, []string{encodeFileChild("bad-object")}); err == nil {
+		t.Fatal("listEntries wrong object type returned nil error")
+	}
+	if _, _, err := d.walkEntries(ctx, []indexedMemberRecord{{member: objectMember("bad-object"), schema: versionedIndex}}, ""); err == nil {
+		t.Fatal("walkEntries wrong object type returned nil error")
+	}
+	invalidRecord := indexedMemberRecord{member: "storage:v1:object:%", schema: versionedIndex}
+	if _, err := d.resolveIndexedMember(ctx, invalidRecord); err == nil {
+		t.Fatal("resolveIndexedMember invalid value returned nil error")
+	}
+	if _, _, err := d.directoryStateFromRecords(ctx, d.client, "", []indexedMemberRecord{invalidRecord}); err == nil {
+		t.Fatal("directoryStateFromRecords invalid value returned nil error")
+	}
+
+	if exists, err := d.dirExistsSeen(ctx, "cycle", map[string]struct{}{"cycle": {}}); err != nil || exists {
+		t.Fatalf("dirExistsSeen cycle = %v, %v", exists, err)
+	}
+	deep := make(map[string]struct{}, 1024)
+	for index := 0; index < 1024; index++ {
+		deep[fmt.Sprintf("dir-%d", index)] = struct{}{}
+	}
+	if exists, err := d.dirExistsSeen(ctx, "overflow", deep); err != nil || exists {
+		t.Fatalf("dirExistsSeen depth = %v, %v", exists, err)
+	}
+	if _, _, err := d.directoryStateInTransactionSeen(ctx, nil, "cycle", map[string]struct{}{"cycle": {}}); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("transaction cycle error = %v", err)
+	}
+	if _, _, err := d.directoryStateInTransactionSeen(ctx, nil, "overflow", deep); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("transaction depth error = %v", err)
+	}
+}
+
+// TestRedisTransactionalIndexHelpers exercises stable watched snapshots and
+// stale-member filtering against the same Redis transaction used by deletion.
+func TestRedisTransactionalIndexHelpers(t *testing.T) {
+	d := newMiniRedisDriver(t, "")
+	ctx := context.Background()
+	if err := d.MakeDir("empty"); err != nil {
+		t.Fatalf("MakeDir empty: %v", err)
+	}
+	if err := d.Put("parent/file", []byte("data")); err != nil {
+		t.Fatalf("Put nested file: %v", err)
+	}
+
+	err := d.client.Watch(ctx, func(tx *redis.Tx) error {
+		children, err := d.watchedChildMembers(ctx, tx, "")
+		if err != nil || len(children) != 2 {
+			t.Fatalf("watchedChildMembers = %v, %v", children, err)
+		}
+		records, err := d.watchedDescendants(ctx, tx, "")
+		if err != nil || len(records) != 2 {
+			t.Fatalf("watchedDescendants = %v, %v", records, err)
+		}
+		exists, contents, err := d.directoryRecordsStateInTransaction(ctx, tx, "parent")
+		if err != nil || !exists || !contents {
+			t.Fatalf("directoryRecordsStateInTransaction parent = %v, %v, %v", exists, contents, err)
+		}
+		exists, contents, err = d.directoryStateInTransaction(ctx, tx, "empty")
+		if err != nil || !exists || contents {
+			t.Fatalf("directoryStateInTransaction empty = %v, %v, %v", exists, contents, err)
+		}
+		return nil
+	}, d.dirChildrenKey(""), d.versionedDirChildrenKey(""))
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	entries, err := d.listEntries(ctx, []string{encodeDirChild("ghost"), encodeFileChild("missing")})
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("listEntries stale members = %+v, %v", entries, err)
+	}
+	records := []indexedMemberRecord{
+		{member: objectMember("outside/file"), schema: versionedIndex},
+		{member: objectMember("parent/missing"), schema: versionedIndex},
+		{member: dirMarkerMember("parent"), schema: versionedIndex},
+	}
+	entries, found, err := d.walkEntries(ctx, records, "parent")
+	if err != nil || !found || len(entries) != 0 {
+		t.Fatalf("walkEntries filtered records = %+v, %v, %v", entries, found, err)
+	}
+
+	seedLegacyObject(t, d, "duplicate", "data")
+	if err := d.client.SAdd(ctx, d.versionedDirObjectsKey(""), "duplicate").Err(); err != nil {
+		t.Fatalf("seed duplicate schema member: %v", err)
+	}
+	if records, err := d.descendants(ctx, ""); err != nil || len(records) < 2 {
+		t.Fatalf("descendants duplicate records = %v, %v", records, err)
+	}
+
+	primary := errors.New("primary")
+	cleanup := errors.New("cleanup")
+	if err := joinCleanup(primary, nil); !errors.Is(err, primary) {
+		t.Fatalf("joinCleanup primary = %v", err)
+	}
+	if err := joinCleanup(nil, cleanup); !errors.Is(err, cleanup) {
+		t.Fatalf("joinCleanup cleanup = %v", err)
+	}
+	if err := joinCleanup(primary, cleanup); !errors.Is(err, primary) || !errors.Is(err, cleanup) {
+		t.Fatalf("joinCleanup combined = %v", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := d.watchTransaction(canceled, nil, func(*redis.Tx) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("watchTransaction cancellation = %v", err)
+	}
+}
+
+// TestRedisPublicCorruptTypes verifies every public operation propagates Redis
+// WRONGTYPE errors from the particular structure it owns.
+func TestRedisPublicCorruptTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		seed func(context.Context, *driver) error
+		call func(*driver) error
+	}{
+		{name: "get", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.Get("file"); return err }},
+		{name: "put", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.Put("file", nil) }},
+		{name: "mkdir", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("dir"), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.MakeDir("dir") }},
+		{name: "delete", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.Delete("file") }},
+		{name: "stat", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.Stat("file"); return err }},
+		{name: "exists", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.Exists("file"); return err }},
+		{name: "list", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.dirChildrenKey(""), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.List(""); return err }},
+		{name: "walk", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.dirObjectsKey(""), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.Walk("", func(storagecore.Entry) error { return nil }) }},
+		{name: "copy", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("source"), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.Copy("source", "copy") }},
+		{name: "move", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("source"), "bad", 0).Err()
+		}, call: func(d *driver) error { return d.Move("source", "moved") }},
+		{name: "url", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.URL("file"); return err }},
+		{name: "modtime", seed: func(ctx context.Context, d *driver) error {
+			return d.client.Set(ctx, d.objectKey("file"), "bad", 0).Err()
+		}, call: func(d *driver) error { _, err := d.ModTime(context.Background(), "file"); return err }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			d := newMiniRedisDriver(t, "")
+			if err := test.seed(context.Background(), d); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			if err := test.call(d); err == nil {
+				t.Fatal("operation returned nil error")
+			}
+		})
+	}
+}
+
 // TestRedisIndexedMembersDoNotCollide verifies that directory metadata cannot
 // hide a valid object whose name matches the legacy marker namespace.
 func TestRedisIndexedMembersDoNotCollide(t *testing.T) {

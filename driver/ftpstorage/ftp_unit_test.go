@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"os"
 	"slices"
 	"syscall"
 	"testing"
@@ -165,6 +166,37 @@ type fakeFTPConn struct {
 	fileSize       int64
 	fileSizeErr    error
 	makeDirErr     error
+}
+
+// TestFTPInvalidPathsAndThinWrappers covers validation before any connection
+// request and the background-context adapters omitted by the shared contract.
+func TestFTPInvalidPathsAndThinWrappers(t *testing.T) {
+	d := &driver{}
+	calls := []func() error{
+		func() error { _, err := d.GetContext(nil, "../bad"); return err },
+		func() error { return d.PutContext(nil, "../bad", nil) },
+		func() error { return d.MakeDirContext(nil, "../bad") },
+		func() error { return d.DeleteContext(nil, "../bad") },
+		func() error { _, err := d.StatContext(nil, "../bad"); return err },
+		func() error { _, err := d.ExistsContext(nil, "../bad"); return err },
+		func() error { _, err := d.ListContext(nil, "../bad"); return err },
+		func() error { return d.WalkContext(nil, "../bad", func(storagecore.Entry) error { return nil }) },
+		func() error { return d.CopyContext(nil, "../bad", "dst") },
+		func() error { return d.CopyContext(nil, "src", "../bad") },
+		func() error { return d.MoveContext(nil, "../bad", "dst") },
+		func() error { return d.MoveContext(nil, "src", "../bad") },
+	}
+	for index, call := range calls {
+		if err := call(); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("invalid-path call %d error = %v", index, err)
+		}
+	}
+	if err := d.MakeDir("../bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("MakeDir invalid path error = %v", err)
+	}
+	if _, err := d.ListPage("../bad", 0, 1); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("ListPage error = %v", err)
+	}
 }
 
 // Login returns the configured authentication failure.
@@ -516,3 +548,184 @@ func TestFTPFakeWalkAndErrors(t *testing.T) {
 		}
 	})
 }
+
+// TestFTPLifecycleAndMutationEdges covers connection setup, pagination,
+// relocation failures, callback validation, and terminal close behavior.
+func TestFTPLifecycleAndMutationEdges(t *testing.T) {
+	t.Run("dial and login failures", func(t *testing.T) {
+		dialErr := errors.New("dial")
+		d := &driver{dialFn: func() (ftpConn, error) { return nil, dialErr }}
+		if _, err := d.Get("file"); !errors.Is(err, dialErr) {
+			t.Fatalf("Get dial error = %v", err)
+		}
+		loginErr := errors.New("login")
+		d = &driver{user: "user", dialFn: func() (ftpConn, error) { return &fakeFTPConn{loginErr: loginErr}, nil }}
+		if _, err := d.Get("file"); !errors.Is(err, loginErr) {
+			t.Fatalf("Get login error = %v", err)
+		}
+	})
+
+	t.Run("pagination callback and mkdir", func(t *testing.T) {
+		conn := &fakeFTPConn{listEntries: []*ftp.Entry{
+			{Name: "a", Type: ftp.EntryTypeFile},
+			{Name: "b", Type: ftp.EntryTypeFile},
+		}}
+		d := &driver{conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+		page, err := d.ListPage("", 0, 1)
+		if err != nil || len(page.Entries) != 1 || !page.HasMore {
+			t.Fatalf("ListPage = %+v, %v", page, err)
+		}
+		if err := d.Walk("", nil); !errors.Is(err, storagecore.ErrForbidden) {
+			t.Fatalf("Walk nil callback error = %v", err)
+		}
+		if err := d.MakeDir(""); err != nil {
+			t.Fatalf("MakeDir root: %v", err)
+		}
+		conn.makeDirErr = errors.New("mkdir")
+		if err := d.MakeDir("dir"); err == nil {
+			t.Fatal("MakeDir returned nil error")
+		}
+	})
+
+	t.Run("copy and move failures", func(t *testing.T) {
+		conn := &fakeFTPConn{retrErr: errors.New("550 missing"), fileSizeErr: errors.New("550 missing")}
+		d := &driver{conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+		if err := d.Copy("missing", "copy"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("Copy missing error = %v", err)
+		}
+		if err := d.Move("missing", "moved"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("Move missing error = %v", err)
+		}
+		conn = &fakeFTPConn{
+			listEntries: []*ftp.Entry{{Name: "file", Type: ftp.EntryTypeFile}},
+			storErr:     errors.New("rename"),
+		}
+		d = &driver{conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+		if err := d.Move("file", "moved"); err == nil {
+			t.Fatal("Move rename returned nil error")
+		}
+	})
+
+	t.Run("close is terminal", func(t *testing.T) {
+		quitErr := errors.New("quit")
+		conn := &fakeFTPConn{quitErr: quitErr}
+		d := &driver{conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+		if err := d.Close(); !errors.Is(err, quitErr) {
+			t.Fatalf("Close error = %v", err)
+		}
+		if err := d.Close(); !errors.Is(err, quitErr) {
+			t.Fatalf("second Close error = %v", err)
+		}
+		calls := []func() error{
+			func() error { _, err := d.Get("file"); return err },
+			func() error { return d.Put("file", nil) },
+			func() error { return d.MakeDir("dir") },
+			func() error { return d.Delete("file") },
+			func() error { _, err := d.Stat("file"); return err },
+			func() error { _, err := d.Exists("file"); return err },
+			func() error { _, err := d.List(""); return err },
+			func() error { return d.Walk("", func(storagecore.Entry) error { return nil }) },
+			func() error { return d.Copy("file", "copy") },
+			func() error { return d.Move("file", "moved") },
+		}
+		for index, call := range calls {
+			if err := call(); err == nil {
+				t.Fatalf("closed call %d returned nil error", index)
+			}
+		}
+	})
+}
+
+// TestFTPPureHelperEdges covers configuration and stream helpers that do not
+// require an FTP server.
+func TestFTPPureHelperEdges(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newFromDiskConfig(ctx, storagecore.ResolvedConfig{FTPHost: "host"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("newFromDiskConfig canceled error = %v", err)
+	}
+	for _, port := range []int{-1, 65536} {
+		if _, err := New(Config{Host: "host", Port: port}); err == nil {
+			t.Fatalf("New accepted port %d", port)
+		}
+	}
+	if _, err := New(Config{Host: "host", Prefix: "../bad"}); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("New invalid prefix error = %v", err)
+	}
+	store, err := New(Config{Host: "host", TLS: true})
+	if err != nil {
+		t.Fatalf("New TLS: %v", err)
+	}
+	if d := store.(*driver); !d.tls || d.serverName != "host" {
+		t.Fatalf("TLS driver = %+v", d)
+	}
+
+	d := &driver{}
+	if err := d.runConnLocked(func(ftpConn) error { return nil }); err == nil {
+		t.Fatal("runConnLocked without connection returned nil error")
+	}
+	d.closed = true
+	if _, err := d.ensureConnLocked(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("ensureConnLocked closed error = %v", err)
+	}
+	if isDirectoryExistsError(nil) {
+		t.Fatal("isDirectoryExistsError(nil) = true")
+	}
+	if !shouldReconnectFTP(temporaryNetError{}) {
+		t.Fatal("shouldReconnectFTP net error = false")
+	}
+
+	if _, err := (&contextReader{ctx: ctx, reader: bytes.NewReader(nil)}).Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("contextReader canceled error = %v", err)
+	}
+	if _, err := copyContext(ctx, io.Discard, bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("copyContext canceled error = %v", err)
+	}
+	writeErr := errors.New("write")
+	if _, err := copyContext(context.Background(), ftpFailingWriter{err: writeErr}, bytes.NewReader([]byte("x"))); !errors.Is(err, writeErr) {
+		t.Fatalf("copyContext write error = %v", err)
+	}
+	if _, err := copyContext(context.Background(), ftpShortWriter{}, bytes.NewReader([]byte("x"))); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("copyContext short write error = %v", err)
+	}
+	if _, err := copyContext(context.Background(), io.Discard, ftpErrorReader{err: writeErr}); !errors.Is(err, writeErr) {
+		t.Fatalf("copyContext read error = %v", err)
+	}
+	cleanup := errors.New("cleanup")
+	if err := joinCleanup(nil, cleanup); !errors.Is(err, cleanup) {
+		t.Fatalf("joinCleanup cleanup error = %v", err)
+	}
+	if err := joinCleanup(writeErr, cleanup); !errors.Is(err, writeErr) || !errors.Is(err, cleanup) {
+		t.Fatalf("joinCleanup combined error = %v", err)
+	}
+}
+
+type temporaryNetError struct{}
+
+// Error returns a stable network failure message.
+func (temporaryNetError) Error() string { return "temporary network failure" }
+
+// Timeout classifies the fixture as a non-timeout network error.
+func (temporaryNetError) Timeout() bool { return false }
+
+// Temporary classifies the fixture as a retryable network error.
+func (temporaryNetError) Temporary() bool { return true }
+
+type ftpFailingWriter struct {
+	err error
+}
+
+// Write injects a destination failure.
+func (w ftpFailingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type ftpShortWriter struct{}
+
+// Write accepts no bytes without error to exercise short-write handling.
+func (ftpShortWriter) Write([]byte) (int, error) { return 0, nil }
+
+type ftpErrorReader struct {
+	err error
+}
+
+// Read injects a source failure.
+func (r ftpErrorReader) Read([]byte) (int, error) { return 0, r.err }
