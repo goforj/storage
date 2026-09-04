@@ -37,8 +37,9 @@ while IFS= read -r modfile; do
 		cat "$output"
 		rm -f "$output"
 		continue
+	else
+		scan_status=$?
 	fi
-	scan_status=$?
 	cat "$output"
 	if [[ "$scan_status" -ne 3 ]] || [[ "$(awk '/^Vulnerability #[0-9]+: GO-/{print $3}' "$output" | while read -r id; do grep -Fqx "$dir $id" "$allowlist"; done | wc -l)" -ne "$(awk '/^Vulnerability #[0-9]+: GO-/{count++} END {print count + 0}' "$output")" ]]; then
 		status=1
