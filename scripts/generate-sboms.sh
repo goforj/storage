@@ -4,9 +4,6 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_directory="${1:?usage: generate-sboms.sh OUTPUT_DIRECTORY}"
-workspace="$(mktemp -d)"
-trap 'rm -rf "$workspace"' EXIT
-
 mkdir -p "$output_directory"
 mapfile -t module_directories < <(find "$repository_root" -name go.mod -not -path '*/vendor/*' -printf '%h\n' | sort)
 
@@ -15,26 +12,29 @@ if [[ ${#module_directories[@]} -eq 0 ]]; then
   exit 1
 fi
 
-(
-  cd "$workspace"
-  GOWORK=off go work init "${module_directories[@]}"
-)
-
 for index in "${!module_directories[@]}"; do
   module_directory="${module_directories[$index]}"
   module_name="${module_directory#"$repository_root"/}"
   [[ "$module_name" == "$module_directory" ]] && module_name="root"
   output_file="$output_directory/${index}-${module_name//\//_}.cdx.json"
+  module_path="$(cd "$module_directory" && GOWORK=off go list -m -f '{{.Path}}')"
+  module_argument="$module_name"
+  [[ "$module_name" == "root" ]] && module_argument="."
 
   echo "Generating SBOM for $module_name"
-  (
-    cd "$repository_root"
-    GOWORK="$workspace/go.work" cyclonedx-gomod mod -json -type library -test -output "$output_file" "$module_directory"
-  )
+  if ! (
+    cd "$module_directory"
+    GOWORK=off cyclonedx-gomod mod -json -type library -test -output "$output_file" .
+  ); then
+    rm -f "$output_file"
+    "$repository_root/scripts/with-local-modfile.sh" "$module_argument" cyclonedx-gomod mod -json -type library -test -output "$output_file" .
+  fi
 
-  jq -e '
+  jq -e --arg module_path "$module_path" '
     .bomFormat == "CycloneDX" and
     .metadata.component.type == "library" and
+    .metadata.component.name == $module_path and
+    (.metadata.component.purl | startswith("pkg:golang/" + $module_path + "?type=module")) and
     ([.. | objects | .name? | strings | select(. == "..")] | length == 0) and
     ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0)
   ' "$output_file" >/dev/null

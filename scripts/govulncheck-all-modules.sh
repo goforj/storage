@@ -41,7 +41,9 @@ while IFS= read -r modfile; do
 		scan_status=$?
 	fi
 	cat "$output"
-	if [[ "$scan_status" -ne 3 ]] || [[ "$(awk '/^Vulnerability #[0-9]+: GO-/{print $3}' "$output" | while read -r id; do grep -Fqx "$dir $id" "$allowlist"; done | wc -l)" -ne "$(awk '/^Vulnerability #[0-9]+: GO-/{count++} END {print count + 0}' "$output")" ]]; then
+	actual_ids="$(awk '/^Vulnerability #[0-9]+: GO-/{print $3}' "$output" | sort -u)"
+	allowed_ids="$(awk -v module="$dir" '$1 == module {print $2}' "$allowlist" | sort -u)"
+	if [[ "$scan_status" -ne 3 ]] || [[ -z "$actual_ids" ]] || ! diff -u <(printf '%s\n' "$allowed_ids") <(printf '%s\n' "$actual_ids"); then
 		status=1
 	fi
 	rm -f "$output"
