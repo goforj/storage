@@ -29,8 +29,14 @@ for index in "${!module_directories[@]}"; do
   echo "Generating SBOM for $module_name"
   (
     cd "$repository_root"
-    GOWORK="$workspace/go.work" cyclonedx-gomod mod -json -test -output "$output_file" "$module_directory"
+    GOWORK="$workspace/go.work" cyclonedx-gomod mod -json -type library -test -output "$output_file" "$module_directory"
   )
+
+  jq -e '
+    .bomFormat == "CycloneDX" and
+    .metadata.component.type == "library" and
+    ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0)
+  ' "$output_file" >/dev/null
 done
 
 generated_count="$(find "$output_directory" -maxdepth 1 -name '*.cdx.json' -type f -size +0c | wc -l | tr -d ' ')"
