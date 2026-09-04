@@ -35,6 +35,7 @@ for index in "${!module_directories[@]}"; do
   jq -e '
     .bomFormat == "CycloneDX" and
     .metadata.component.type == "library" and
+    ([.. | objects | .name? | strings | select(. == "..")] | length == 0) and
     ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0)
   ' "$output_file" >/dev/null
 done

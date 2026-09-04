@@ -15,7 +15,7 @@ require (
 	github.com/goforj/storage/driver/sftpstorage v0.5.0
 )
 
-replace github.com/goforj/storage => ..
+replace github.com/goforj/storage => ./..
 
 replace github.com/goforj/storage/storagecore => ../storagecore
 
