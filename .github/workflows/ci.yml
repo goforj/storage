@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     name: Quality (${{ matrix.module }}, Go ${{ matrix.go-version }})
@@ -14,27 +17,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.24.x", "stable"]
-        module:
-          - "."
-          - storagecore
-          - storagetest
-          - driver/dropboxstorage
-          - driver/ftpstorage
-          - driver/gcsstorage
-          - driver/localstorage
-          - driver/memorystorage
-          - driver/rclonestorage
-          - driver/redisstorage
-          - driver/s3storage
-          - driver/sftpstorage
+        include:
+          - { module: '.', go-version: '1.24.4' }
+          - { module: storagecore, go-version: '1.24.4' }
+          - { module: driver/dropboxstorage, go-version: '1.24.4' }
+          - { module: driver/ftpstorage, go-version: '1.24.4' }
+          - { module: driver/localstorage, go-version: '1.24.4' }
+          - { module: driver/memorystorage, go-version: '1.24.4' }
+          - { module: driver/redisstorage, go-version: '1.24.4' }
+          - { module: driver/s3storage, go-version: '1.24.4' }
+          - { module: driver/gcsstorage, go-version: '1.25.0' }
+          - { module: storagetest, go-version: '1.25.0' }
+          - { module: docs/bench, go-version: '1.26.0' }
+          - { module: driver/rclonestorage, go-version: '1.26.0' }
+          - { module: driver/sftpstorage, go-version: '1.26.0' }
+          - { module: examples, go-version: '1.26.0' }
+          - { module: integration, go-version: '1.26.0' }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -54,6 +59,9 @@ jobs:
 
       - name: Verify module quality
         working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: off
+          GOTOOLCHAIN: local
         run: |
           go mod tidy -diff
           go vet ./...
@@ -61,7 +69,7 @@ jobs:
 
       - name: Verify published dependency compatibility
         working-directory: ${{ matrix.module }}
-        run: GOWORK=off go test -run '^$' -count=1 ./...
+        run: GOWORK=off GOTOOLCHAIN=local go test -run '^$' -count=1 ./...
 
   repository:
     name: Repository support
@@ -69,12 +77,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: "stable"
+          go-version: "1.26.0"
           cache: true
           cache-dependency-path: |
             go.sum
@@ -92,6 +100,11 @@ jobs:
 
       - name: Verify published module manifests
         run: scripts/check-published-modules.sh
+
+      - name: Scan all modules
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          PATH="$RUNNER_TEMP/bin:$PATH" bash scripts/govulncheck-all-modules.sh
 
       - name: Verify examples
         working-directory: examples
@@ -121,12 +134,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: "stable"
+          go-version: "1.26.0"
           cache: true
           cache-dependency-path: |
             go.sum
@@ -152,12 +165,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: "stable"
+          go-version: "1.26.0"
           cache: true
           cache-dependency-path: |
             .github/cache-keys/coverage-go.txt
@@ -178,7 +191,7 @@ jobs:
         run: scripts/coverage-codecov.sh
 
       - name: Upload results to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@04b047e8bb82a0c002c8312c1c880fbc6a999d45
         with:
           files: coverage.txt
         env:

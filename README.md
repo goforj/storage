@@ -10,7 +10,7 @@
   <a href="https://pkg.go.dev/github.com/goforj/storage"><img src="https://pkg.go.dev/badge/github.com/goforj/storage.svg" alt="Go Reference"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/goforj/storage/actions/workflows/ci.yml"><img src="https://github.com/goforj/storage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24+-blue?logo=go" alt="Go version"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24%2F1.25%2F1.26+-blue?logo=go" alt="Go version"></a>
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
   <img src="https://img.shields.io/github/v/tag/goforj/storage?label=version&sort=semver&filter=%21driver%2A" alt="Latest tag">
 <!-- test-count:embed:start -->
@@ -69,6 +69,16 @@ go get github.com/goforj/storage/driver/gcsstorage
 go get github.com/goforj/storage/driver/dropboxstorage
 go get github.com/goforj/storage/driver/rclonestorage
 ```
+
+## Go compatibility
+
+| Modules | Minimum Go version |
+| --- | --- |
+| Root, storagecore, Dropbox, FTP, local, memory, Redis, and S3 drivers | 1.24.4 |
+| GCS driver and storagetest | 1.25 |
+| Rclone and SFTP drivers, examples, integration, and benchmark modules | 1.26 |
+
+The security fixes raise only the modules whose fixed dependencies require a newer toolchain. Upgrade applications that import Rclone or SFTP to Go 1.26, and applications using GCS or storagetest to Go 1.25. Applications using the remaining modules can stay on Go 1.24.4.
 
 ## Usage
 
