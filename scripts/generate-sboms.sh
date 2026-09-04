@@ -34,7 +34,13 @@ for index in "${!module_directories[@]}"; do
     .bomFormat == "CycloneDX" and
     .metadata.component.type == "library" and
     .metadata.component.name == $module_path and
-    (.metadata.component.purl | startswith("pkg:golang/" + $module_path + "?type=module")) and
+    (.metadata.component.purl as $purl |
+      ("pkg:golang/" + $module_path) as $prefix |
+      ($purl | startswith($prefix)) and
+      ($purl | ltrimstr($prefix) | startswith("@") or startswith("?")) and
+      ($purl | split("?") | length == 2) and
+      ($purl | split("?")[1] | split("&") | index("type=module") != null)
+    ) and
     ([.. | objects | .name? | strings | select(. == "..")] | length == 0) and
     ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0)
   ' "$output_file" >/dev/null

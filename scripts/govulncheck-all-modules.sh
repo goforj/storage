@@ -11,7 +11,9 @@ fi
 
 allowlist="$root/scripts/govulncheck-allowlist.txt"
 workspace="$(mktemp -d)"
-trap 'rm -rf "$workspace"' EXIT
+actual_findings="$(mktemp)"
+allowlisted_findings="$(mktemp)"
+trap 'rm -rf "$workspace" "$actual_findings" "$allowlisted_findings"' EXIT
 
 mapfile -t module_dirs < <(find "$root" -name go.mod -type f -not -path '*/.git/*' -not -path '*/vendor/*' -exec dirname {} \; | sort)
 (cd "$workspace" && GOWORK=off go work init "${module_dirs[@]}")
@@ -34,19 +36,21 @@ while IFS= read -r modfile; do
 	printf 'govulncheck: %s\n' "$dir"
 	output="$(mktemp)"
 	if (cd "$root/$dir" && GOWORK="$workspace/go.work" govulncheck -test ./...) >"$output" 2>&1; then
-		cat "$output"
-		rm -f "$output"
-		continue
+		scan_status=0
 	else
 		scan_status=$?
 	fi
 	cat "$output"
-	actual_ids="$(awk '/^Vulnerability #[0-9]+: GO-/{print $3}' "$output" | sort -u)"
-	allowed_ids="$(awk -v module="$dir" '$1 == module {print $2}' "$allowlist" | sort -u)"
-	if [[ "$scan_status" -ne 3 ]] || [[ -z "$actual_ids" ]] || ! diff -u <(printf '%s\n' "$allowed_ids") <(printf '%s\n' "$actual_ids"); then
+	awk -v module="$dir" '/^Vulnerability #[0-9]+: GO-/{print module " " $3}' "$output" >>"$actual_findings"
+	if [[ "$scan_status" -ne 0 && "$scan_status" -ne 3 ]]; then
 		status=1
 	fi
 	rm -f "$output"
 done < <(find "$root" -name go.mod -type f -not -path '*/.git/*' -not -path '*/vendor/*' | sort)
+
+awk 'NF { if (NF != 2) { exit 1 }; print $1 " " $2 }' "$allowlist" | sort -u >"$allowlisted_findings" || status=1
+if ! diff -u "$allowlisted_findings" <(sort -u "$actual_findings"); then
+	status=1
+fi
 
 exit "$status"
