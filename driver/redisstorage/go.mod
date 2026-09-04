@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/goforj/storage/storagecore v0.5.0
-	github.com/redis/go-redis/v9 v9.7.1
+	github.com/redis/go-redis/v9 v9.7.3
 	github.com/testcontainers/testcontainers-go v0.31.0
 )
 
