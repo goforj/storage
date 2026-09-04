@@ -41,9 +41,14 @@ while IFS= read -r modfile; do
 		scan_status=$?
 	fi
 	cat "$output"
-	awk -v module="$dir" '/^Vulnerability #[0-9]+: GO-/{print module " " $3}' "$output" >>"$actual_findings"
-	if [[ "$scan_status" -ne 0 && "$scan_status" -ne 3 ]]; then
+	parsed_findings="$(awk -v module="$dir" '/^Vulnerability #[0-9]+: GO-/{print module " " $3}' "$output")"
+	if [[ "$scan_status" -ne 0 && "$scan_status" -ne 3 ]] || \
+		[[ "$scan_status" -eq 0 && -n "$parsed_findings" ]] || \
+		[[ "$scan_status" -eq 3 && -z "$parsed_findings" ]]; then
 		status=1
+	fi
+	if [[ -n "$parsed_findings" ]]; then
+		printf '%s\n' "$parsed_findings" >>"$actual_findings"
 	fi
 	rm -f "$output"
 done < <(find "$root" -name go.mod -type f -not -path '*/.git/*' -not -path '*/vendor/*' | sort)
