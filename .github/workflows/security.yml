@@ -11,6 +11,51 @@ permissions:
   contents: read
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request' && vars.ENABLE_GITHUB_ADVANCED_SECURITY == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48
+
+  codeql:
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d
+        with:
+          languages: go
+          build-mode: manual
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.x'
+      - run: |
+          while IFS= read -r module; do
+            packages="$(scripts/with-local-modfile.sh "$module" go list ./...)"
+            if [[ -n "$packages" ]]; then
+              scripts/with-local-modfile.sh "$module" go build ./...
+            fi
+          done < <(find . -name go.mod -not -path '*/vendor/*' -printf '%h\n' | sort)
+      - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d
+
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.x'
+      - run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0
+          PATH="$RUNNER_TEMP/bin:$PATH" bash scripts/generate-sboms.sh "$RUNNER_TEMP/sbom"
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:
@@ -32,5 +77,5 @@ jobs:
         with:
           go-version: '1.26.x'
       - run: |
-          GOBIN="$RUNNER_TEMP/bin" go install github.com/gitleaks/gitleaks/v8@v8.30.1
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/zricethezav/gitleaks/v8@v8.30.1
           "$RUNNER_TEMP/bin/gitleaks" git --redact --log-opts="--all"
