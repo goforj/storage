@@ -1,0 +1,24 @@
+version: 2
+updates:
+  - { package-ecosystem: github-actions, directory: /, schedule: { interval: weekly } }
+  - package-ecosystem: gomod
+    directories:
+      - /
+      - /docs/bench
+      - /storagecore
+      - /storagetest
+      - /examples
+      - /integration
+      - /driver/dropboxstorage
+      - /driver/ftpstorage
+      - /driver/gcsstorage
+      - /driver/localstorage
+      - /driver/memorystorage
+      - /driver/rclonestorage
+      - /driver/redisstorage
+      - /driver/s3storage
+      - /driver/sftpstorage
+    schedule: { interval: weekly }
+    groups:
+      shared-dependencies:
+        group-by: dependency-name
