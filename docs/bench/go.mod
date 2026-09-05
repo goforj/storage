@@ -3,7 +3,7 @@ module github.com/goforj/storage/docs/bench
 go 1.26.0
 
 require (
-	github.com/docker/go-connections v0.6.0
+	github.com/docker/go-connections v0.8.1
 	github.com/fsouza/fake-gcs-server v1.52.3
 	github.com/goforj/storage v0.5.0
 	github.com/goforj/storage/driver/ftpstorage v0.5.0
