@@ -20,26 +20,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
 
-  codeql:
-    permissions:
-      actions: read
-      contents: read
-      packages: read
-      security-events: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-        with:
-          go-version: '1.26.x'
-          cache: false
-      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938
-        with:
-          languages: go
-          build-mode: autobuild
-      - uses: github/codeql-action/autobuild@cdf488f595d80d6e07e03d4674febd5ab45fa938
-      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
-
   sbom:
     runs-on: ubuntu-latest
     steps:
