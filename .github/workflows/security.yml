@@ -39,6 +39,7 @@ jobs:
           build-mode: manual
       - run: go clean -cache
       - run: |
+          go_binary="${CODEQL_ACTION_GO_BINARY:?CodeQL Go tracer is unavailable}"
           built_modules=0
           while IFS= read -r module; do
             packages="$(scripts/with-local-modfile.sh "$module" go list ./...)"
@@ -49,7 +50,7 @@ jobs:
               package_count=0
               while IFS= read -r package; do
                 package_count=$((package_count + 1))
-                scripts/with-local-modfile.sh "$module" go test -c -o "$output_dir/package-$package_count.test" "$package"
+                scripts/with-local-modfile.sh "$module" "$go_binary" test -c -o "$output_dir/package-$package_count.test" "$package"
               done <<< "$packages"
             fi
           done < <(find . -name go.mod -not -path '*/vendor/*' -printf '%h\n' | sort)
