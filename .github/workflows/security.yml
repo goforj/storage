@@ -36,25 +36,8 @@ jobs:
       - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938
         with:
           languages: go
-          build-mode: manual
-      - run: go clean -cache
-      - run: |
-          go_binary="${CODEQL_ACTION_GO_BINARY:?CodeQL Go tracer is unavailable}"
-          built_modules=0
-          while IFS= read -r module; do
-            packages="$(scripts/with-local-modfile.sh "$module" go list ./...)"
-            if [[ -n "$packages" ]]; then
-              built_modules=$((built_modules + 1))
-              output_dir="$RUNNER_TEMP/codeql-build/$built_modules"
-              mkdir -p "$output_dir"
-              package_count=0
-              while IFS= read -r package; do
-                package_count=$((package_count + 1))
-                scripts/with-local-modfile.sh "$module" "$go_binary" test -c -o "$output_dir/package-$package_count.test" "$package"
-              done <<< "$packages"
-            fi
-          done < <(find . -name go.mod -not -path '*/vendor/*' -printf '%h\n' | sort)
-          test "$built_modules" -gt 0
+          build-mode: autobuild
+      - uses: github/codeql-action/autobuild@cdf488f595d80d6e07e03d4674febd5ab45fa938
       - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
 
   sbom:
