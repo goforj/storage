@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3
 	github.com/aws/smithy-go v1.24.2
 	github.com/goforj/storage/storagecore v0.5.0
-	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
+	github.com/johannesboyne/gofakes3 v1.2.0
 	github.com/stretchr/testify v1.11.1
 )
 
