@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/goforj/storage/storagecore v0.5.0
-	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
+	github.com/johannesboyne/gofakes3 v1.2.0
 	github.com/rclone/rclone v1.75.0
 	github.com/unknwon/goconfig v1.0.0
 )
