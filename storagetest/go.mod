@@ -12,7 +12,7 @@ require (
 	github.com/goforj/storage v0.5.0
 	github.com/goforj/storage/driver/memorystorage v0.5.0
 	github.com/goforj/storage/storagecore v0.5.0
-	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
+	github.com/johannesboyne/gofakes3 v1.2.0
 	google.golang.org/api v0.264.0
 )
 
