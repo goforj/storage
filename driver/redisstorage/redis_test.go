@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/goforj/storage/storagecore"
 )
@@ -36,6 +37,28 @@ func TestConfigResolvedConfig(t *testing.T) {
 	}
 	if resolved.Prefix != "sandbox" {
 		t.Fatalf("Prefix = %q", resolved.Prefix)
+	}
+}
+
+// TestRedisClientOptionsPreserveConnectionDefaults verifies a dependency update cannot silently change timeout and retry behavior.
+func TestRedisClientOptionsPreserveConnectionDefaults(t *testing.T) {
+	options := redisClientOptions(storagecore.ResolvedConfig{
+		RedisAddr:     "127.0.0.1:6379",
+		RedisUsername: "user",
+		RedisPassword: "pass",
+		RedisDB:       2,
+	})
+	if options.Addr != "127.0.0.1:6379" || options.Username != "user" || options.Password != "pass" || options.DB != 2 {
+		t.Fatalf("redis options lost resolved configuration: %+v", options)
+	}
+	if options.ReadTimeout != 3*time.Second || options.WriteTimeout != 3*time.Second || options.PoolTimeout != 4*time.Second {
+		t.Fatalf("redis timeout defaults changed: read=%s write=%s pool=%s", options.ReadTimeout, options.WriteTimeout, options.PoolTimeout)
+	}
+	if options.MinRetryBackoff != 8*time.Millisecond || options.MaxRetryBackoff != 512*time.Millisecond {
+		t.Fatalf("redis retry defaults changed: min=%s max=%s", options.MinRetryBackoff, options.MaxRetryBackoff)
+	}
+	if options.Dialer == nil {
+		t.Fatal("redis dialer must preserve the previous TCP keepalive policy")
 	}
 }
 

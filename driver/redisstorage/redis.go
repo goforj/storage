@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -143,12 +144,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		return nil, err
 	}
 
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Username: cfg.RedisUsername,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
+	client := redis.NewClient(redisClientOptions(cfg))
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, joinCleanup(fmt.Errorf("storage: redis ping: %w", err), client.Close())
 	}
@@ -158,6 +154,29 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		namespace: redisNamespace(cfg),
 		prefix:    prefix,
 	}, nil
+}
+
+// redisClientOptions preserves the connection and retry behavior used before go-redis changed its defaults.
+func redisClientOptions(cfg storagecore.ResolvedConfig) *redis.Options {
+	options := &redis.Options{
+		Addr:            cfg.RedisAddr,
+		Username:        cfg.RedisUsername,
+		Password:        cfg.RedisPassword,
+		DB:              cfg.RedisDB,
+		ReadTimeout:     3 * time.Second,
+		WriteTimeout:    3 * time.Second,
+		PoolTimeout:     4 * time.Second,
+		MinRetryBackoff: 8 * time.Millisecond,
+		MaxRetryBackoff: 512 * time.Millisecond,
+	}
+	options.Dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialer := &net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 5 * time.Minute,
+		}
+		return dialer.DialContext(ctx, network, addr)
+	}
+	return options
 }
 
 // Get reads an object using a background context.

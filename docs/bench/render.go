@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/ftpstorage"
@@ -1225,7 +1224,7 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 		_ = container.Terminate(ctx)
 		return nil, "", err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("9000/tcp"))
+	port, err := container.MappedPort(ctx, "9000/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", err
@@ -1252,7 +1251,7 @@ func startRedisContainer(ctx context.Context) (testcontainers.Container, string,
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("6379/tcp"))
+	port, err := container.MappedPort(ctx, "6379/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
@@ -1285,7 +1284,7 @@ func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, 
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("22/tcp"))
+	port, err := container.MappedPort(ctx, "22/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err

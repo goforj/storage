@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -393,7 +394,12 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 		shutdownContainer(t, container)
 		t.Fatalf("sftp mapped port: %v", err)
 	}
-	return container, host, port.Int()
+	parsed, err := strconv.Atoi(port.Port())
+	if err != nil {
+		shutdownContainer(t, container)
+		t.Fatalf("parse sftp mapped port: %v", err)
+	}
+	return container, host, parsed
 }
 
 // startRedisContainer provides a real Redis server for commands that miniredis cannot model faithfully.
