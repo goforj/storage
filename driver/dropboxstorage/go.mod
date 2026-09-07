@@ -7,4 +7,4 @@ require (
 	github.com/goforj/storage/storagecore v0.5.0
 )
 
-require golang.org/x/oauth2 v0.30.0 // indirect
+require golang.org/x/oauth2 v0.36.0 // indirect
