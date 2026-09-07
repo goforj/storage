@@ -1,6 +1,6 @@
 module github.com/goforj/storage/driver/s3storage
 
-go 1.24.4
+go 1.25.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.46.0
@@ -31,7 +31,7 @@ require (
 	github.com/spf13/afero v1.10.0 // indirect
 	go.shabbyrobe.org/gocovmerge v0.0.0-20230507111327-fa4f82cfbf4d // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
 )
