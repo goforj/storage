@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/goforj/storage/storagecore v0.5.0
 	github.com/johannesboyne/gofakes3 v1.2.0
-	github.com/rclone/rclone v1.75.0
+	github.com/rclone/rclone v1.75.1
 	github.com/unknwon/goconfig v1.0.0
 )
 
@@ -161,8 +161,8 @@ require (
 	github.com/prometheus/common v0.70.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/putdotio/go-putio/putio v0.0.0-20200123120452-16d982cac2b8 // indirect
-	github.com/rclone/Proton-API-Bridge v1.0.4 // indirect
-	github.com/rclone/go-proton-api v1.0.3 // indirect
+	github.com/rclone/Proton-API-Bridge v1.0.5 // indirect
+	github.com/rclone/go-proton-api v1.0.4 // indirect
 	github.com/relvacode/iso8601 v1.7.0 // indirect
 	github.com/rfjakob/eme v1.2.0 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
