@@ -30,7 +30,12 @@ for index in "${!module_directories[@]}"; do
     "$repository_root/scripts/with-local-modfile.sh" "$module_argument" cyclonedx-gomod mod -json -type library -test -output "$output_file" .
   fi
 
-  jq -e --arg module_path "$module_path" '
+  manifest_source="$module_name/go.mod"
+  [[ "$module_name" == "root" ]] && manifest_source="go.mod"
+  jq --arg manifest_source "$manifest_source" '.metadata.properties = ((.metadata.properties // []) + [{name: "goforj:manifest-source", value: $manifest_source}])' "$output_file" > "$output_file.next"
+  mv "$output_file.next" "$output_file"
+
+  jq -e --arg module_path "$module_path" --arg manifest_source "$manifest_source" '
     .bomFormat == "CycloneDX" and
     .metadata.component.type == "library" and
     .metadata.component.name == $module_path and
@@ -42,7 +47,8 @@ for index in "${!module_directories[@]}"; do
       ($purl | split("?")[1] | split("&") | index("type=module") != null)
     ) and
     ([.. | objects | .name? | strings | select(. == "..")] | length == 0) and
-    ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0)
+    ([.. | objects | .purl? | strings | select(startswith("pkg:golang/.."))] | length == 0) and
+    ([.metadata.properties[] | select(.name == "goforj:manifest-source" and .value == $manifest_source)] | length == 1)
   ' "$output_file" >/dev/null
 done
 

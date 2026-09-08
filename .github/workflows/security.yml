@@ -33,6 +33,37 @@ jobs:
       - run: |
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0
           PATH="$RUNNER_TEMP/bin:$PATH" bash scripts/generate-sboms.sh "$RUNNER_TEMP/sbom"
+      - run: |
+          scripts/build-dependency-snapshot.sh \
+            "$RUNNER_TEMP/sbom" \
+            "$RUNNER_TEMP/dependency-snapshot.json" \
+            "$GITHUB_SHA" \
+            "$GITHUB_REF" \
+            "$GITHUB_RUN_ID" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cyclonedx-sbom
+          path: |
+            ${{ runner.temp }}/sbom/*.cdx.json
+            ${{ runner.temp }}/dependency-snapshot.json
+          if-no-files-found: error
+
+  dependency-submission:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: sbom
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: cyclonedx-sbom
+          path: ${{ runner.temp }}/sbom
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/dependency-graph/snapshots" --input "$RUNNER_TEMP/sbom/dependency-snapshot.json"
 
   govulncheck:
     runs-on: ubuntu-latest
