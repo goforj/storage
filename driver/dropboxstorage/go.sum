@@ -1,6 +1,6 @@
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.1 h1:NS9fm6KmJTN2J6YzF70QrZ0tMPYOrs+GL9uPVI0K9Ug=
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.1/go.mod h1:gDXhl0OElhzYoDsYWHr1RXjpxjGeLzEvjYzH7sZV73k=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2 h1:zRpx93GLA2IYx4z2NTW6uTJgQ2f0CJ93xIj+w6Aoy3U=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2/go.mod h1:M8nJfTVC7mxuxRSMHWbhg38bhkW63+3MoAGi/6R/umg=
 github.com/goforj/storage/storagecore v0.5.0 h1:1NHEDS/P6BOEOk0DIq5gQsvgz/Zew3v1ZG2XZ3pZ9Zw=
 github.com/goforj/storage/storagecore v0.5.0/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
-golang.org/x/oauth2 v0.30.0 h1:dnDm7JmhM45NNpd8FDDeLhK6FwqbOf4MLCM9zb1BOHI=
-golang.org/x/oauth2 v0.30.0/go.mod h1:B++QgG3ZKulg6sRPGD/mqlHQs5rB3Ml9erfeDY7xKlU=
+golang.org/x/oauth2 v0.37.0 h1:JUlcxA8oAtauLfiH8FX2/FkAWHAdi0QtGCGc+hofE98=
+golang.org/x/oauth2 v0.37.0/go.mod h1:IxwZNxUULJmpBFf9K/9NTMSIfZZuvuTy1gGxhigP/58=
