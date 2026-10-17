@@ -319,6 +319,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 			}
 			conf, err := rclonestorage.RenderS3(rclonestorage.S3Remote{
 				Name:            "benchs3",
+				Provider:        "Minio",
 				Endpoint:        endpoint,
 				Region:          "us-east-1",
 				AccessKeyID:     "minioadmin",
