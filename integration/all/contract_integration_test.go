@@ -339,7 +339,13 @@ func startMinioContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "minio/minio:latest",
+		FromDockerfile: testcontainers.FromDockerfile{
+			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
+			Dockerfile: "Dockerfile",
+			Repo:       "goforj-storage-minio-test",
+			Tag:        "2025-10-15",
+			KeepImage:  true,
+		},
 		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
 		Cmd:          []string{"server", "/data"},
