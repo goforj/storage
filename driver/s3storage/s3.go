@@ -33,10 +33,12 @@ func init() {
 }
 
 type driver struct {
-	client  s3API
-	presign s3PresignAPI
-	bucket  string
-	prefix  string
+	httpEndpoint    bool
+	unsignedPayload bool
+	client          s3API
+	presign         s3PresignAPI
+	bucket          string
+	prefix          string
 }
 
 type s3API interface {
@@ -158,9 +160,11 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		return nil, fmt.Errorf("storage: s3 access key ID and secret access key must be provided together")
 	}
 	if cfg.S3Endpoint != "" {
-		if _, err := normalizeEndpoint(cfg.S3Endpoint); err != nil {
+		endpoint, err := normalizeEndpoint(cfg.S3Endpoint)
+		if err != nil {
 			return nil, err
 		}
+		cfg.S3Endpoint = endpoint
 	}
 
 	prefix, err := storagecore.NormalizePath(cfg.Prefix)
@@ -173,12 +177,21 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		return nil, fmt.Errorf("storage: load aws config: %w", err)
 	}
 	client, presign := buildS3Clients(awsCfg, cfg)
+	endpoint := cfg.S3Endpoint
+	// SDK options include endpoint overrides inherited from environment and shared AWS configuration.
+	if endpoint == "" {
+		if configured, ok := client.(interface{ Options() s3.Options }); ok {
+			endpoint = aws.ToString(configured.Options().BaseEndpoint)
+		}
+	}
 
 	return &driver{
-		client:  client,
-		presign: presign,
-		bucket:  cfg.S3Bucket,
-		prefix:  prefix,
+		httpEndpoint:    strings.HasPrefix(strings.ToLower(endpoint), "http://"),
+		unsignedPayload: cfg.S3UnsignedPayload,
+		client:          client,
+		presign:         presign,
+		bucket:          cfg.S3Bucket,
+		prefix:          prefix,
 	}, nil
 }
 

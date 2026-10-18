@@ -102,6 +102,13 @@ existing file API, these methods preserve dot segments and repeated slashes.
 Each operation takes an explicit context. Close every returned `ObjectReader`.
 Writes declare an exact size and leave ownership of the input reader with the
 caller; provide a seekable reader when provider retries are required.
+For non-seekable S3 uploads, HTTPS retains the SDK's streaming checksums. Plain
+HTTP requires explicit `s3storage.Config.UnsignedPayload` opt-in; only that case
+skips optional SDK checksum precomputation. Signed HTTP uploads require a seekable
+reader. The library never silently disables configured payload signing or spools
+whole objects to disk. Cancellation stops subsequent source reads, including SDK
+prehashing; a reader that blocks inside its own `Read` must honor cancellation or
+be unblocked by its owner.
 
 Bucket creation remains explicit through `s3storage.PrepareBucketContext`.
 Ordinary storage construction and object reads never provision provider resources.
