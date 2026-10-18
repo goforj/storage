@@ -1,5 +1,5 @@
-github.com/goforj/storage/storagecore v0.5.1 h1:q9B6F9ne/KqZtLDM5wqWcmoZz+teWzhu7OLGp3aUCqY=
-github.com/goforj/storage/storagecore v0.5.1/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
+github.com/goforj/storage/storagecore v0.6.0 h1:ShWQFNqmQHQTD1qW4GfR2dqo9E9I0q2McQaekwWaXtY=
+github.com/goforj/storage/storagecore v0.6.0/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
 github.com/goftp/file-driver v0.0.0-20180502053751-5d604a0fc0c9 h1:cC0Hbb+18DJ4i6ybqDybvj4wdIDS4vnD0QEci98PgM8=
 github.com/goftp/file-driver v0.0.0-20180502053751-5d604a0fc0c9/go.mod h1:GpOj6zuVBG3Inr9qjEnuVTgBlk2lZ1S9DcoFiXWyKss=
 github.com/goftp/server v0.0.0-20200708154336-f64f7c2d8a42 h1:JdOp2qR5PF4O75tzHeqrwnDDv8oHDptWyTbyYS4fD8E=
