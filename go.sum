@@ -1,2 +1,4 @@
 github.com/goforj/storage/storagecore v0.5.1 h1:q9B6F9ne/KqZtLDM5wqWcmoZz+teWzhu7OLGp3aUCqY=
 github.com/goforj/storage/storagecore v0.5.1/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
+github.com/goforj/storage/storagecore v0.5.2-0.20261018064156-39419460440b h1:DoxWa3MWGyCYqF7BngY1KKMZfUpGWCSr7NNMvqZ72Jo=
+github.com/goforj/storage/storagecore v0.5.2-0.20261018064156-39419460440b/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
