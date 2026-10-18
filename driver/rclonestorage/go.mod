@@ -3,7 +3,7 @@ module github.com/goforj/storage/driver/rclonestorage
 go 1.26.0
 
 require (
-	github.com/goforj/storage/storagecore v0.5.1
+	github.com/goforj/storage/storagecore v0.6.0
 	github.com/johannesboyne/gofakes3 v1.2.0
 	github.com/rclone/rclone v1.75.2
 	github.com/unknwon/goconfig v1.0.0
