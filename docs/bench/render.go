@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/goforj/storage"
 	"github.com/goforj/storage/driver/ftpstorage"
@@ -320,6 +319,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 			}
 			conf, err := rclonestorage.RenderS3(rclonestorage.S3Remote{
 				Name:            "benchs3",
+				Provider:        "Minio",
 				Endpoint:        endpoint,
 				Region:          "us-east-1",
 				AccessKeyID:     "minioadmin",
@@ -1207,7 +1207,13 @@ func (f fileInfo) Group() string { return "group" }
 // startMinioContainer launches the S3-compatible benchmark dependency and returns its endpoint.
 func startMinioContainer(ctx context.Context) (testcontainers.Container, string, error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "minio/minio:latest",
+		FromDockerfile: testcontainers.FromDockerfile{
+			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
+			Dockerfile: "Dockerfile",
+			Repo:       "goforj-storage-minio-test",
+			Tag:        "2025-10-15",
+			KeepImage:  true,
+		},
 		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
 		Cmd:          []string{"server", "/data"},
@@ -1225,7 +1231,7 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 		_ = container.Terminate(ctx)
 		return nil, "", err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("9000/tcp"))
+	port, err := container.MappedPort(ctx, "9000/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", err
@@ -1252,7 +1258,7 @@ func startRedisContainer(ctx context.Context) (testcontainers.Container, string,
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("6379/tcp"))
+	port, err := container.MappedPort(ctx, "6379/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
@@ -1285,7 +1291,7 @@ func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, 
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err
 	}
-	port, err := container.MappedPort(ctx, nat.Port("22/tcp"))
+	port, err := container.MappedPort(ctx, "22/tcp")
 	if err != nil {
 		_ = container.Terminate(ctx)
 		return nil, "", 0, err

@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -338,7 +339,13 @@ func startMinioContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "minio/minio:latest",
+		FromDockerfile: testcontainers.FromDockerfile{
+			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
+			Dockerfile: "Dockerfile",
+			Repo:       "goforj-storage-minio-test",
+			Tag:        "2025-10-15",
+			KeepImage:  true,
+		},
 		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
 		Cmd:          []string{"server", "/data"},
@@ -393,7 +400,12 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 		shutdownContainer(t, container)
 		t.Fatalf("sftp mapped port: %v", err)
 	}
-	return container, host, port.Int()
+	parsed, err := strconv.Atoi(port.Port())
+	if err != nil {
+		shutdownContainer(t, container)
+		t.Fatalf("parse sftp mapped port: %v", err)
+	}
+	return container, host, parsed
 }
 
 // startRedisContainer provides a real Redis server for commands that miniredis cannot model faithfully.

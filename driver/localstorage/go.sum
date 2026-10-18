@@ -1,4 +1,4 @@
-github.com/goforj/storage/storagecore v0.5.0 h1:1NHEDS/P6BOEOk0DIq5gQsvgz/Zew3v1ZG2XZ3pZ9Zw=
-github.com/goforj/storage/storagecore v0.5.0/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
-golang.org/x/sys v0.40.0 h1:DBZZqJ2Rkml6QMQsZywtnjnnGvHza6BTfYFWY9kjEWQ=
-golang.org/x/sys v0.40.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+github.com/goforj/storage/storagecore v0.5.1 h1:q9B6F9ne/KqZtLDM5wqWcmoZz+teWzhu7OLGp3aUCqY=
+github.com/goforj/storage/storagecore v0.5.1/go.mod h1:n6epEk/dinioVPKa8VkWduaf0b1ggcnycXRmd6nURCY=
+golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=

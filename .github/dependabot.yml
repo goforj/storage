@@ -1,0 +1,61 @@
+version: 2
+# Compatible releases are batched across modules so shared driver dependencies
+# move together and produce one repository-level validation result.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      actions-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directories:
+      - /
+      - /docs/bench
+      - /storagecore
+      - /storagetest
+      - /examples
+      - /integration
+      - /driver/dropboxstorage
+      - /driver/ftpstorage
+      - /driver/gcsstorage
+      - /driver/localstorage
+      - /driver/memorystorage
+      - /driver/rclonestorage
+      - /driver/redisstorage
+      - /driver/s3storage
+      - /driver/sftpstorage
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      compatible-go-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /.github/fixtures/minio
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      test-image-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]

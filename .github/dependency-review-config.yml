@@ -1,0 +1,2 @@
+# Dependency review has no advisory exemptions after the Moby module migration.
+allow-ghsas: []
