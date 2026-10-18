@@ -79,6 +79,24 @@ Choose the construction style that fits your application:
 
 All storage operations also expose `*Context` equivalents for deadlines and cancellation. The default methods use `context.Background()`.
 
+### Streaming objects
+
+`storage.Objects(disk)` discovers the optional `storagecore.ObjectStorage`
+capability. The S3 driver supports paged object walking, streaming reads and
+writes, metadata preservation, version-pinned reads, and conditional reads using
+an observed ETag. Unsupported drivers return `storage.ErrUnsupported`; there is
+no implicit fallback that buffers whole objects in memory.
+
+Object keys are opaque and relative to the configured disk prefix. Unlike the
+existing file API, these methods preserve dot segments and repeated slashes.
+Each operation takes an explicit context. Close every returned `ObjectReader`.
+Writes declare an exact size and leave ownership of the input reader with the
+caller; provide a seekable reader when provider retries are required.
+
+Bucket creation remains explicit through `s3storage.PrepareBucketContext`.
+Ordinary storage construction and object reads never provision provider resources.
+Existing buffered methods, driver interfaces, and minimum Go versions are unchanged.
+
 ### Common operations
 
 ```go
