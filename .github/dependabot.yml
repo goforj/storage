@@ -1,6 +1,7 @@
 version: 2
-# Compatible releases are batched across modules so shared driver dependencies
-# move together and produce one repository-level validation result.
+# Root go.work updates synchronize unrelated module graphs and can raise their
+# Go minimums. Update nested modules independently; release tooling owns the
+# root module's sole dependency on storagecore.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -22,7 +23,6 @@ updates:
       - /driver/ftpstorage
       - /driver/memorystorage
       - /driver/s3storage
-      - /
       - /storagecore
     schedule:
       interval: monthly
@@ -36,6 +36,14 @@ updates:
       go1244-compatible:
         patterns: ["*"]
         update-types: [minor, patch]
+    # Higher releases require Go 1.25 or newer.
+    ignore:
+      - dependency-name: golang.org/x/sys
+        versions: [">=0.42.0"]
+      - dependency-name: golang.org/x/text
+        versions: [">=0.35.0"]
+      - dependency-name: golang.org/x/tools
+        versions: [">=0.43.0"]
   # These modules retain Go 1.25.0.
   - package-ecosystem: gomod
     directories:

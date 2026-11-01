@@ -97,3 +97,9 @@ Check these first:
 2. Were the tags pushed?
 3. Did a published runtime module accidentally keep a sibling `replace` or `v0.0.0`?
 4. Did a support module get treated like a published module?
+
+## Dependency updates
+
+Dependabot updates nested modules independently, grouped by their minimum Go version. The root `go.work` is intentionally excluded from automatic update jobs because workspace synchronization can raise unrelated modules' Go directives and copy higher-toolchain dependencies into published drivers. Keep `go.work` for local development.
+
+The root module only requires `storagecore`; the release script coordinates that requirement with every published sibling. Review dependency PRs against each affected module's declared Go minimum and preserve the compatibility exclusions in `.github/dependabot.yml`.
