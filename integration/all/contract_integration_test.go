@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -446,12 +447,16 @@ func shutdownContainer(t *testing.T, container testcontainers.Container) {
 	_ = container.Terminate(shutdownCtx)
 }
 
+// memFactory publishes readiness after the server has initialized its shutdown state.
 type memFactory struct {
-	root string
+	root  string
+	ready chan struct{}
+	once  sync.Once
 }
 
 // NewDriver isolates the embedded FTP server inside the test's temporary filesystem.
 func (f *memFactory) NewDriver() (server.Driver, error) {
+	f.once.Do(func() { close(f.ready) })
 	return &memDriver{root: f.root, perm: server.NewSimplePerm("user", "group")}, nil
 }
 
@@ -574,13 +579,32 @@ func pickPort(t *testing.T) int {
 // startEmbeddedFTPServer exposes the temporary fixture tree through a real FTP protocol boundary.
 func startEmbeddedFTPServer(t *testing.T, host string, port int, root string) *server.Server {
 	t.Helper()
+	ready := make(chan struct{})
 	srv := server.NewServer(&server.ServerOpts{
-		Factory:  &memFactory{root: root},
+		Factory:  &memFactory{root: root, ready: ready},
 		Port:     port,
 		Hostname: host,
 		Auth:     &server.SimpleAuth{Name: "ftpuser", Password: "ftppass"},
 	})
-	go func() { _ = srv.ListenAndServe() }()
-	time.Sleep(200 * time.Millisecond)
-	return srv
+	stopped := make(chan error, 1)
+	go func() { stopped <- srv.ListenAndServe() }()
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ready:
+			return srv
+		case err := <-stopped:
+			t.Fatalf("start embedded FTP server: %v", err)
+		case <-timeout.C:
+			t.Fatal("embedded FTP server did not initialize within 5 seconds")
+		case <-tick.C:
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), 100*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+			}
+		}
+	}
 }

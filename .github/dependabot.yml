@@ -16,23 +16,14 @@ updates:
       actions-compatible:
         patterns: ["*"]
         update-types: [minor, patch]
+  # These modules retain Go 1.24.4.
   - package-ecosystem: gomod
     directories:
-      - /
-      - /docs/bench
-      - /storagecore
-      - /storagetest
-      - /examples
-      - /integration
-      - /driver/dropboxstorage
       - /driver/ftpstorage
-      - /driver/gcsstorage
-      - /driver/localstorage
       - /driver/memorystorage
-      - /driver/rclonestorage
-      - /driver/redisstorage
       - /driver/s3storage
-      - /driver/sftpstorage
+      - /
+      - /storagecore
     schedule:
       interval: monthly
     cooldown:
@@ -42,7 +33,53 @@ updates:
       security-fixes:
         applies-to: security-updates
         patterns: ["*"]
-      compatible-go-dependencies:
+      go1244-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  # These modules retain Go 1.25.0.
+  - package-ecosystem: gomod
+    directories:
+      - /driver/dropboxstorage
+      - /driver/localstorage
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      go1250-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    # oauth2 v0.37.0 requires Go 1.26; keep the Dropbox driver on Go 1.25.
+    ignore:
+      - dependency-name: golang.org/x/oauth2
+        versions: [">=0.37.0"]
+      - dependency-name: golang.org/x/sys
+        versions: [">=0.48.0"] # Requires Go 1.26.
+  # These modules retain Go 1.26.0.
+  - package-ecosystem: gomod
+    directories:
+      - /docs/bench
+      - /driver/gcsstorage
+      - /driver/rclonestorage
+      - /driver/redisstorage
+      - /driver/sftpstorage
+      - /examples
+      - /integration
+      - /storagetest
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      go1260-compatible:
         patterns: ["*"]
         update-types: [minor, patch]
   - package-ecosystem: docker
