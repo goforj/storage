@@ -13,7 +13,7 @@ require (
 	github.com/goforj/storage/driver/memorystorage v0.6.0
 	github.com/goforj/storage/storagecore v0.6.0
 	github.com/johannesboyne/gofakes3 v1.2.0
-	google.golang.org/api v0.307.0
+	google.golang.org/api v0.308.0
 )
 
 require (
