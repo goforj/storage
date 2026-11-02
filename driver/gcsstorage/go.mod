@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	cloud.google.com/go/storage v1.70.0
 	github.com/fsouza/fake-gcs-server v1.56.1
-	github.com/goforj/storage/storagecore v0.6.0
+	github.com/goforj/storage/storagecore v0.6.1
 	google.golang.org/api v0.308.0
 )
 
