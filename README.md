@@ -30,7 +30,6 @@ Save as `main.go`, then run `go run .`.
 package main
 
 import (
-    "context"
     "fmt"
     "log"
 
@@ -39,13 +38,11 @@ import (
 )
 
 func main() {
-    ctx := context.Background()
-    disk, err := storage.BuildContext(ctx, localstorage.Config{Root: "./data"})
+    disk, err := storage.Build(localstorage.Config{Root: "./data"})
     if err != nil {
         log.Fatal(err)
     }
 
-    disk = disk.WithContext(ctx)
     if err := disk.Put("notes/hello.txt", []byte("hello from storage")); err != nil {
         log.Fatal(err)
     }
@@ -66,7 +63,7 @@ and replace the construction call with this configuration for an existing
 bucket. The AWS SDK reads credentials from its standard credential chain.
 
 ```go
-disk, err := storage.BuildContext(ctx, s3storage.Config{
+disk, err := storage.Build(s3storage.Config{
     Bucket: "my-existing-bucket",
     Region: "us-east-1",
     Prefix: "example",
