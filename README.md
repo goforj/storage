@@ -74,11 +74,9 @@ go get github.com/goforj/storage/driver/rclonestorage
 
 | Modules | Minimum Go version |
 | --- | --- |
-| Root, storagecore, Dropbox, FTP, local, memory, Redis, and S3 drivers | 1.24.4 |
-| GCS driver and storagetest | 1.25 |
-| Rclone and SFTP drivers, examples, integration, and benchmark modules | 1.26 |
-
-The security fixes raise only the modules whose fixed dependencies require a newer toolchain. Upgrade applications that import Rclone or SFTP to Go 1.26, and applications using GCS or storagetest to Go 1.25. Applications using the remaining modules can stay on Go 1.24.4.
+| Root, storagecore, FTP, memory, and S3 | 1.24.4 |
+| Dropbox and local storage | 1.25.0 |
+| GCS, Rclone, Redis, SFTP, storagetest, examples, integration, and benchmarks | 1.26.0 |
 
 ## Usage
 
@@ -280,6 +278,9 @@ func main() {
 ### Rclone
 
 Use `rclonestorage` when you want to access rclone-backed remotes through the `storage` interface.
+
+Rclone 1.76 blocks HTTPS-to-HTTP redirects by default. If a remote relies on
+such a redirect, configure its endpoint and any proxies to keep requests on HTTPS.
 
 ```go
 package main
