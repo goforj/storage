@@ -934,6 +934,7 @@ type fakeObject struct {
 	openRC    io.ReadCloser
 	openErr   error
 	removeErr error
+	remove    func()
 }
 
 // Hash reports unsupported hashing for the fake object.
@@ -969,6 +970,9 @@ func (o *fakeObject) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo
 
 // Remove returns the configured object-deletion result.
 func (o *fakeObject) Remove(ctx context.Context) error {
+	if o.remove != nil {
+		o.remove()
+	}
 	if o.removeErr != nil {
 		return o.removeErr
 	}
@@ -1263,10 +1267,18 @@ func TestRcloneCopyStreamsSource(t *testing.T) {
 	}
 }
 
-// TestRcloneCopyPreflight verifies that missing sources and rejected parents stop the transfer.
+// TestRcloneCopyPreflight verifies that cancellation, missing sources, and rejected parents stop a transfer.
 func TestRcloneCopyPreflight(t *testing.T) {
 	fsys := newFakeFs()
 	disk := &driver{fs: fsys}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := disk.CopyContext(ctx, "source", "destination"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("copy with canceled context = %v", err)
+	}
+	if err := disk.MoveContext(ctx, "source", "destination"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("move with canceled context = %v", err)
+	}
 	if err := disk.Copy("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("same-path missing source = %v", err)
 	}
@@ -1281,5 +1293,41 @@ func TestRcloneCopyPreflight(t *testing.T) {
 	}
 	if err := disk.Copy("source", "nested/copy"); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("copy into forbidden parent = %v", err)
+	}
+}
+
+// TestRcloneMovePreservesSourceOnUploadFailure guards deletion after a partially read upload.
+func TestRcloneMovePreservesSourceOnUploadFailure(t *testing.T) {
+	fsys := newFakeFs()
+	disk := &driver{fs: fsys}
+	const payload = "source data"
+	reader := &copyTrackingReader{Reader: strings.NewReader(payload)}
+	source := &fakeObject{
+		fakeDirEntry: fakeDirEntry{remote: "source", fsys: fsys, size: int64(len(payload))},
+		openRC:       reader,
+		remove:       func() { t.Error("failed upload triggered source deletion") },
+	}
+	fsys.newObjectFunc = func(_ context.Context, name string) (fs.Object, error) {
+		if name != source.Remote() {
+			return nil, fs.ErrorObjectNotFound
+		}
+		return source, nil
+	}
+	fsys.putFunc = func(_ context.Context, body io.Reader, info fs.ObjectInfo, _ ...fs.OpenOption) (fs.Object, error) {
+		if info.Remote() != "destination" {
+			t.Errorf("upload path = %q", info.Remote())
+		}
+		if _, err := io.CopyN(io.Discard, body, 1); err != nil {
+			return nil, err
+		}
+		return nil, fs.ErrorPermissionDenied
+	}
+	ctx, config := fs.AddConfig(context.Background())
+	config.BufferSize = 0
+	if err := disk.MoveContext(ctx, "source", "destination"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("move error = %v", err)
+	}
+	if reader.closed != 1 {
+		t.Fatalf("source reader closes = %d", reader.closed)
 	}
 }

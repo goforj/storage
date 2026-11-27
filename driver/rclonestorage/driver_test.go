@@ -87,6 +87,15 @@ func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 			if got, err := test.disk.Get("nested/copy.txt"); err != nil || string(got) != test.want {
 				t.Fatalf("read copy = %q, %v", got, err)
 			}
+			if err := test.disk.Move("nested/copy.txt", "moved.txt"); err != nil {
+				t.Fatal(err)
+			}
+			if exists, err := test.disk.Exists("nested/copy.txt"); err != nil || exists {
+				t.Fatalf("move source exists = %v, %v", exists, err)
+			}
+			if got, err := test.disk.Get("moved.txt"); err != nil || string(got) != test.want {
+				t.Fatalf("read moved file = %q, %v", got, err)
+			}
 		})
 	}
 	if !sawNativeCopy.Load() {
