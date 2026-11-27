@@ -9,11 +9,12 @@ fi
 
 root="$(git rev-parse --show-toplevel)"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+trap 'chmod -R u+w "$tmp" && rm -rf "$tmp"' EXIT
 export GOWORK=off GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
 export GOPRIVATE= GONOPROXY= GONOSUMDB= GOFLAGS= GOMODCACHE="$tmp/modules"
 
-cd "$tmp"
+mkdir "$tmp/consumer"
+cd "$tmp/consumer"
 go mod init example.com/storage-release-check
 {
   printf 'package consumer\n\nimport (\n'
