@@ -17,14 +17,12 @@
 
 ## Quickstart
 
-Run this in an empty directory with Go 1.25.0 or newer.
+From your Go project, add Storage and the local filesystem driver. The local
+driver requires Go 1.25.0 or newer.
 
 ```sh
-go mod init example.com/storage-quickstart
 go get github.com/goforj/storage github.com/goforj/storage/driver/localstorage
 ```
-
-Save as `main.go`, then run `go run .`.
 
 ```go
 package main
