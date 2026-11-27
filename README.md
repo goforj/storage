@@ -342,20 +342,35 @@ Notes:
 
 ## Capability Matrix
 
-| Driver | File copy and move | Read and write API | Directory move | Access URL | Verification |
-| --- | --- | --- | --- | --- | --- |
-| Local | Streamed copy through a temporary file, native rename for moves | Byte slices | Native rename | Unsupported | Temporary directory |
-| Memory | In-memory copy and move | Byte slices | In-memory move | Unsupported | In-process |
-| Redis | Transactional writes | Byte slices | Copy then revision-checked delete | Unsupported | Redis container |
-| FTP / SFTP | Streamed copy through a temporary file, server rename for moves | Byte slices | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
-| S3 | Server-side copy preserves metadata. Moves check the source ETag. | Byte slices or streams via `storage.Objects` | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
-| GCS | Server-side copy preserves object metadata. Moves check the source generation. | Byte slices | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
-| Dropbox | Provider copy and move | Byte slices | Provider move | Temporary link | SDK fakes |
-| Rclone | Provider-native copy or streamed transfer | Byte slices | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
+### File transfers
 
-Rclone uses native copy when the remote supports it and streams the transfer
-otherwise. The remote determines which source metadata it preserves. The
-`Get` and `Put` methods still operate on whole byte slices.
+| Driver | Read and write API | File copy | File move |
+| ---: | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Byte slices | Streamed, atomic replace | Native rename |
+| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | Byte slices | In-memory clone | Atomic rekey |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Byte slices | Whole value, transactional | Transactional |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Byte slices | Streamed, staged upload | Server rename |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Byte slices | Streamed, atomic replace | POSIX rename |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Byte slices or `storage.Objects` streams | Server-side, preserves metadata | Copy, then ETag-checked delete |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Byte slices | Server-side, preserves metadata | Copy, then generation-checked delete |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Byte slices | Buffered download and upload | Provider move |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Byte slices | Provider-native or streamed | Copy, then delete |
+
+### Directories and access
+
+| Driver | Directory model | Directory delete | Directory move | Access URL | Verification |
+| ---: | --- | --- | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Filesystem | Empty only | Native rename | Unsupported | Temporary directory |
+| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory entries | Empty only | Copy, then content-checked delete | Unsupported | In-process |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Indexed directories | Empty only | Copy, then revision-checked delete | Unsupported | Redis container |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Server directories | Empty only | Server rename | Unsupported | Embedded FTP |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Server directories | Empty only | POSIX rename | Unsupported | SFTP container with host-key verification |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | MinIO and SDK fixtures |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Prefixes and markers | Empty marker only | Copy, then generation-checked delete | Signed GET, 15 min on GCS | GCS emulator |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Provider folders | Unsupported | Provider move | Temporary file link | SDK fakes |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Remote-dependent | Empty only, remote-dependent | Copy, then content-checked delete | Remote-dependent | Local contract and fake S3 tests |
+
+All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
 
 FTP copies require two concurrent sessions and permission to upload and rename a
 sibling temporary file. If an FTP server rejects rename over an existing file,
@@ -365,10 +380,10 @@ Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process
 S3 objects one provider page at a time.
 
-Reserve the destination namespace for an emulated directory move. Rclone also
-requires exclusive writes to the source during a move because it cannot
-atomically compare and delete an object. When the library detects a source
-change, it returns `ErrConflict` and preserves the changed source. Once source
+Reserve the destination namespace for an emulated directory move. Rclone moves
+also require exclusive source writes. Rclone's directory cleanup compares
+source bytes and deletes in separate operations. When checked cleanup detects
+a change, it returns `ErrConflict` and preserves the changed source. Once source
 deletion starts, an error can leave the completed destination and some source
 entries for reconciliation.
 
