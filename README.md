@@ -82,7 +82,7 @@ The same calls write and read `example/notes/hello.txt` in that bucket. Use
 
 ## Driver Matrix
 
-Eight drivers run through shared integration fixtures. Dropbox uses SDK fakes, and Rclone uses representative local and fake S3 tests. See the capability matrix for fixture details.
+See the [capability matrix](#capability-matrix) for copy behavior, streaming support, and driver fixtures.
 
 | Driver | Kind | Suggested use |
 | ---: | --- | --- |
@@ -342,16 +342,16 @@ Notes:
 
 ## Capability Matrix
 
-| Driver | File copy and move | Directory move | Access URL | Verification |
-| --- | --- | --- | --- | --- |
-| Local | Local file copy and rename | Native rename | Unsupported | Temporary directory |
-| Memory | In-memory copy and move | In-memory move | Unsupported | In-process |
-| Redis | Transactional writes | Copy then revision-checked delete | Unsupported | Redis container |
-| FTP / SFTP | Streamed copy through a temporary file, server rename for moves | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
-| S3 | Server-side copy preserves metadata. Moves check the source ETag. | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
-| GCS | Server-side copy preserves object metadata. Moves check the source generation. | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
-| Dropbox | Provider copy and move | Provider move | Temporary link | SDK fakes |
-| Rclone | Provider-native copy or streamed transfer | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
+| Driver | File copy and move | Read and write API | Directory move | Access URL | Verification |
+| --- | --- | --- | --- | --- | --- |
+| Local | Streamed copy through a temporary file, native rename for moves | Byte slices | Native rename | Unsupported | Temporary directory |
+| Memory | In-memory copy and move | Byte slices | In-memory move | Unsupported | In-process |
+| Redis | Transactional writes | Byte slices | Copy then revision-checked delete | Unsupported | Redis container |
+| FTP / SFTP | Streamed copy through a temporary file, server rename for moves | Byte slices | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
+| S3 | Server-side copy preserves metadata. Moves check the source ETag. | Byte slices or streams via `storage.Objects` | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
+| GCS | Server-side copy preserves object metadata. Moves check the source generation. | Byte slices | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
+| Dropbox | Provider copy and move | Byte slices | Provider move | Temporary link | SDK fakes |
+| Rclone | Provider-native copy or streamed transfer | Byte slices | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
 
 Rclone uses native copy when the remote supports it and streams the transfer
 otherwise. The remote determines which source metadata it preserves. The
