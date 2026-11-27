@@ -33,19 +33,23 @@ import (
     "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/goforj/storage"
     "github.com/goforj/storage/driver/localstorage"
 )
 
 func main() {
-    ctx := context.Background()
-    disk, err := storage.BuildContext(ctx, localstorage.Config{Root: "./data"})
+    disk, err := storage.Build(localstorage.Config{Root: "./data"})
     if err != nil {
         log.Fatal(err)
     }
 
+    // Give the write and read one deadline so a slow backend can't keep us waiting indefinitely.
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
     disk = disk.WithContext(ctx)
+
     if err := disk.Put("notes/hello.txt", []byte("hello from storage")); err != nil {
         log.Fatal(err)
     }
@@ -66,7 +70,7 @@ and replace the construction call with this configuration for an existing
 bucket. The AWS SDK reads credentials from its standard credential chain.
 
 ```go
-disk, err := storage.BuildContext(ctx, s3storage.Config{
+disk, err := storage.Build(s3storage.Config{
     Bucket: "my-existing-bucket",
     Region: "us-east-1",
     Prefix: "example",
