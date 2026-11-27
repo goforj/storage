@@ -1242,7 +1242,7 @@ func startMinioContainer(ctx context.Context) (testcontainers.Container, string,
 // startRedisContainer launches the Redis benchmark dependency and returns its mapped address.
 func startRedisContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "redis:7-alpine",
+		Image:        "redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe",
 		ExposedPorts: []string{"6379/tcp"},
 		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
 	}
@@ -1274,7 +1274,7 @@ func startRedisContainer(ctx context.Context) (testcontainers.Container, string,
 // startSFTPContainer launches the SFTP benchmark dependency and returns its mapped address.
 func startSFTPContainer(ctx context.Context) (testcontainers.Container, string, int, error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "atmoz/sftp:latest",
+		Image:        "atmoz/sftp@sha256:0960390462a4441dbb63698d7c185b76a41ffcee7b78ff4adf275f3e66f9c475",
 		Cmd:          []string{"storage:storage:::upload"},
 		ExposedPorts: []string{"22/tcp"},
 		WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(30 * time.Second),

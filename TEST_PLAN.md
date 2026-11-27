@@ -54,6 +54,8 @@ Current contract covers:
 - one-level `List`
 - URL support vs `ErrUnsupported`
 - `ErrNotFound` and traversal rejection behavior
+- Path round trips and deterministic walk order
+- Move conflicts and the contents preserved when a move fails
 - context cancellation
 - optional `ModTime`
 - optional `Walk` capability checks
@@ -66,6 +68,8 @@ Scope:
 
 Current matrix:
 - `local`
+- `memory`
+- `redis`
 - `gcs`
 - `ftp`
 - `s3`

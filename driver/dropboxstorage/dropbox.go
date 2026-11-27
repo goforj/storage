@@ -721,13 +721,21 @@ func (d *driver) appendEntries(ctx context.Context, metadata []files.IsMetadata,
 		}
 		switch entry := item.(type) {
 		case *files.FileMetadata:
+			relativePath := d.metadataPath(entry.Metadata)
+			if err := storagecore.ValidateEntryPath(relativePath); err != nil {
+				return err
+			}
 			*entries = append(*entries, storagecore.Entry{
-				Path: d.metadataPath(entry.Metadata),
+				Path: relativePath,
 				Size: int64(entry.Size),
 			})
 		case *files.FolderMetadata:
+			relativePath := d.metadataPath(entry.Metadata)
+			if err := storagecore.ValidateEntryPath(relativePath); err != nil {
+				return err
+			}
 			*entries = append(*entries, storagecore.Entry{
-				Path:  d.metadataPath(entry.Metadata),
+				Path:  relativePath,
 				IsDir: true,
 			})
 		}

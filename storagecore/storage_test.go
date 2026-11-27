@@ -37,3 +37,17 @@ func TestNormalizePathRejectsNUL(t *testing.T) {
 		t.Fatalf("NormalizePath NUL error = %v", err)
 	}
 }
+
+// TestValidateEntryPath rejects names whose spelling would address a different object.
+func TestValidateEntryPath(t *testing.T) {
+	for _, name := range []string{" leading", "trailing ", "a//b", "a/../b", "a\\b", "\x00", "../outside"} {
+		if err := ValidateEntryPath(name); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("ValidateEntryPath(%q) = %v", name, err)
+		}
+	}
+	for _, name := range []string{"", "a/b c", "a/space /child"} {
+		if err := ValidateEntryPath(name); err != nil {
+			t.Errorf("ValidateEntryPath(%q) = %v", name, err)
+		}
+	}
+}

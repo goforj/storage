@@ -435,6 +435,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			continue
 		}
 
+		if err := storagecore.ValidateEntryPath(rel); err != nil {
+			return nil, err
+		}
 		isDir := false
 		size := entry.Size()
 		if _, ok := entry.(fs.Directory); ok {
@@ -500,6 +503,9 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 			rel := d.stripPrefix(entry.Remote())
 			if rel == "" || rel == d.stripPrefix(remote) {
 				continue
+			}
+			if err := storagecore.ValidateEntryPath(rel); err != nil {
+				return err
 			}
 			isDir := false
 			size := entry.Size()
@@ -716,14 +722,13 @@ func initRcloneLocked(cfg storagecore.ResolvedConfig) error {
 		return nil
 	}
 
-	rcloneConfigured = true
-	initConfigKind = kind
 	if kind == "inline" {
 		storage, err := newMemoryStorage(cfg.RcloneConfigData)
 		if err != nil {
-			initErr = err
-			return initErr
+			return err
 		}
+		rcloneConfigured = true
+		initConfigKind = kind
 		initConfigPath = "inline-rclone.conf"
 		initConfigDataHash = dataHash
 		if err := setConfigPath(initConfigPath); err != nil {
@@ -733,6 +738,8 @@ func initRcloneLocked(cfg storagecore.ResolvedConfig) error {
 		config.SetData(storage)
 		return nil
 	}
+	rcloneConfigured = true
+	initConfigKind = kind
 	if kind == "path" {
 		initConfigPath = identity
 		if err := setConfigPath(initConfigPath); err != nil {

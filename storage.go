@@ -14,12 +14,15 @@ import (
 //     backend-specific directory marker on object stores.
 //   - List is one-level, non-recursive, and sorted lexicographically by Path.
 //   - List with an empty path lists from the disk root or prefix root.
-//   - Walk is recursive and visits entries lexicographically by Path.
+//   - Walk visits entries recursively in deterministic, driver-specific order.
+//     List and Walk reject backend names that cannot round-trip through the path API.
 //   - URL returns a usable access URL when the driver supports it.
 //   - Copy overwrites the destination object when the backend supports copy semantics.
 //   - Move relocates an object or directory tree and may be implemented as copy followed by delete.
 //     Directory moves roll back destination entries if copying fails. A failure while deleting
 //     the source may leave a complete destination alongside the undeleted source remainder.
+//     Reserve the destination for an emulated move. Some backends also require exclusive
+//     access to the source because they cannot condition deletion on its original revision.
 //   - Unsupported operations should return ErrUnsupported.
 //
 // @group Core
@@ -263,6 +266,8 @@ type Entry = storagecore.Entry
 var (
 	// ErrNotFound reports that a requested storage path has no backing entry.
 	ErrNotFound = storagecore.ErrNotFound
+	// ErrConflict reports that an entry changed during an operation.
+	ErrConflict = storagecore.ErrConflict
 	// ErrForbidden reports an invalid path mutation or unsupported path shape.
 	ErrForbidden = storagecore.ErrForbidden
 	// ErrUnsupported reports that a valid operation is unavailable for the selected driver.

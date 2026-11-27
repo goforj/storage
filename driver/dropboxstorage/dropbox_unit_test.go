@@ -1424,3 +1424,18 @@ func createPaths(args []*files.CreateFolderArg) []string {
 	}
 	return paths
 }
+
+// TestDropboxListingRejectsAliases verifies both supported metadata kinds preserve path identity.
+func TestDropboxListingRejectsAliases(t *testing.T) {
+	for _, entry := range []files.IsMetadata{
+		&files.FileMetadata{Metadata: files.Metadata{PathDisplay: "/pre/report "}},
+		&files.FolderMetadata{Metadata: files.Metadata{PathDisplay: "/pre/folder "}},
+	} {
+		disk := &driver{prefix: "pre", client: &fakeDropbox{
+			listOut: &files.ListFolderResult{Entries: []files.IsMetadata{entry}},
+		}}
+		if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+			t.Fatalf("List %T = %v", entry, err)
+		}
+	}
+}

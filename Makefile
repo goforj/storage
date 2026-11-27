@@ -57,6 +57,10 @@ release-plan: ##@release Preview version rewrites and tags without changing file
 	test -n "$(ARGS)" || (echo "usage: make release-plan <version> [-- --exclude <dir>]" && exit 1)
 	bash scripts/release-all-modules.sh $(ARGS) --dry-run --allow-dirty
 
+release-verify: ##@release Verify public Go availability for every module after publishing.
+	test -n "$(ARGS)" || (echo "usage: make release-verify <version>" && exit 1)
+	bash scripts/verify-published-release.sh $(ARGS)
+
 release-publish: ##@release Rewrite sibling versions, publish tags, sync checksums, and push the branch: make release-publish v0.1.0 [-- --remote <name>|--exclude <dir>|--skip-existing].
 	test -n "$(ARGS)" || (echo "usage: make release-publish <version> [-- --remote <name>|--exclude <dir>|--skip-existing]" && exit 1)
 	bash scripts/release-all-modules.sh $(ARGS) --commit --push --allow-dirty

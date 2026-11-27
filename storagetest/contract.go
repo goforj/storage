@@ -157,6 +157,40 @@ func RunStorageContractTests(t *testing.T, fsys storage.Storage) {
 		}
 	})
 
+	t.Run("walk-order-and-path-identity", func(t *testing.T) {
+		files := []string{"walk-order/a/item.txt", "walk-order/a.txt", "walk-order/b with space.txt"}
+		for _, name := range files {
+			requireNoError(t, fsys.Put(name, []byte(name)), "Put "+name)
+		}
+
+		var first []string
+		err := fsys.Walk("walk-order", func(entry storage.Entry) error {
+			first = append(first, entry.Path)
+			if !entry.IsDir {
+				data, err := fsys.Get(entry.Path)
+				requireNoError(t, err, "Get walked entry")
+				requireEqual(t, entry.Path, string(data), "walked entry round trip")
+			}
+			return nil
+		})
+		if errors.Is(err, storage.ErrUnsupported) {
+			t.Skip("Walk not supported")
+		}
+		requireNoError(t, err, "Walk")
+		for _, name := range files {
+			requireContains(t, first, name, "Walk")
+		}
+
+		var repeated []string
+		requireNoError(t, fsys.Walk("walk-order", func(entry storage.Entry) error {
+			repeated = append(repeated, entry.Path)
+			return nil
+		}), "repeat Walk")
+		if !slices.Equal(first, repeated) {
+			t.Fatalf("Walk order changed for an unchanged tree: %v then %v", first, repeated)
+		}
+	})
+
 	t.Run("count-files", func(t *testing.T) {
 		files := []string{
 			"count/root.txt",

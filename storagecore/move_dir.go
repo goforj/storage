@@ -2,6 +2,7 @@ package storagecore
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path"
@@ -18,6 +19,17 @@ type DirMoveStorage interface {
 	WalkContext(ctx context.Context, p string, fn func(Entry) error) error
 	GetContext(ctx context.Context, p string) ([]byte, error)
 	PutContext(ctx context.Context, p string, contents []byte) error
+}
+
+// revisionedMoveFiles lets providers copy and delete the same observed revision.
+type revisionedMoveFiles interface {
+	CopyMoveFileContext(ctx context.Context, src, dst string) (revision string, err error)
+	DeleteMoveFileContext(ctx context.Context, src, revision string) error
+}
+
+// moveDirectories lets a backend remove a directory without redispatching to file deletion.
+type moveDirectories interface {
+	DeleteMoveDirectoryContext(ctx context.Context, name string) error
 }
 
 // MoveDirContext moves a directory tree using a copy phase followed by source
@@ -67,6 +79,8 @@ func MoveDirContext(ctx context.Context, disk DirMoveStorage, src, dst string) e
 		return err
 	}
 	created := make([]string, 0, len(entries)+1)
+	deleteFiles := make(map[string]func(context.Context) error)
+	revisioned, _ := disk.(revisionedMoveFiles)
 	created = append(created, dstPath)
 	if err := disk.MakeDirContext(ctx, dstPath); err != nil {
 		return rollbackMove(ctx, disk, created, fmt.Errorf("storage: create move destination %q: %w", dstPath, err))
@@ -85,13 +99,28 @@ func MoveDirContext(ctx context.Context, disk DirMoveStorage, src, dst string) e
 			}
 			continue
 		}
+		if revisioned != nil {
+			created = append(created, targetPath)
+			revision, err := revisioned.CopyMoveFileContext(ctx, entry.Path, targetPath)
+			if err != nil {
+				return rollbackMove(ctx, disk, created, fmt.Errorf("storage: copy move source %q: %w", entry.Path, err))
+			}
+			deleteFiles[entry.Path] = func(ctx context.Context) error {
+				return revisioned.DeleteMoveFileContext(ctx, entry.Path, revision)
+			}
+			continue
+		}
 		data, err := disk.GetContext(ctx, entry.Path)
 		if err != nil {
 			return rollbackMove(ctx, disk, created, fmt.Errorf("storage: read move source %q: %w", entry.Path, err))
 		}
+		checksum := sha256.Sum256(data)
 		created = append(created, targetPath)
 		if err := disk.PutContext(ctx, targetPath, data); err != nil {
 			return rollbackMove(ctx, disk, created, fmt.Errorf("storage: write move destination %q: %w", targetPath, err))
+		}
+		deleteFiles[entry.Path] = func(ctx context.Context) error {
+			return deleteUnchangedMoveFile(ctx, disk, entry.Path, checksum)
 		}
 	}
 
@@ -105,7 +134,13 @@ func MoveDirContext(ctx context.Context, disk DirMoveStorage, src, dst string) e
 		}
 		entry := entries[i]
 		deletionStarted = true
-		if err := disk.DeleteContext(ctx, entry.Path); err != nil && !errors.Is(err, ErrNotFound) {
+		var err error
+		if entry.IsDir {
+			err = deleteMoveDirectory(ctx, disk, entry.Path)
+		} else {
+			err = deleteFiles[entry.Path](ctx)
+		}
+		if err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("storage: delete move source %q: %w", entry.Path, err)
 		}
 	}
@@ -116,10 +151,39 @@ func MoveDirContext(ctx context.Context, disk DirMoveStorage, src, dst string) e
 		return err
 	}
 	deletionStarted = true
-	if err := disk.DeleteContext(ctx, srcPath); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := deleteMoveDirectory(ctx, disk, srcPath); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("storage: delete move source %q: %w", srcPath, err)
 	}
 	return nil
+}
+
+// deleteMoveDirectory never intentionally applies directory cleanup to a replacement file.
+func deleteMoveDirectory(ctx context.Context, disk DirMoveStorage, name string) error {
+	if directories, ok := disk.(moveDirectories); ok {
+		return directories.DeleteMoveDirectoryContext(ctx, name)
+	}
+	entry, err := disk.StatContext(ctx, name)
+	if err != nil {
+		return err
+	}
+	if !entry.IsDir {
+		return fmt.Errorf("%w: moved directory was replaced by a file", ErrConflict)
+	}
+	return disk.DeleteContext(ctx, name)
+}
+
+// deleteUnchangedMoveFile avoids deleting an observed rewrite on backends
+// without conditional deletion. Callers must hold exclusive access across the
+// comparison and delete because these backends cannot make the pair atomic.
+func deleteUnchangedMoveFile(ctx context.Context, disk DirMoveStorage, name string, checksum [sha256.Size]byte) error {
+	data, err := disk.GetContext(ctx, name)
+	if err != nil {
+		return err
+	}
+	if sha256.Sum256(data) != checksum {
+		return fmt.Errorf("%w: source changed after copy", ErrConflict)
+	}
+	return disk.DeleteContext(ctx, name)
 }
 
 // collectMoveEntries validates and sorts the full source tree before any

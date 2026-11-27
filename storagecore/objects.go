@@ -53,3 +53,15 @@ type ObjectStorage interface {
 	OpenObjectContext(ctx context.Context, key string, options OpenObjectOptions) (*ObjectReader, error)
 	PutObjectContext(ctx context.Context, key string, body io.Reader, options PutObjectOptions) (ObjectInfo, error)
 }
+
+// Objects discovers optional streaming on direct driver handles and decorators.
+// Decorators may implement Objects() to forward the capability conditionally.
+func Objects(disk Storage) (ObjectStorage, error) {
+	if provider, ok := disk.(interface{ Objects() (ObjectStorage, error) }); ok {
+		return provider.Objects()
+	}
+	if objects, ok := disk.(ObjectStorage); ok {
+		return objects, nil
+	}
+	return nil, ErrUnsupported
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	stdfs "io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1152,3 +1153,33 @@ type rcloneShortWriter struct{}
 
 // Write accepts no bytes without error to exercise short-write handling.
 func (rcloneShortWriter) Write([]byte) (int, error) { return 0, nil }
+
+// TestMalformedRcloneConfigCanBeRetried ensures parse failures do not claim the process config.
+func TestMalformedRcloneConfigCanBeRetried(t *testing.T) {
+	resetRcloneInit(t)
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: "[broken"}); err == nil {
+		t.Fatal("malformed inline config was accepted")
+	}
+	if err := initRclone(storagecore.ResolvedConfig{RcloneConfigData: "[local]\ntype = local\n"}); err != nil {
+		t.Fatalf("corrected inline config failed: %v", err)
+	}
+}
+
+// TestRcloneListingRejectsAliases verifies direct remotes cannot return ambiguous filenames.
+func TestRcloneListingRejectsAliases(t *testing.T) {
+	resetRcloneInit(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, " report"), []byte("test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	disk, err := New(Config{Remote: "audit:" + root, RcloneConfigData: "[audit]\ntype = local\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List = %v", err)
+	}
+	if err := disk.Walk("", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}

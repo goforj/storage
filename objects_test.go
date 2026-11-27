@@ -30,19 +30,30 @@ func (*streamFixture) PutObjectContext(context.Context, string, io.Reader, stora
 	return storagecore.ObjectInfo{}, nil
 }
 
+// forwardingFixture models a decorator that exposes discovery without claiming to implement streaming.
+type forwardingFixture struct{ Storage }
+
+// Objects returns streaming operations only when its wrapped disk supports them.
+func (s forwardingFixture) Objects() (storagecore.ObjectStorage, error) {
+	return Objects(s.Storage)
+}
+
 // TestObjectsCapabilityPreservesExistingStorage verifies supported, unsupported, and failed bindings.
 func TestObjectsCapabilityPreservesExistingStorage(t *testing.T) {
 	stream := &streamFixture{}
-	for _, disk := range []Storage{stream, wrapStorage(stream), wrapStorage(stream).WithContext(context.Background())} {
+	for _, disk := range []Storage{stream, wrapStorage(stream), wrapStorage(stream).WithContext(context.Background()), forwardingFixture{Storage: wrapStorage(stream)}} {
 		got, err := Objects(disk)
 		if err != nil || got != stream {
 			t.Fatal("streaming capability lost", got, err)
 		}
 	}
-	for _, disk := range []Storage{nil, &stubFS{}, wrapStorage(&stubFS{})} {
+	for _, disk := range []Storage{nil, &stubFS{}, wrapStorage(&stubFS{}), forwardingFixture{Storage: &stubFS{}}} {
 		if _, err := Objects(disk); !errors.Is(err, ErrUnsupported) {
 			t.Fatal(err)
 		}
+	}
+	if got, err := storagecore.Objects(stream); got != stream || err != nil {
+		t.Fatal("direct driver capability lost", got, err)
 	}
 	failure := errors.New("binding failed")
 	if _, err := Objects(&boundStorage{inner: stream, bindErr: failure}); !errors.Is(err, failure) {

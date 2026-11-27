@@ -583,3 +583,66 @@ type localShortWriter struct{}
 
 // Write accepts no bytes without an error to exercise short-write handling.
 func (*localShortWriter) Write([]byte) (int, error) { return 0, nil }
+
+// TestLocalListingRejectsAliases ensures a listed filename cannot resolve to a different sibling.
+func TestLocalListingRejectsAliases(t *testing.T) {
+	root := t.TempDir()
+	for _, file := range []string{"report", " report"} {
+		if err := os.WriteFile(filepath.Join(root, file), []byte(file), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := store.List(""); entries != nil || !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List = %v, %v", entries, err)
+	}
+	if err := store.Walk("", func(entry storagecore.Entry) error {
+		t.Fatalf("walk returned an unsafe path: %q", entry.Path)
+		return nil
+	}); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}
+
+// TestLocalWalkUsesDepthFirstOrder protects local walk order without buffering the whole tree.
+func TestLocalWalkUsesDepthFirstOrder(t *testing.T) {
+	store, err := New(Config{Root: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"a/item", "a.txt"} {
+		if err := store.Put(file, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var actual []string
+	if err := store.Walk("", func(entry storagecore.Entry) error {
+		actual = append(actual, entry.Path)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(actual, []string{"a", "a/item", "a.txt"}) {
+		t.Fatalf("walk order = %v", actual)
+	}
+}
+
+// TestLocalPutReplacesSingleCharacterName exercises the smallest native rename payload.
+func TestLocalPutReplacesSingleCharacterName(t *testing.T) {
+	disk, err := New(Config{Root: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"old", "new"} {
+		if err := disk.Put("a", []byte(value)); err != nil {
+			t.Fatalf("Put a: %v", err)
+		}
+	}
+	value, err := disk.Get("a")
+	if err != nil || string(value) != "new" {
+		t.Fatalf("Get a = %q, %v", value, err)
+	}
+}

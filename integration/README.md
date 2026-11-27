@@ -8,6 +8,8 @@ It exists to run the same storage contract against multiple backends without sca
 
 The centralized matrix currently covers:
 - `local`
+- `memory`
+- `redis`
 - `gcs`
 - `ftp`
 - `s3`
@@ -52,6 +54,8 @@ INTEGRATION_DRIVER=local,gcs GOCACHE=/tmp/storage-gocache GOMODCACHE=/tmp/storag
 
 Accepted backend selectors today:
 - `local`
+- `memory`
+- `redis`
 - `gcs`
 - `ftp`
 - `s3`
@@ -63,11 +67,15 @@ Accepted backend selectors today:
 
 Current fixture model:
 - `local`: temp directory
+- `memory`: in-process storage
+- `redis`: Redis via testcontainers
 - `gcs`: fake-gcs-server
 - `ftp`: embedded Go FTP server
 - `s3`: MinIO via testcontainers
-- `sftp`: atmoz/sftp via testcontainers
+- `sftp`: atmoz/sftp via testcontainers, with the container host key loaded into `known_hosts`
 - `rclone_local`: in-memory rendered rclone local remote over a temp directory
+
+Dropbox is exercised with SDK fakes. The Rclone driver also tests a representative fake S3 endpoint in its own module.
 
 ## Adding a backend
 

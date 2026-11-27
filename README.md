@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/goforj/storage/main/docs/images/logo.png" width="300" alt="storage logo">
+  <img src="https://raw.githubusercontent.com/goforj/storage/main/docs/images/logo.png" width="112" alt="storage logo">
 </p>
 
 <p align="center">
@@ -13,30 +13,74 @@
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.24%2F1.25%2F1.26+-blue?logo=go" alt="Go version"></a>
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
   <img src="https://img.shields.io/github/v/tag/goforj/storage?label=version&sort=semver&filter=%21driver%2A" alt="Latest tag">
-<!-- test-count:embed:start -->
-  <img src="https://img.shields.io/badge/unit_tests-46-brightgreen" alt="Unit tests (executed count)">
-  <img src="https://img.shields.io/badge/integration_tests-130-blue" alt="Integration tests (executed count)">
-<!-- test-count:embed:end -->
 </p>
 
-## Why
+## Quickstart
 
-Applications often need to store files in different places:
+Run this in an empty directory with Go 1.25.0 or newer.
 
-- Local disks during development
-- Object storage like S3 or GCS in production
-- Remote filesystems like SFTP or FTP
-- Cloud providers or custom remotes
+```sh
+go mod init example.com/storage-quickstart
+go get github.com/goforj/storage github.com/goforj/storage/driver/localstorage
+```
 
-Each backend has its own API and client library.
+Save as `main.go`, then run `go run .`.
 
-`storage` provides a **small, consistent interface** so your application code doesn't have to change when the backend changes.
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/goforj/storage"
+    "github.com/goforj/storage/driver/localstorage"
+)
+
+func main() {
+    ctx := context.Background()
+    disk, err := storage.BuildContext(ctx, localstorage.Config{Root: "./data"})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    disk = disk.WithContext(ctx)
+    if err := disk.Put("notes/hello.txt", []byte("hello from storage")); err != nil {
+        log.Fatal(err)
+    }
+    body, err := disk.Get("notes/hello.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(string(body))
+    // Output: hello from storage
+}
+```
+
+### Use S3 with the same operations
+
+Add the S3 driver with `go get github.com/goforj/storage/driver/s3storage`.
+Replace the local driver import with `github.com/goforj/storage/driver/s3storage`
+and replace the construction call with this configuration for an existing
+bucket. The AWS SDK reads credentials from its standard credential chain.
+
+```go
+disk, err := storage.BuildContext(ctx, s3storage.Config{
+    Bucket: "my-existing-bucket",
+    Region: "us-east-1",
+    Prefix: "example",
+})
+```
+
+The same calls write and read `example/notes/hello.txt` in that bucket. Use
+`storage.New` when you need a manager for multiple named disks.
 
 ## Driver Matrix
 
-Each driver is thoroughly tested against the shared test suite using [testcontainers](https://testcontainers.com/) or emulators where appropriate. 
+Eight drivers run through shared integration fixtures. Dropbox uses SDK fakes, and Rclone uses representative local and fake S3 tests. See the capability matrix for fixture details.
 
-| Driver | Kind | Notes |
+| Driver | Kind | Suggested use |
 | ---: | --- | --- |
 | <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
 | <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
@@ -46,7 +90,7 @@ Each driver is thoroughly tested against the shared test suite using [testcontai
 | <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Depends on the underlying rclone remote; see the [rclone storage systems overview](https://rclone.org/overview/). |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Local contract fixture and fake S3 tests. Capabilities depend on the remote. See the [rclone storage systems overview](https://rclone.org/overview/). |
 
 ## Install
 
@@ -80,17 +124,18 @@ go get github.com/goforj/storage/driver/rclonestorage
 
 ## Usage
 
-Choose the construction style that fits your application:
-- Use a driver constructor like `localstorage.New(...)` when you want a single backend directly.
-- Use `storage.Build(...)` when you want one backend through the shared `storage` API.
-- Use `storage.New(...)` when you want multiple named disks managed from config.
+Build one disk with `storage.BuildContext`. Use `storage.New` when several named
+disks share a manager. Call `Manager.Close()` during shutdown. For a single disk,
+close it when it implements `io.Closer`.
 
-All storage operations also expose `*Context` equivalents for deadlines and cancellation. The default methods use `context.Background()`.
+Bind request cancellation with `disk.WithContext(ctx)`. Code using a direct
+driver constructor can access the `*Context` methods through
+`storagecore.ContextStorage`. Streaming methods take their context explicitly.
 
 ### Streaming objects
 
-`storage.Objects(disk)` discovers the optional `storagecore.ObjectStorage`
-capability. The S3 driver supports paged object walking, streaming reads and
+`storage.Objects(disk)` discovers streaming on a disk built through `storage`.
+Use `storagecore.Objects(disk)` with a direct driver constructor. The S3 driver supports paged object walking, streaming reads and
 writes, metadata preservation, version-pinned reads, and conditional reads using
 an observed ETag. Unsupported drivers return `storage.ErrUnsupported`; there is
 no implicit fallback that buffers whole objects in memory.
@@ -110,112 +155,6 @@ be unblocked by its owner.
 
 Bucket creation remains explicit through `s3storage.PrepareBucketContext`.
 Ordinary storage construction and object reads never provision provider resources.
-Existing buffered methods, driver interfaces, and minimum Go versions are unchanged.
-
-### Common operations
-
-```go
-package main
-
-import (
-    "errors"
-    "fmt"
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-)
-
-func main() {
-    disk, err := storage.Build(localstorage.Config{
-        Root: "/tmp/storage",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file.
-    if err := disk.Put("docs/readme.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // Check whether the file exists.
-    ok, err := disk.Exists("docs/readme.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(ok)
-    // Output: true
-
-    // Read the file back.
-    data, err := disk.Get("docs/readme.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(string(data))
-    // Output: hello
-
-    // List the parent directory.
-    entries, err := disk.List("docs")
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(entries[0].Path)
-    // Output: docs/readme.txt
-
-    // Delete the file.
-    if err := disk.Delete("docs/readme.txt"); err != nil {
-        log.Fatal(err)
-    }
-
-    // Ask the backend for an access URL when supported.
-    url, err := disk.URL("docs/readme.txt")
-    switch {
-    case err == nil:
-        fmt.Println(url)
-    case errors.Is(err, storage.ErrUnsupported):
-        fmt.Println("url generation unsupported")
-        // Output: url generation unsupported
-    default:
-        log.Fatal(err)
-    }
-}
-```
-
-### Single-backend construction
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-)
-
-func main() {
-    // Build one disk through the shared storage API.
-    built, err := storage.Build(localstorage.Config{
-        Root: "/tmp/storage",
-        Prefix: "scratch",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Or construct the driver directly.
-    direct, err := localstorage.New(localstorage.Config{
-        Root: "/tmp/storage",
-        Prefix: "scratch",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _, _ = built, direct
-}
-```
 
 ### Manager and named disks
 
@@ -254,6 +193,8 @@ func main() {
         log.Fatal(err)
     }
 
+    defer mgr.Close()
+
     // Resolve a disk by name.
     disk, err := mgr.Disk("assets")
     if err != nil {
@@ -278,6 +219,9 @@ func main() {
 ### Rclone
 
 Use `rclonestorage` when you want to access rclone-backed remotes through the `storage` interface.
+
+All Rclone disks in a process share one configuration. Define multiple named
+remotes in the same config file or inline config and select each by name.
 
 Rclone 1.76 blocks HTTPS-to-HTTP redirects by default. If a remote relies on
 such a redirect, configure its endpoint and any proxies to keep requests on HTTPS.
@@ -394,23 +338,35 @@ Notes:
 
 ## Capability Matrix
 
-| Driver | Stat | Copy | Move | Walk | URL | Context |
-| ---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | ✓ | ✓ | ✓ | ✓ | ~ | ✓ |
+| Driver | File copy and move | Directory move | Access URL | Verification |
+| --- | --- | --- | --- | --- |
+| Local | Local file copy and rename | Native rename | Unsupported | Temporary directory |
+| Memory | In-memory copy and move | In-memory move | Unsupported | In-process |
+| Redis | Transactional writes | Copy then revision-checked delete | Unsupported | Redis container |
+| FTP / SFTP | Buffered copy and server rename | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
+| S3 | Server-side copy preserves metadata. Moves check the source ETag. | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
+| GCS | Buffered copy. Server-side moves check the source generation. | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
+| Dropbox | Provider copy and move | Provider move | Temporary link | SDK fakes |
+| Rclone | Buffered copy and provider-dependent move | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
 
-`~` indicates backend- or environment-dependent behavior. For example, GCS URL generation is unavailable in emulator mode and rclone URL support depends on the underlying remote.
+Offset-based `ListPage` generally fetches the complete listing before selecting
+a window. Each call reads the current listing. Use `WalkObjectsContext` to process
+S3 objects one provider page at a time.
+
+Reserve the destination namespace for an emulated directory move. Rclone also
+requires exclusive writes to the source during a move because it cannot
+atomically compare and delete an object. When the library detects a source
+change, it returns `ErrConflict` and preserves the changed source. Once source
+deletion starts, an error can leave the completed destination and some source
+entries for reconciliation.
+
+S3 copy uses the provider's single-request `CopyObject` operation. Its limits
+depend on the provider. Amazon S3 allows up to 5 GB per object for a single
+[CopyObject request](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
 
 ## Migration notes
 
-- Go 1.24.4 or newer is required. Local replacement remains atomic and confined to the configured root on the supported platforms.
+- See the per-module Go compatibility table above. Local replacement is confined to the configured root on supported platforms.
 - Redis clients sharing a database and prefix require a coordinated cutover: stop all clients before upgrading them together because older releases cannot read or validate new v2 index writes.
 - SFTP configurations must provide `KnownHostsPath` unless `InsecureIgnoreHostKey` is explicitly enabled. The insecure option should be limited to controlled test environments.
 - Dropbox `Delete` supports files only and uses revision-conditional deletion. Directory deletion returns `storage.ErrUnsupported` because recursive `DeleteV2` could otherwise remove children created after an empty-directory preflight.
@@ -431,10 +387,10 @@ The API section below is autogenerated; do not edit between the markers.
 | **Construction** | [Build](#build) · [DriverConfig](#driverconfig) · [DriverFactory](#driverfactory) · [ResolvedConfig](#resolvedconfig) |
 | **Context** | [BuildContext](#buildcontext) · [CountFilesContext](#countfilescontext) |
 | **Core** | [CountFiles](#countfiles) · [DiskName](#diskname) · [Entry](#entry) · [ListPageResult](#listpageresult) · [PagedStorage](#pagedstorage) · [PagedStorage.ListPage](#pagedstorage-listpage) · [Storage](#storage) · [Storage.Copy](#storage-copy) · [Storage.Delete](#storage-delete) · [Storage.Exists](#storage-exists) · [Storage.Get](#storage-get) · [Storage.List](#storage-list) · [Storage.MakeDir](#storage-makedir) · [Storage.Move](#storage-move) · [Storage.Put](#storage-put) · [Storage.Stat](#storage-stat) · [Storage.URL](#storage-url) · [Storage.Walk](#storage-walk) · [Storage.WithContext](#storage-withcontext) |
-| **Driver Config** | [dropboxstorage.Config](#dropboxstorage-config) · [ftpstorage.Config](#ftpstorage-config) · [gcsstorage.Config](#gcsstorage-config) · [localstorage.Config](#localstorage-config) · [memorystorage.Config](#memorystorage-config) · [rclonestorage.Config](#rclonestorage-config) · [s3storage.Config](#s3storage-config) · [sftpstorage.Config](#sftpstorage-config) |
-| **Driver Constructors** | [dropboxstorage.New](#dropboxstorage-new) · [ftpstorage.New](#ftpstorage-new) · [gcsstorage.New](#gcsstorage-new) · [localstorage.New](#localstorage-new) · [memorystorage.New](#memorystorage-new) · [rclonestorage.New](#rclonestorage-new) · [s3storage.New](#s3storage-new) · [sftpstorage.New](#sftpstorage-new) |
+| **Driver Config** | [dropboxstorage.Config](#dropboxstorage-config) · [ftpstorage.Config](#ftpstorage-config) · [gcsstorage.Config](#gcsstorage-config) · [localstorage.Config](#localstorage-config) · [memorystorage.Config](#memorystorage-config) · [rclonestorage.Config](#rclonestorage-config) · [redisstorage.Config](#redisstorage-config) · [s3storage.Config](#s3storage-config) · [sftpstorage.Config](#sftpstorage-config) |
+| **Driver Constructors** | [dropboxstorage.New](#dropboxstorage-new) · [ftpstorage.New](#ftpstorage-new) · [gcsstorage.New](#gcsstorage-new) · [localstorage.New](#localstorage-new) · [memorystorage.New](#memorystorage-new) · [rclonestorage.New](#rclonestorage-new) · [redisstorage.New](#redisstorage-new) · [s3storage.New](#s3storage-new) · [sftpstorage.New](#sftpstorage-new) |
 | **Manager** | [Config](#config) · [Manager](#manager) · [Manager.Default](#manager-default) · [Manager.Disk](#manager-disk) · [New](#new) · [RegisterDriver](#registerdriver) |
-| **Other** | [Config.DriverName](#config-drivername) · [Config.ResolvedConfig](#config-resolvedconfig) · [Manager.Close](#manager-close) · [Objects](#objects) · [PaginateEntries](#paginateentries) · [dropboxstorage.NewContext](#dropboxstorage-newcontext) · [ftpstorage.NewContext](#ftpstorage-newcontext) · [gcsstorage.NewContext](#gcsstorage-newcontext) · [localstorage.NewContext](#localstorage-newcontext) · [memorystorage.NewContext](#memorystorage-newcontext) · [rclonestorage.NewContext](#rclonestorage-newcontext) · [s3storage.NewContext](#s3storage-newcontext) · [s3storage.PrepareBucketContext](#s3storage-preparebucketcontext) · [sftpstorage.NewContext](#sftpstorage-newcontext) |
+| **Other** | [Config.DriverName](#config-drivername) · [Config.ResolvedConfig](#config-resolvedconfig) · [Manager.Close](#manager-close) · [Objects](#objects) · [PaginateEntries](#paginateentries) · [dropboxstorage.NewContext](#dropboxstorage-newcontext) · [ftpstorage.NewContext](#ftpstorage-newcontext) · [gcsstorage.NewContext](#gcsstorage-newcontext) · [localstorage.NewContext](#localstorage-newcontext) · [memorystorage.NewContext](#memorystorage-newcontext) · [rclonestorage.NewContext](#rclonestorage-newcontext) · [redisstorage.NewContext](#redisstorage-newcontext) · [s3storage.NewContext](#s3storage-newcontext) · [s3storage.PrepareBucketContext](#s3storage-preparebucketcontext) · [sftpstorage.NewContext](#sftpstorage-newcontext) |
 | **Paths** | [JoinPrefix](#joinprefix) · [NormalizePath](#normalizepath) |
 
 
@@ -700,12 +656,15 @@ Semantics:
 backend-specific directory marker on object stores.
 - List is one-level, non-recursive, and sorted lexicographically by Path.
 - List with an empty path lists from the disk root or prefix root.
-- Walk is recursive and visits entries lexicographically by Path.
+- Walk visits entries recursively in deterministic, driver-specific order.
+List and Walk reject backend names that cannot round-trip through the path API.
 - URL returns a usable access URL when the driver supports it.
 - Copy overwrites the destination object when the backend supports copy semantics.
 - Move relocates an object or directory tree and may be implemented as copy followed by delete.
 Directory moves roll back destination entries if copying fails. A failure while deleting
 the source may leave a complete destination alongside the undeleted source remainder.
+Reserve the destination for an emulated move. Some backends also require exclusive
+access to the source because they cannot condition deletion on its original revision.
 - Unsupported operations should return ErrUnsupported.
 
 ```go
@@ -1067,6 +1026,30 @@ cfg := rclonestorage.Config{
 }
 ```
 
+### <a id="redisstorage-config"></a>redisstorage.Config
+
+Config defines a Redis-backed storage disk for distributed temporary blobs.
+
+_Example: define redis storage config_
+
+```go
+cfg := redisstorage.Config{
+	Addr: "127.0.0.1:6379",
+}
+```
+
+_Example: define redis storage config with all fields_
+
+```go
+cfg := redisstorage.Config{
+	Addr:     "127.0.0.1:6379",
+	Username: "",
+	Password: "",
+	DB:       0,
+	Prefix:   "scratch", // default: ""
+}
+```
+
 ### <a id="s3storage-config"></a>s3storage.Config
 
 Config defines an S3-backed storage disk.
@@ -1203,6 +1186,17 @@ fs, _ := rclonestorage.New(rclonestorage.Config{
 type = local
 `,
 
+})
+```
+
+### <a id="redisstorage-new"></a>redisstorage.New
+
+New constructs Redis-backed storage using go-redis.
+
+```go
+fs, _ := redisstorage.New(redisstorage.Config{
+	Addr:   "127.0.0.1:6379",
+	Prefix: "scratch",
 })
 ```
 
@@ -1364,6 +1358,10 @@ NewContext validates cfg and creates an isolated in-memory store.
 
 NewContext validates cfg and constructs an rclone-backed store.
 
+### <a id="redisstorage-newcontext"></a>redisstorage.NewContext
+
+NewContext constructs Redis-backed storage while honoring startup cancellation.
+
 ### <a id="s3storage-newcontext"></a>s3storage.NewContext
 
 NewContext constructs S3-backed storage and honors cancellation during setup.
@@ -1403,6 +1401,15 @@ fmt.Println(p)
 <!-- api:embed:end -->
 
 ## Contributing
+
+The badges count root-module test runs and shared integration cases.
+
+<p>
+<!-- test-count:embed:start -->
+  <img src="https://img.shields.io/badge/unit_tests-47-brightgreen" alt="Unit tests (executed count)">
+  <img src="https://img.shields.io/badge/integration_tests-138-blue" alt="Integration tests (executed count)">
+<!-- test-count:embed:end -->
+</p>
 
 Shared contract tests live in `storagetest`.
 

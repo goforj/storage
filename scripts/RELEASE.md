@@ -58,6 +58,17 @@ make release-publish v0.2.3
 5. Refreshes sibling `go.sum` entries from those immutable tags and creates a checksum follow-up commit when needed.
 6. Pushes the current branch at the checksum-clean commit.
 
+Before announcing the release, verify that a fresh consumer can resolve and
+compile all shipped modules using the public Go proxy and checksum database:
+
+```sh
+make release-verify v0.2.3
+```
+
+If a new tag is temporarily unavailable from the public proxy, retry
+verification after the proxy refreshes. The release verification command uses a
+fresh module cache so a direct repository download cannot mask that delay.
+
 ## Important Constraints
 
 - Published driver modules must never depend on sibling `v0.0.0`.
@@ -101,5 +112,10 @@ Check these first:
 ## Dependency updates
 
 Dependabot updates nested modules independently, grouped by their minimum Go version. The root `go.work` is intentionally excluded from automatic update jobs because workspace synchronization can raise unrelated modules' Go directives and copy higher-toolchain dependencies into published drivers. Keep `go.work` for local development.
+
+Run driver tests against local sibling source before release. The per-module CI
+jobs use temporary Go module files with local replacements so tests can use a
+new storagecore API without pinning unpublished versions in committed manifests.
+The public release verification above checks the published module graph.
 
 The root module only requires `storagecore`; the release script coordinates that requirement with every published sibling. Review dependency PRs against each affected module's declared Go minimum and preserve the compatibility exclusions in `.github/dependabot.yml`.

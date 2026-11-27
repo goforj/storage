@@ -451,3 +451,100 @@ func assertNoCallPrefix(t *testing.T, calls []string, prefix string) {
 		}
 	}
 }
+
+// TestMoveDirPreservesChangedSource proves the portable move cannot delete an observed rewrite.
+func TestMoveDirPreservesChangedSource(t *testing.T) {
+	store := newMoveTestStorage()
+	store.entries["src/file"] = Entry{Path: "src/file"}
+	store.data["src/file"] = []byte("old")
+	store.putHook = func(s *moveTestStorage, _ context.Context, name string, contents []byte) error {
+		s.entries[name] = Entry{Path: name}
+		s.data[name] = slices.Clone(contents)
+		s.data["src/file"] = []byte("new")
+		return nil
+	}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("move returned %v", err)
+	}
+	if string(store.data["src/file"]) != "new" || string(store.data["dst/file"]) != "old" {
+		t.Fatalf("unexpected copies: %q", store.data)
+	}
+	assertNoCallPrefix(t, deleteCalls(store.calls), "delete:")
+}
+
+// TestMoveDirRetainsReplacementFile prevents directory cleanup from deleting a file at the moved path.
+func TestMoveDirRetainsReplacementFile(t *testing.T) {
+	store := newMoveTestStorage()
+	store.entries["src/file"] = Entry{Path: "src/file"}
+	store.data["src/file"] = []byte("old")
+	store.deleteHook = func(s *moveTestStorage, _ context.Context, name string) error {
+		delete(s.entries, name)
+		delete(s.data, name)
+		if name == "src/file" {
+			s.entries["src"] = Entry{Path: "src"}
+			s.data["src"] = []byte("new file")
+		}
+		return nil
+	}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("move returned %v", err)
+	}
+	if string(store.data["src"]) != "new file" || string(store.data["dst/file"]) != "old" {
+		t.Fatalf("unexpected paths after move: %q", store.data)
+	}
+}
+
+// revisionedCopyFailure simulates a conditional copy failing after it creates a partial target.
+type revisionedCopyFailure struct {
+	*moveTestStorage
+	err error
+}
+
+// CopyMoveFileContext records a partial provider write so the shared mover must clean it up.
+func (s *revisionedCopyFailure) CopyMoveFileContext(_ context.Context, _, dst string) (string, error) {
+	s.entries[dst] = Entry{Path: dst}
+	return "", s.err
+}
+
+// DeleteMoveFileContext records any unexpected source cleanup after the failed copy.
+func (s *revisionedCopyFailure) DeleteMoveFileContext(ctx context.Context, src, _ string) error {
+	return s.DeleteContext(ctx, src)
+}
+
+// TestMoveDirRevisionedCopyFailureRollsBack protects the source when a provider fails mid-copy.
+func TestMoveDirRevisionedCopyFailureRollsBack(t *testing.T) {
+	store := &revisionedCopyFailure{moveTestStorage: newMoveTestStorage(), err: ErrConflict}
+	store.entries["src/file"] = Entry{Path: "src/file"}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); !errors.Is(err, store.err) {
+		t.Fatalf("move returned %v", err)
+	}
+	if got := deleteCalls(store.calls); !slices.Equal(got, []string{"delete:dst/file", "delete:dst"}) {
+		t.Fatalf("rollback deletes = %v", got)
+	}
+	if _, exists := store.entries["src/file"]; !exists {
+		t.Fatal("source disappeared after failed copy")
+	}
+}
+
+// TestMoveDirIgnoresDisappearedSourceEntries checks that a concurrent removal needs no further cleanup.
+func TestMoveDirIgnoresDisappearedSourceEntries(t *testing.T) {
+	store := newMoveTestStorage()
+	store.entries["src/dir"] = Entry{Path: "src/dir", IsDir: true}
+	store.entries["src/dir/file"] = Entry{Path: "src/dir/file"}
+	store.data["src/dir/file"] = []byte("copy")
+	store.putHook = func(s *moveTestStorage, _ context.Context, name string, contents []byte) error {
+		s.entries[name] = Entry{Path: name}
+		s.data[name] = slices.Clone(contents)
+		delete(s.data, "src/dir/file")
+		delete(s.entries, "src/dir/file")
+		delete(s.entries, "src/dir")
+		return nil
+	}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); err != nil {
+		t.Fatalf("move returned %v", err)
+	}
+	if got := string(store.data["dst/dir/file"]); got != "copy" {
+		t.Fatalf("destination content = %q", got)
+	}
+	assertNoCallPrefix(t, deleteCalls(store.calls), "delete:src/dir")
+}
