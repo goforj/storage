@@ -4,16 +4,16 @@ go 1.26.0
 
 require (
 	github.com/fsouza/fake-gcs-server v1.56.1
-	github.com/goforj/storage v0.7.0
-	github.com/goforj/storage/driver/ftpstorage v0.7.0
-	github.com/goforj/storage/driver/gcsstorage v0.7.0
-	github.com/goforj/storage/driver/localstorage v0.7.0
-	github.com/goforj/storage/driver/memorystorage v0.7.0
-	github.com/goforj/storage/driver/rclonestorage v0.7.0
-	github.com/goforj/storage/driver/redisstorage v0.7.0
-	github.com/goforj/storage/driver/s3storage v0.7.0
-	github.com/goforj/storage/driver/sftpstorage v0.7.0
-	github.com/goforj/storage/storagetest v0.7.0
+	github.com/goforj/storage v0.8.0
+	github.com/goforj/storage/driver/ftpstorage v0.8.0
+	github.com/goforj/storage/driver/gcsstorage v0.8.0
+	github.com/goforj/storage/driver/localstorage v0.8.0
+	github.com/goforj/storage/driver/memorystorage v0.8.0
+	github.com/goforj/storage/driver/rclonestorage v0.8.0
+	github.com/goforj/storage/driver/redisstorage v0.8.0
+	github.com/goforj/storage/driver/s3storage v0.8.0
+	github.com/goforj/storage/driver/sftpstorage v0.8.0
+	github.com/goforj/storage/storagetest v0.8.0
 	github.com/goftp/server v0.0.0-20200708154336-f64f7c2d8a42
 	github.com/testcontainers/testcontainers-go v0.44.0
 )
@@ -132,7 +132,7 @@ require (
 	github.com/go-resty/resty/v2 v2.17.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
-	github.com/goforj/storage/storagecore v0.7.0 // indirect
+	github.com/goforj/storage/storagecore v0.8.0 // indirect
 	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
