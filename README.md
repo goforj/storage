@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  One storage API for local disks, object stores, and remote filesystems.
+  One Go API for local files, S3, SFTP, and more.
 </p>
 
 <p align="center">
@@ -14,6 +14,10 @@
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
   <img src="https://img.shields.io/github/v/tag/goforj/storage?label=version&sort=semver&filter=%21driver%2A" alt="Latest tag">
 </p>
+
+Give backups, uploads, and assets their own named disks. Each disk picks its
+driver through a typed Go config. Your application uses the same calls to copy,
+walk, and restore files.
 
 ## Quickstart
 
@@ -62,61 +66,109 @@ func main() {
 }
 ```
 
-### Use S3 with the same operations
+### Run a backup locally and on S3
 
-Add the S3 driver with `go get github.com/goforj/storage/driver/s3storage`.
-Replace the local driver import with `github.com/goforj/storage/driver/s3storage`
-and replace the construction call with this configuration for an existing
-bucket. The AWS SDK reads credentials from its standard credential chain.
-To create a bucket explicitly, use [`s3storage.PrepareBucketContext`](#s3storage-preparebucketcontext).
+From this repository with Go 1.26+, run the same job against a local folder
+and S3-compatible MinIO. The `backups` disk config picks the backend.
 
-```go
-disk, err := storage.Build(s3storage.Config{
-    Bucket: "my-existing-bucket",
-    Region: "us-east-1",
-    Prefix: "example",
-})
+```sh
+go run ./examples/backup
+docker compose -f examples/backup/compose.yaml up -d --build
+go run ./examples/backup -backend minio
 ```
 
-The same calls write and read `example/notes/hello.txt` in that bucket. Use
-`storage.New` when you need a manager for multiple named disks.
+Both runs save, list, and restore the same snapshot.
+
+```text
+Saved: snapshots/config.json
+Found: snapshots/config.json
+Restored: {"site":"example","version":1}
+```
+
+Docker builds the MinIO fixture on the first run. Stop it with
+`docker compose -f examples/backup/compose.yaml down`.
+
+[Demo source](examples/backup/main.go) · [GoForj backup adapter](https://github.com/goforj/goforj/blob/main/internal/backup/remote_storage.go)
 
 ## Driver Matrix
 
-See the [capability matrix](#capability-matrix) for copy behavior, streaming support, and driver fixtures.
+Install the driver modules you use. Each driver has its own dependencies and
+minimum Go version.
 
-| Driver | Kind | Suggested use |
-| ---: | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
-| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Distributed memory | Good for temporary distributed blob storage with explicit size and durability tradeoffs. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Local contract fixture and fake S3 tests. Capabilities depend on the remote. See the [rclone storage systems overview](https://rclone.org/overview/). |
+| Driver | Use it for |
+| ---: | --- |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/localstorage"><img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"></a> | Files on a local or mounted filesystem |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/memorystorage"><img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"></a> | In-process storage and application tests |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/redisstorage"><img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"></a> | Small blobs shared across processes |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/ftpstorage"><img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"></a> | Existing FTP servers |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/sftpstorage"><img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"></a> | File transfers over SSH |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/s3storage"><img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"></a> | Amazon S3 and S3-compatible stores such as MinIO |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/gcsstorage"><img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"></a> | Google Cloud Storage buckets |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/dropboxstorage"><img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"></a> | Dropbox files and temporary access links |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/rclonestorage"><img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"></a> | Any [Rclone remote](https://rclone.org/overview/), subject to its capabilities |
+
+## Capability Matrix
+
+### File transfers
+
+| Driver | Read and write API | File copy | File move |
+| ---: | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Byte slices | Streamed, atomic replace | Native rename |
+| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | Byte slices | In-memory clone | Atomic rekey |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Byte slices | Whole value, transactional | Transactional |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Byte slices | Streamed, staged upload | Server rename |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Byte slices | Streamed, atomic replace | POSIX rename |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Byte slices or `storage.Objects` streams | Server-side, preserves metadata | Copy, then ETag-checked delete |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Byte slices | Server-side, preserves metadata | Copy, then generation-checked delete |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Byte slices | Buffered download and upload | Provider move |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Byte slices | Provider-native or streamed | Copy, then delete |
+
+<a id="directories-and-access"></a>
+
+<details>
+<summary>Directory operations, access URLs, and driver verification</summary>
+
+| Driver | Directory model | Directory delete | Directory move | Access URL | Verification |
+| ---: | --- | --- | --- | --- | --- |
+| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Filesystem | Empty only | Native rename | Unsupported | Temporary directory |
+| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory entries | Empty only | Copy, then content-checked delete | Unsupported | In-process |
+| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Indexed directories | Empty only | Copy, then revision-checked delete | Unsupported | Redis container |
+| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Server directories | Empty only | Server rename | Unsupported | Embedded FTP |
+| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Server directories | Empty only | POSIX rename | Unsupported | SFTP container with host-key verification |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | MinIO and SDK fixtures |
+| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Prefixes and markers | Empty marker only | Copy, then generation-checked delete | Signed GET, 15 min on GCS | GCS emulator |
+| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Provider folders | Unsupported | Provider move | Temporary file link | SDK fakes |
+| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Remote-dependent | Empty only, remote-dependent | Copy, then content-checked delete | Remote-dependent | Local contract and fake S3 tests |
+
+All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
+
+FTP copies require two concurrent sessions and permission to upload and rename a
+sibling temporary file. If an FTP server rejects rename over an existing file,
+copy to a new path. A rejected rename leaves the existing destination in place.
+
+Offset-based `ListPage` generally fetches the complete listing before selecting
+a window. Each call reads the current listing. Use `WalkObjectsContext` to process
+S3 objects one provider page at a time.
+
+Reserve the destination namespace for an emulated directory move. Rclone moves
+also require exclusive source writes. Rclone's directory cleanup compares
+source bytes and deletes in separate operations. When checked cleanup detects
+a change, it returns `ErrConflict` and preserves the changed source. Once source
+deletion starts, an error can leave the completed destination and some source
+entries for reconciliation.
+
+S3 copy uses the provider's single-request `CopyObject` operation. Its limits
+depend on the provider. Amazon S3 allows up to 5 GB per object for a single
+[CopyObject request](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
+
+</details>
 
 ## Install
 
-Root module:
+Add the root module and the driver you plan to use. This example adds S3.
 
-```bash
-go get github.com/goforj/storage
-```
-
-Then add the driver modules you need, for example:
-
-```bash
-go get github.com/goforj/storage/driver/localstorage
-go get github.com/goforj/storage/driver/memorystorage
-go get github.com/goforj/storage/driver/redisstorage
-go get github.com/goforj/storage/driver/ftpstorage
-go get github.com/goforj/storage/driver/sftpstorage
-go get github.com/goforj/storage/driver/s3storage
-go get github.com/goforj/storage/driver/gcsstorage
-go get github.com/goforj/storage/driver/dropboxstorage
-go get github.com/goforj/storage/driver/rclonestorage
+```sh
+go get github.com/goforj/storage github.com/goforj/storage/driver/s3storage
 ```
 
 ## Go compatibility
@@ -169,234 +221,44 @@ blocked inside its own `Read` must honor cancellation or be unblocked by its own
 
 ### Manager and named disks
 
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-    "github.com/goforj/storage/driver/s3storage"
-)
-
-func main() {
-    // Build a manager with multiple named disks.
-    mgr, err := storage.New(storage.Config{
-        Default: "assets",
-        Disks: map[storage.DiskName]storage.DriverConfig{
-            "assets": localstorage.Config{
-                Root: "/tmp/storage",
-                Prefix: "assets",
-            },
-            "uploads": s3storage.Config{
-                Bucket:          "app-uploads",
-                Region:          "us-east-1",
-                Endpoint:        "http://localhost:9000",
-                AccessKeyID:     "minioadmin",
-                SecretAccessKey: "minioadmin",
-                UsePathStyle:    true,
-                Prefix:          "uploads",
-            },
-        },
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    defer mgr.Close()
-
-    // Resolve a disk by name.
-    disk, err := mgr.Disk("assets")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file into the disk.
-    if err := disk.Put("hello.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // Read the file back.
-    data, err := disk.Get("hello.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = data // []byte("hello")
-}
-```
+Use [`storage.New`](#new) to configure several disks and
+[`manager.Disk(name)`](#manager-disk) to hand one to an application component.
+The [backup example](examples/backup/main.go) shows the setup and shutdown.
 
 ### Rclone
 
-Use `rclonestorage` when you want to access rclone-backed remotes through the `storage` interface.
-
-All Rclone disks in a process share one configuration. Define multiple named
-remotes in the same config file or inline config and select each by name.
-
-Rclone 1.76 blocks HTTPS-to-HTTP redirects by default. If a remote relies on
-such a redirect, configure its endpoint and any proxies to keep requests on HTTPS.
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage/driver/rclonestorage"
-)
-
-const rcloneConfig = `
-[localdisk]
-type = local
-`
-
-func main() {
-    // Build an rclone-backed disk from inline rclone config.
-    disk, err := rclonestorage.New(rclonestorage.Config{
-        Remote:           "localdisk:/tmp/storage",
-        Prefix:           "sandbox",
-        RcloneConfigData: rcloneConfig,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file through rclone.
-    if err := disk.Put("rclone.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // List files from the disk root.
-    entries, err := disk.List("")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = entries // rclone.txt
-}
-```
-
-See [`examples`](./examples) for runnable examples.
+Use [`rclonestorage.New`](#rclonestorage-new) to open an Rclone remote. All
+Rclone disks in a process share one config. Define your remotes together and
+select each by name. Rclone 1.76 blocks HTTPS-to-HTTP redirects by default.
 
 ### Testing with fakes
 
-```go
-package main
-
-import (
-    "testing"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/memorystorage"
-    "github.com/goforj/storage/storagetest"
-)
-
-func TestUpload(t *testing.T) {
-    // Create one fake disk.
-    disk := storagetest.Fake(t)
-    _ = disk.Put("photo.jpg", []byte("ok"))
-
-    // Or create a fake manager with named in-memory disks.
-    mgr := storagetest.FakeManager(t, "photos", map[storage.DiskName]memorystorage.Config{
-        "photos":  {Prefix: "photos"},
-        "avatars": {Prefix: "avatars"},
-    })
-
-    photos, _ := mgr.Disk("photos")
-    _ = photos.Put("one.jpg", []byte("ok"))
-}
-```
+Use `storagetest.Fake(t)` for a fresh in-memory disk or
+`storagetest.FakeManager` to exercise named disks. Inject the same
+`storage.Storage` interface your application uses.
 
 ## Benchmarks
 
+Reading an 8 MiB object from MinIO with the S3 streaming API allocated about
+**33 KiB**, down from **20 MiB** with `Get`. See the
+[benchmark results](docs/bench/README.md) for copy timings, the local Rclone
+tradeoff, and how to reproduce the measurements.
+
 <!-- bench:embed:start -->
 
-Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.
+<details>
+<summary>Latency, allocated bytes, allocations, and iteration charts</summary>
 
-Run the renderer with:
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=76ba1fb91b4d)
 
-```bash
-cd docs/bench
-go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v
-```
+![Storage benchmark allocated bytes chart](docs/bench/benchmarks_bytes.svg?t=76ba1fb91b4d)
 
-Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.
+![Storage benchmark allocation count chart](docs/bench/benchmarks_allocs.svg?t=76ba1fb91b4d)
 
-Notes:
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=76ba1fb91b4d)
 
-- `gcs` uses fake-gcs-server.
-- `ftp` is included by default and now reuses a logged-in control connection per storage instance during the benchmark run.
-- `redis`, `s3`, and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.
-- `rclone_local` measures rclone overhead on top of a local filesystem remote.
-
-### Latency (ns/op)
-
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=2df0336b200f)
-
-### Iterations (N)
-
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=2df0336b200f)
-
-### Allocated Bytes (B/op)
-
-![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=2df0336b200f)
-
-### Allocations (allocs/op)
-
-![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=2df0336b200f)
+</details>
 <!-- bench:embed:end -->
-
-## Capability Matrix
-
-### File transfers
-
-| Driver | Read and write API | File copy | File move |
-| ---: | --- | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Byte slices | Streamed, atomic replace | Native rename |
-| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | Byte slices | In-memory clone | Atomic rekey |
-| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Byte slices | Whole value, transactional | Transactional |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Byte slices | Streamed, staged upload | Server rename |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Byte slices | Streamed, atomic replace | POSIX rename |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Byte slices or `storage.Objects` streams | Server-side, preserves metadata | Copy, then ETag-checked delete |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Byte slices | Server-side, preserves metadata | Copy, then generation-checked delete |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Byte slices | Buffered download and upload | Provider move |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Byte slices | Provider-native or streamed | Copy, then delete |
-
-### Directories and access
-
-| Driver | Directory model | Directory delete | Directory move | Access URL | Verification |
-| ---: | --- | --- | --- | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Filesystem | Empty only | Native rename | Unsupported | Temporary directory |
-| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory entries | Empty only | Copy, then content-checked delete | Unsupported | In-process |
-| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Indexed directories | Empty only | Copy, then revision-checked delete | Unsupported | Redis container |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Server directories | Empty only | Server rename | Unsupported | Embedded FTP |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Server directories | Empty only | POSIX rename | Unsupported | SFTP container with host-key verification |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | MinIO and SDK fixtures |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Prefixes and markers | Empty marker only | Copy, then generation-checked delete | Signed GET, 15 min on GCS | GCS emulator |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Provider folders | Unsupported | Provider move | Temporary file link | SDK fakes |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Remote-dependent | Empty only, remote-dependent | Copy, then content-checked delete | Remote-dependent | Local contract and fake S3 tests |
-
-All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
-
-FTP copies require two concurrent sessions and permission to upload and rename a
-sibling temporary file. If an FTP server rejects rename over an existing file,
-copy to a new path. A rejected rename leaves the existing destination in place.
-
-Offset-based `ListPage` generally fetches the complete listing before selecting
-a window. Each call reads the current listing. Use `WalkObjectsContext` to process
-S3 objects one provider page at a time.
-
-Reserve the destination namespace for an emulated directory move. Rclone moves
-also require exclusive source writes. Rclone's directory cleanup compares
-source bytes and deletes in separate operations. When checked cleanup detects
-a change, it returns `ErrConflict` and preserves the changed source. Once source
-deletion starts, an error can leave the completed destination and some source
-entries for reconciliation.
-
-S3 copy uses the provider's single-request `CopyObject` operation. Its limits
-depend on the provider. Amazon S3 allows up to 5 GB per object for a single
-[CopyObject request](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
 
 ## Migration notes
 
@@ -409,6 +271,22 @@ depend on the provider. Amazon S3 allows up to 5 GB per object for a single
 - Dropbox `Delete` supports files only and uses revision-conditional deletion. Directory deletion returns `storage.ErrUnsupported` because recursive `DeleteV2` could otherwise remove children created after an empty-directory preflight.
 - Empty and root-like paths identify a disk's logical root; the root cannot be mutated or aliased as an object by `Put`, `Delete`, `Copy`, or `Move`.
 - Resource-backed disks should be closed when they implement `interface{ Close() error }`. Always call `Manager.Close()` when a manager is no longer needed so its initialized disks are released.
+
+## Development
+
+```sh
+make test                         # Test the root module
+make test-examples                # Test the examples module
+make test-integration             # Test all driver fixtures with Docker
+make test-integration gcs         # Test GCS with its emulator
+make test-coverage                # Generate combined coverage
+go run ./docs/readme/main.go      # Regenerate the API reference
+make docs-watch                   # Regenerate docs and examples as code changes
+```
+
+Run `go test ./...` in each driver module you change. See `make help` for all
+targets, the [test plan](TEST_PLAN.md) for fixture details, and the
+[release runbook](scripts/RELEASE.md) for publishing.
 
 ## API reference
 
@@ -1400,19 +1278,3 @@ fmt.Println(p)
 // Output: avatars/user-1.png
 ```
 <!-- api:embed:end -->
-
-## Development
-
-```sh
-make test                         # Test the root module
-make test-examples                # Test the examples module
-make test-integration             # Test all driver fixtures with Docker
-make test-integration gcs         # Test GCS with its emulator
-make test-coverage                # Generate combined coverage
-go run ./docs/readme/main.go      # Regenerate the API reference
-make docs-watch                   # Regenerate docs and examples as code changes
-```
-
-Run `go test ./...` in each driver module you change. See `make help` for all
-targets, the [test plan](TEST_PLAN.md) for fixture details, and the
-[release runbook](scripts/RELEASE.md) for publishing.
