@@ -27,13 +27,13 @@ func TestDropboxConstructors(t *testing.T) {
 		}
 	})
 
-	t.Run("new context success", func(t *testing.T) {
-		got, err := NewContext(context.Background(), Config{Token: "token", Prefix: "pre"})
+	t.Run("new success", func(t *testing.T) {
+		got, err := New(Config{Token: "token", Prefix: "pre"})
 		if err != nil {
-			t.Fatalf("NewContext: %v", err)
+			t.Fatalf("New: %v", err)
 		}
 		if got == nil {
-			t.Fatal("NewContext returned nil storage")
+			t.Fatal("New returned nil storage")
 		}
 	})
 
@@ -46,8 +46,8 @@ func TestDropboxConstructors(t *testing.T) {
 	t.Run("canceled setup", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := NewContext(ctx, Config{Token: "token"}); !errors.Is(err, context.Canceled) {
-			t.Fatalf("NewContext canceled error = %v", err)
+		if _, err := newFromDiskConfig(ctx, Config{Token: "token"}.ResolvedConfig()); !errors.Is(err, context.Canceled) {
+			t.Fatalf("setup canceled error = %v", err)
 		}
 	})
 }

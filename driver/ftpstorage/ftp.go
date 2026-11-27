@@ -127,12 +127,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 //	})
 //	_ = fs
 func New(cfg Config) (storagecore.Storage, error) {
-	return NewContext(context.Background(), cfg)
-}
-
-// NewContext validates cfg and constructs a lazily connected FTP store.
-func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
-	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+	return newFromDiskConfig(context.Background(), cfg.ResolvedConfig())
 }
 
 // newFromDiskConfig validates resolved FTP and TLS settings without opening a connection.

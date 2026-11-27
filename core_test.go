@@ -42,11 +42,28 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-// TestBuildContext propagates a canceled construction context into the registered factory.
+// TestBuildContext keeps the caller's setup context at the driver boundary.
 func TestBuildContext(t *testing.T) {
+	t.Run("forwards the setup context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		driverName := uniqueTestDriverName("fake-build-live-context")
+		RegisterDriver(driverName, func(received context.Context, _ ResolvedConfig) (Storage, error) {
+			if received != ctx {
+				t.Fatal("driver did not receive the caller's context")
+			}
+			cancel()
+			return nil, received.Err()
+		})
+		if _, err := BuildContext(ctx, fakeDriverConfig{name: driverName}); !errors.Is(err, context.Canceled) {
+			t.Fatalf("BuildContext error = %v, want context.Canceled", err)
+		}
+	})
+
 	driverName := uniqueTestDriverName("fake-build-context")
-	RegisterDriver(driverName, func(ctx context.Context, cfg ResolvedConfig) (Storage, error) {
-		return nil, ctx.Err()
+	RegisterDriver(driverName, func(context.Context, ResolvedConfig) (Storage, error) {
+		t.Fatal("driver called with an already canceled context")
+		return nil, nil
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

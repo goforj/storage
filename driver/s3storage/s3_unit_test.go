@@ -293,8 +293,8 @@ func TestS3Constructors(t *testing.T) {
 	t.Run("canceled setup", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := NewContext(ctx, Config{Bucket: "bucket", Region: "us-east-1"}); !errors.Is(err, context.Canceled) {
-			t.Fatalf("NewContext canceled error = %v", err)
+		if _, err := newFromDiskConfig(ctx, Config{Bucket: "bucket", Region: "us-east-1"}.ResolvedConfig()); !errors.Is(err, context.Canceled) {
+			t.Fatalf("setup canceled error = %v", err)
 		}
 	})
 
