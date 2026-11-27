@@ -40,6 +40,7 @@ import (
 )
 
 func main() {
+    // Open a local disk rooted at ./data. Switching drivers only changes this setup.
     disk, err := storage.Build(localstorage.Config{Root: "./data"})
     if err != nil {
         log.Fatal(err)
@@ -50,6 +51,7 @@ func main() {
     defer cancel()
     disk = disk.WithContext(ctx)
 
+    // Use a path relative to the disk root for both the write and the read.
     if err := disk.Put("notes/hello.txt", []byte("hello from storage")); err != nil {
         log.Fatal(err)
     }
