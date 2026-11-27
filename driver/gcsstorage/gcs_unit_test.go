@@ -1082,3 +1082,17 @@ func TestGCSMoveGuardsValidateInputs(t *testing.T) {
 		t.Fatal("closed disk allowed directory cleanup")
 	}
 }
+
+// TestGCSMoveReportsProviderReadFailures preserves errors when source identity or directory contents cannot be read.
+func TestGCSMoveReportsProviderReadFailures(t *testing.T) {
+	ctx := context.Background()
+	disk := newFakeGCSDriver(&fakeGCSObject{attrsErr: storage.ErrObjectNotExist}, nil)
+	if _, err := disk.CopyMoveFileContext(ctx, "source", "dst"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("copy with missing source = %v", err)
+	}
+	bucket := disk.client.Bucket(disk.bucket).(*fakeGCSBucket)
+	bucket.objectsErr = &googleapi.Error{Code: 403}
+	if err := disk.DeleteMoveDirectoryContext(ctx, "source"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("directory cleanup with failed list = %v", err)
+	}
+}

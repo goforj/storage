@@ -408,6 +408,15 @@ func TestS3WrapError(t *testing.T) {
 	if isNotFound(errors.New("boom")) {
 		t.Fatalf("isNotFound should ignore unrelated errors")
 	}
+	for _, status := range []int{http.StatusConflict, http.StatusPreconditionFailed} {
+		responseErr := &smithyhttp.ResponseError{
+			Response: &smithyhttp.Response{Response: &http.Response{StatusCode: status}},
+			Err:      errors.New("conditional request failed"),
+		}
+		if err := wrapError(responseErr); !errors.Is(err, storagecore.ErrConflict) || !errors.Is(err, responseErr) {
+			t.Errorf("wrapError status %d = %v", status, err)
+		}
+	}
 }
 
 // TestS3WalkAndURLBranches covers file walks, recursive ordering, signing, and callback failures.
@@ -1066,14 +1075,19 @@ func TestS3MovePinsCopyAndDeletion(t *testing.T) {
 
 // TestS3ListingRejectsOpaqueAliases keeps nonportable keys on the object API.
 func TestS3ListingRejectsOpaqueAliases(t *testing.T) {
-	disk := &driver{client: &fakeS3{listOut: &s3.ListObjectsV2Output{
+	client := &fakeS3{listOut: &s3.ListObjectsV2Output{
 		Contents: []types.Object{{Key: aws.String("report ")}},
-	}}, bucket: "bucket"}
+	}}
+	disk := &driver{client: client, bucket: "bucket"}
 	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("List = %v", err)
 	}
 	if err := disk.Walk("", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
 		t.Fatalf("Walk = %v", err)
+	}
+	client.listOut = &s3.ListObjectsV2Output{CommonPrefixes: []types.CommonPrefix{{Prefix: aws.String("directory /")}}}
+	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List with aliased directory = %v", err)
 	}
 }
 
