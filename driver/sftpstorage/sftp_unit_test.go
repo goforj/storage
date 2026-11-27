@@ -940,6 +940,20 @@ func (r *sftpTrackedReader) Close() error {
 	return r.closeErr
 }
 
+// TestSFTPPutCanceledBeforeFirstWrite ensures cancellation cleans up a newly opened temporary file.
+func TestSFTPPutCanceledBeforeFirstWrite(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &fakeSFTPClient{openFileHook: cancel, openFile: &fakeWriteCloser{}}
+	disk := &driver{client: client}
+	if err := disk.PutContext(ctx, "destination", []byte("payload")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("put = %v", err)
+	}
+	if client.openFile.buf.Len() != 0 || client.renameNew != "" || len(client.removePaths) != 1 || client.removePaths[0] != client.openFilePath {
+		t.Fatalf("wrote %d bytes, renamed to %q, removed %v", client.openFile.buf.Len(), client.renameNew, client.removePaths)
+	}
+}
+
 // TestSFTPCopyStreamsAndStages verifies copying opens its destination before reading the source.
 func TestSFTPCopyStreamsAndStages(t *testing.T) {
 	payload := []byte("source content")

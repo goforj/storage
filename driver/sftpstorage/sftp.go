@@ -3,7 +3,6 @@ package sftpstorage
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -329,13 +328,12 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 
 // writeStaged publishes the destination only after the transfer and remote writer close succeed.
 func (d *driver) writeStaged(ctx context.Context, fp string, write func(io.Writer) error) error {
-	if err := d.client.MkdirAll(path.Dir(fp)); err != nil {
+	dir := path.Dir(fp)
+	if err := d.client.MkdirAll(dir); err != nil {
 		return wrapError(err)
 	}
-	temporary, err := temporaryName(fp)
-	if err != nil {
-		return err
-	}
+	// Keep the temporary beside the destination so publication can use a single rename.
+	temporary := path.Join(dir, ".storage-tmp-"+rand.Text())
 	f, err := d.client.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
 	if err != nil {
 		return wrapError(err)
@@ -729,16 +727,6 @@ func (d *driver) stripPrefix(p string) string {
 		return ""
 	}
 	return strings.TrimPrefix(p, d.prefix+"/")
-}
-
-// temporaryName creates an unpredictable sibling so failed writes never
-// truncate the live SFTP destination.
-func temporaryName(target string) (string, error) {
-	var random [16]byte
-	if _, err := rand.Read(random[:]); err != nil {
-		return "", fmt.Errorf("storage: sftp temporary name: %w", err)
-	}
-	return path.Join(path.Dir(target), ".storage-tmp-"+hex.EncodeToString(random[:])), nil
 }
 
 // discardTemporary closes and removes a partial upload while preserving the
