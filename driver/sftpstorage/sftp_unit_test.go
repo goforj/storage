@@ -245,6 +245,7 @@ type fakeSFTPClient struct {
 	readDirErr    error
 	closeErr      error
 	openHook      func()
+	openFileHook  func()
 	removeHook    func()
 	statHook      func()
 }
@@ -296,6 +297,9 @@ func (f *fakeSFTPClient) Open(string) (io.ReadCloser, error) {
 
 // OpenFile records the temporary path and flags before returning a fake writer.
 func (f *fakeSFTPClient) OpenFile(path string, flags int) (io.WriteCloser, error) {
+	if f.openFileHook != nil {
+		f.openFileHook()
+	}
 	f.openFilePath = path
 	f.openFileFlags = flags
 	if f.openFileErr != nil {
@@ -927,10 +931,85 @@ func (c *sftpStepContext) Err() error {
 type sftpTrackedReader struct {
 	io.Reader
 	closeErr error
+	closes   int
 }
 
 // Close returns the configured download cleanup failure.
-func (r *sftpTrackedReader) Close() error { return r.closeErr }
+func (r *sftpTrackedReader) Close() error {
+	r.closes++
+	return r.closeErr
+}
+
+// TestSFTPCopyStreamsAndStages verifies copying opens its destination before reading the source.
+func TestSFTPCopyStreamsAndStages(t *testing.T) {
+	payload := []byte("source content")
+	readErr := errors.New("source read failed")
+	closeErr := errors.New("source close failed")
+	mkdirErr := errors.New("destination parent failed")
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "success"},
+		{name: "source read failure", err: readErr},
+		{name: "source close failure", err: closeErr},
+		{name: "destination parent failure", err: mkdirErr},
+		{name: "cancellation", err: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			data := bytes.NewReader(payload)
+			reader := &sftpTrackedReader{Reader: data}
+			client := &fakeSFTPClient{openReader: reader, openFile: &fakeWriteCloser{}}
+			client.openFileHook = func() {
+				if data.Len() != len(payload) || reader.closes != 0 {
+					t.Fatalf("source consumed before upload: %d bytes left, %d closes", data.Len(), reader.closes)
+				}
+			}
+			switch test.err {
+			case readErr:
+				reader.Reader = io.MultiReader(data, sftpReadFailure{readErr})
+			case closeErr:
+				reader.closeErr = closeErr
+			case mkdirErr:
+				client.mkdirErr = mkdirErr
+			case context.Canceled:
+				client.openFile.afterWrite = cancel
+			}
+			disk := &driver{client: client, prefix: "pre"}
+			if err := disk.CopyContext(ctx, "source", "dir/destination"); !errors.Is(err, test.err) {
+				t.Fatalf("copy = %v, want %v", err, test.err)
+			}
+			if reader.closes != 1 {
+				t.Fatalf("source closed %d times", reader.closes)
+			}
+			if test.err == mkdirErr {
+				if client.openFilePath != "" || client.renameNew != "" {
+					t.Fatal("upload reached the destination after mkdir failed")
+				}
+				return
+			}
+			if !bytes.Equal(client.openFile.buf.Bytes(), payload) || client.openFilePath == "pre/dir/destination" {
+				t.Fatalf("staged payload = %q at %q", client.openFile.buf.Bytes(), client.openFilePath)
+			}
+			if test.err == nil {
+				if client.renameOld != client.openFilePath || client.renameNew != "pre/dir/destination" || len(client.removePaths) != 0 {
+					t.Fatalf("rename = %q -> %q, removals = %v", client.renameOld, client.renameNew, client.removePaths)
+				}
+				return
+			}
+			if client.renameNew != "" || len(client.removePaths) != 1 || client.removePaths[0] != client.openFilePath {
+				t.Fatalf("failed transfer published %q or left temporary files: %v", client.renameNew, client.removePaths)
+			}
+		})
+	}
+}
+
+type sftpReadFailure struct{ err error }
+
+// Read injects an error after the preceding reader has delivered its payload.
+func (r sftpReadFailure) Read([]byte) (int, error) { return 0, r.err }
 
 type sftpFailingWriter struct {
 	err error

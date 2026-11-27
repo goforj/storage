@@ -3,6 +3,7 @@ package ftpstorage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -257,6 +258,16 @@ func (d *driver) ensureConnLocked() (ftpConn, error) {
 	if d.conn != nil {
 		return d.conn, nil
 	}
+	conn, err := d.connect()
+	if err != nil {
+		return nil, err
+	}
+	d.conn = conn
+	return conn, nil
+}
+
+// connect authenticates a session that can be cached or dedicated to an active transfer.
+func (d *driver) connect() (ftpConn, error) {
 	conn, err := d.dial()
 	if err != nil {
 		return nil, err
@@ -266,7 +277,6 @@ func (d *driver) ensureConnLocked() (ftpConn, error) {
 			return nil, joinCleanup(err, conn.Quit())
 		}
 	}
-	d.conn = conn
 	return conn, nil
 }
 
@@ -669,7 +679,7 @@ func (d *driver) Copy(src, dst string) error {
 	return d.CopyContext(context.Background(), src, dst)
 }
 
-// CopyContext validates both paths, downloads the source, and uploads a distinct destination.
+// CopyContext streams between separate FTP sessions before publishing the destination by rename.
 func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
@@ -689,14 +699,61 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	if srcPath == "" || dstPath == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
-	data, err := d.GetContext(ctx, src)
+	source := storagecore.JoinPrefix(d.prefix, srcPath)
+	if srcPath == dstPath {
+		return wrapError(d.withConnRetry(func(c ftpConn) error {
+			reader, err := c.Retr(source)
+			if err != nil {
+				return err
+			}
+			_, err = copyContext(ctx, io.Discard, reader)
+			return joinCleanup(err, reader.Close())
+		}))
+	}
+	destination := storagecore.JoinPrefix(d.prefix, dstPath)
+	return wrapError(d.withConn(func(upload ftpConn) error {
+		return d.copyOnSession(ctx, upload, source, destination)
+	}))
+}
+
+// copyOnSession stages the upload so a failed transfer cannot truncate an existing destination.
+func (d *driver) copyOnSession(ctx context.Context, upload ftpConn, source, destination string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	dir := path.Dir(destination)
+	if dir != "." {
+		if err := ensureDirs(upload, dir); err != nil {
+			return err
+		}
+	}
+	download, err := d.connect()
 	if err != nil {
 		return err
 	}
-	if srcPath == dstPath {
-		return nil
+	reader, err := download.Retr(source)
+	if err != nil {
+		return joinCleanup(err, download.Quit())
 	}
-	return d.PutContext(ctx, dst, data)
+
+	temporary := path.Join(dir, ".storage-tmp-"+rand.Text())
+	err = upload.Stor(temporary, &contextReader{ctx: ctx, reader: reader})
+	err = joinCleanup(err, reader.Close())
+	err = joinCleanup(err, download.Quit())
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = upload.Rename(temporary, destination)
+	}
+	if err != nil {
+		cleanupErr := wrapError(upload.Delete(temporary))
+		if errors.Is(cleanupErr, storagecore.ErrNotFound) {
+			cleanupErr = nil
+		}
+		return joinCleanup(err, cleanupErr)
+	}
+	return nil
 }
 
 // Move relocates a path using a background context.

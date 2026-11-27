@@ -48,6 +48,30 @@ func TestGCSStorageWithFakeServer(t *testing.T) {
 		t.Fatalf("Get got %q", got)
 	}
 
+	server.CreateObject(fakestorage.Object{
+		ObjectAttrs: fakestorage.ObjectAttrs{
+			BucketName: "gcs-test", Name: "itest/copies/source",
+			ContentType: "text/plain", Metadata: map[string]string{"purpose": "copy-test"},
+		},
+		Content: []byte("provider copy"),
+	})
+	if err := disk.Put("copies/destination", []byte("old data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.Copy("copies/source", "copies/destination"); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := server.GetObject("gcs-test", "itest/copies/destination")
+	if err != nil || string(copied.Content) != "provider copy" || copied.ContentType != "text/plain" || copied.Metadata["purpose"] != "copy-test" {
+		t.Fatalf("copied object = %+v, %v", copied, err)
+	}
+	if err := disk.Move("copies/source", "copies/moved"); err != nil {
+		t.Fatal(err)
+	}
+	if exists, err := disk.Exists("copies/source"); err != nil || exists {
+		t.Fatalf("move source exists = %v, %v", exists, err)
+	}
+
 	exists, err := disk.Exists("docs/readme.txt")
 	if err != nil || !exists {
 		t.Fatalf("Exists err=%v exists=%v", err, exists)

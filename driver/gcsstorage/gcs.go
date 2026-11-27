@@ -640,7 +640,7 @@ func (d *driver) Copy(src, dst string) error {
 	return d.CopyContext(context.Background(), src, dst)
 }
 
-// CopyContext validates both paths and preserves a normalized same-path object unchanged.
+// CopyContext uses a provider rewrite to preserve object data and metadata without downloading it.
 func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
@@ -660,14 +660,13 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	if srcPath == "" || dstPath == "" {
 		return fmt.Errorf("%w: logical root cannot be copied", storagecore.ErrForbidden)
 	}
-	data, err := d.GetContext(ctx, src)
-	if err != nil {
-		return err
-	}
+	bucket := d.client.Bucket(d.bucket)
+	source := storagecore.JoinPrefix(d.prefix, srcPath)
 	if srcPath == dstPath {
-		return nil
+		_, err := bucket.Object(source).Attrs(ctx)
+		return wrapError(err)
 	}
-	return d.PutContext(ctx, dst, data)
+	return wrapError(bucket.CopyGeneration(ctx, source, storagecore.JoinPrefix(d.prefix, dstPath), 0))
 }
 
 // Move relocates an object or directory tree using a background context.
@@ -952,9 +951,12 @@ func (b realGCSBucket) Object(name string) gcsObjectHandle {
 	return realGCSObject{object: b.bucket.Object(name)}
 }
 
-// CopyGeneration conditions the rewrite on the current source generation.
+// CopyGeneration optionally conditions the rewrite on the current source generation.
 func (b realGCSBucket) CopyGeneration(ctx context.Context, src, dst string, generation int64) error {
-	source := b.bucket.Object(src).If(storage.Conditions{GenerationMatch: generation})
+	source := b.bucket.Object(src)
+	if generation > 0 {
+		source = source.If(storage.Conditions{GenerationMatch: generation})
+	}
 	_, err := b.bucket.Object(dst).CopierFrom(source).Run(ctx)
 	return err
 }

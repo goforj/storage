@@ -3,6 +3,7 @@
 package ftpstorage
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"os"
@@ -170,6 +171,18 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 	}
 	if string(got) != "world" {
 		t.Fatalf("Get = %q", got)
+	}
+
+	payload := bytes.Repeat([]byte("streamed content\n"), 8192)
+	if err := fs.Put("source.txt", payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Copy("source.txt", "hello.txt"); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := fs.Get("hello.txt")
+	if err != nil || !bytes.Equal(copied, payload) {
+		t.Fatalf("copied %d bytes, error = %v", len(copied), err)
 	}
 }
 

@@ -309,6 +309,26 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	if d.stripPrefix(fp) == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
+	return d.writeStaged(ctx, fp, func(writer io.Writer) error {
+		for len(contents) > 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			written, err := writer.Write(contents)
+			if err != nil {
+				return err
+			}
+			if written == 0 {
+				return io.ErrShortWrite
+			}
+			contents = contents[written:]
+		}
+		return nil
+	})
+}
+
+// writeStaged publishes the destination only after the transfer and remote writer close succeed.
+func (d *driver) writeStaged(ctx context.Context, fp string, write func(io.Writer) error) error {
 	if err := d.client.MkdirAll(path.Dir(fp)); err != nil {
 		return wrapError(err)
 	}
@@ -320,18 +340,8 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	if err != nil {
 		return wrapError(err)
 	}
-	for len(contents) > 0 {
-		if err := ctx.Err(); err != nil {
-			return d.discardTemporary(temporary, f, err)
-		}
-		written, err := f.Write(contents)
-		if err != nil {
-			return d.discardTemporary(temporary, f, wrapError(err))
-		}
-		if written == 0 {
-			return d.discardTemporary(temporary, f, io.ErrShortWrite)
-		}
-		contents = contents[written:]
+	if err := write(f); err != nil {
+		return d.discardTemporary(temporary, f, wrapError(err))
 	}
 	if err := f.Close(); err != nil {
 		return d.discardTemporary(temporary, nil, wrapError(err))
@@ -598,8 +608,8 @@ func (d *driver) Copy(src, dst string) error {
 	return d.CopyContext(context.Background(), src, dst)
 }
 
-// CopyContext validates both paths and preserves a normalized same-path object unchanged.
-func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
+// CopyContext streams the source into a sibling temporary before replacing the destination.
+func (d *driver) CopyContext(ctx context.Context, src, dst string) (err error) {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -614,18 +624,32 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	if dstPath == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
-	data, err := d.GetContext(ctx, src)
-	if err != nil {
-		return err
-	}
 	srcPath, err := storagecore.NormalizePath(src)
 	if err != nil {
 		return err
 	}
-	if srcPath == dstPath {
-		return nil
+	if srcPath == "" {
+		return fmt.Errorf("%w: logical root cannot be read as an object", storagecore.ErrForbidden)
 	}
-	return d.PutContext(ctx, dst, data)
+	source, err := d.client.Open(storagecore.JoinPrefix(d.prefix, srcPath))
+	if err != nil {
+		return wrapError(err)
+	}
+	if srcPath == dstPath {
+		_, err := copyContext(ctx, io.Discard, source)
+		return joinCleanup(wrapError(err), wrapError(source.Close()))
+	}
+	defer func() {
+		if source != nil {
+			err = joinCleanup(err, wrapError(source.Close()))
+		}
+	}()
+	return d.writeStaged(ctx, storagecore.JoinPrefix(d.prefix, dstPath), func(writer io.Writer) error {
+		_, copyErr := copyContext(ctx, writer, source)
+		closeErr := source.Close()
+		source = nil
+		return joinCleanup(copyErr, closeErr)
+	})
 }
 
 // Move relocates a remote path using a background context.

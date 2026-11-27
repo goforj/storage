@@ -9,6 +9,7 @@ import (
 	"net/textproto"
 	"os"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -249,6 +250,174 @@ func (f *fakeFTPConn) Stor(_ string, r io.Reader) error {
 	}
 	_, err := io.Copy(&f.stored, r)
 	return err
+}
+
+type ftpCopySession struct {
+	*fakeFTPConn
+	store         func(string, io.Reader) error
+	renamed       [2]string
+	renameFailure error
+	deleted       []string
+	quits         int
+}
+
+// Stor marks the upload boundary and lets tests consume the download on demand.
+func (c *ftpCopySession) Stor(name string, r io.Reader) error { return c.store(name, r) }
+
+// Rename records whether the staged data was submitted for publication.
+func (c *ftpCopySession) Rename(from, to string) error {
+	c.renamed = [2]string{from, to}
+	return c.renameFailure
+}
+
+// Delete records only the paths selected for cleanup.
+func (c *ftpCopySession) Delete(name string) error {
+	c.deleted = append(c.deleted, name)
+	return c.fakeFTPConn.Delete(name)
+}
+
+// Quit records closure of the dedicated download session.
+func (c *ftpCopySession) Quit() error {
+	c.quits++
+	return c.fakeFTPConn.Quit()
+}
+
+type ftpCopyReader struct {
+	io.Reader
+	closeErr error
+	closes   int
+}
+
+// Close records the final source response and can simulate a failed completion reply.
+func (r *ftpCopyReader) Close() error {
+	r.closes++
+	return r.closeErr
+}
+
+// TestFTPCopyStreamsBetweenSessions verifies transfer ordering, publication, and cleanup at the protocol boundary.
+func TestFTPCopyStreamsBetweenSessions(t *testing.T) {
+	const payload = "source content"
+	uploadErr := errors.New("upload failed")
+	closeErr := errors.New("download did not complete")
+	renameErr := errors.New("destination already exists")
+	for _, test := range []struct {
+		name       string
+		err        error
+		cleanupErr error
+	}{
+		{name: "success"},
+		{name: "upload failure", err: uploadErr},
+		{name: "upload failure without a temporary file", err: uploadErr, cleanupErr: errors.New("550 temporary file not found")},
+		{name: "download completion failure", err: closeErr},
+		{name: "rename rejected", err: renameErr},
+		{name: "cancellation", err: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			data := strings.NewReader(payload)
+			reader := &ftpCopyReader{Reader: data}
+			download := &ftpCopySession{fakeFTPConn: &fakeFTPConn{retrReader: reader}}
+			upload := &ftpCopySession{fakeFTPConn: &fakeFTPConn{deleteErr: test.cleanupErr}}
+			if test.err == closeErr {
+				reader.closeErr = closeErr
+			}
+			if test.err == renameErr {
+				upload.renameFailure = renameErr
+			}
+			var staged string
+			upload.store = func(name string, body io.Reader) error {
+				staged = name
+				if data.Len() != len(payload) || reader.closes != 0 || download.quits != 0 {
+					t.Fatal("source was consumed or closed before the upload began")
+				}
+				if !strings.HasPrefix(name, "pre/dir/.storage-tmp-") {
+					t.Fatalf("staged upload path = %q", name)
+				}
+				if test.err == uploadErr || test.err == context.Canceled {
+					if _, err := io.CopyN(io.Discard, body, 1); err != nil {
+						return err
+					}
+					if test.err == context.Canceled {
+						cancel()
+						_, err := io.Copy(io.Discard, body)
+						return err
+					}
+					return uploadErr
+				}
+				got, err := io.ReadAll(body)
+				if string(got) != payload {
+					t.Fatalf("uploaded bytes = %q", got)
+				}
+				return err
+			}
+			disk := &driver{conn: upload, dialFn: func() (ftpConn, error) { return download, nil }, prefix: "pre"}
+			if err := disk.CopyContext(ctx, "file", "dir/destination"); !errors.Is(err, test.err) || test.cleanupErr != nil && errors.Is(err, test.cleanupErr) {
+				t.Fatalf("copy = %v, want %v", err, test.err)
+			}
+			if reader.closes != 1 || download.quits != 1 {
+				t.Fatalf("source closes = %d, download session quits = %d", reader.closes, download.quits)
+			}
+			if test.err == nil || test.err == renameErr {
+				if upload.renamed != [2]string{staged, "pre/dir/destination"} {
+					t.Fatalf("rename = %v", upload.renamed)
+				}
+			} else if upload.renamed != [2]string{} {
+				t.Fatalf("failed transfer reached rename: %v", upload.renamed)
+			}
+			if test.err == nil && len(upload.deleted) != 0 || test.err != nil && !slices.Equal(upload.deleted, []string{staged}) {
+				t.Fatalf("removed paths = %v", upload.deleted)
+			}
+		})
+	}
+}
+
+// TestFTPCopyPreflight verifies setup failures stop before a second session starts transferring.
+func TestFTPCopyPreflight(t *testing.T) {
+	t.Run("same path", func(t *testing.T) {
+		reader := &ftpCopyReader{Reader: strings.NewReader("source content")}
+		conn := &fakeFTPConn{retrReader: reader}
+		disk := &driver{conn: conn}
+		if err := disk.Copy("dir/file", "dir/./file"); err != nil {
+			t.Fatal(err)
+		}
+		if reader.closes != 1 || conn.stored.Len() != 0 {
+			t.Fatalf("source closes = %d, uploaded bytes = %d", reader.closes, conn.stored.Len())
+		}
+		conn.retrErr = errors.New("550 not found")
+		if err := disk.Copy("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+			t.Fatalf("same-path missing copy = %v", err)
+		}
+	})
+	t.Run("canceled when connection opens", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		dials := 0
+		disk := &driver{dialFn: func() (ftpConn, error) {
+			dials++
+			cancel()
+			return &fakeFTPConn{}, nil
+		}}
+		if err := disk.CopyContext(ctx, "source", "destination"); !errors.Is(err, context.Canceled) || dials != 1 {
+			t.Fatalf("canceled copy = %v, dials = %d", err, dials)
+		}
+	})
+	t.Run("destination parent rejected", func(t *testing.T) {
+		parentErr := errors.New("parent permission denied")
+		disk := &driver{conn: &fakeFTPConn{makeDirErr: parentErr}}
+		if err := disk.Copy("source", "dir/destination"); !errors.Is(err, parentErr) {
+			t.Fatalf("copy with failed parent = %v", err)
+		}
+	})
+	t.Run("second connection rejected", func(t *testing.T) {
+		dialErr := errors.New("session limit reached")
+		disk := &driver{
+			conn:   &fakeFTPConn{},
+			dialFn: func() (ftpConn, error) { return nil, dialErr },
+		}
+		if err := disk.Copy("source", "destination"); !errors.Is(err, dialErr) {
+			t.Fatalf("copy with failed second session = %v", err)
+		}
+	})
 }
 
 // TestFTPFakeBackedOperations verifies core object operations against the FTP adapter boundary.

@@ -349,15 +349,19 @@ Notes:
 | Local | Local file copy and rename | Native rename | Unsupported | Temporary directory |
 | Memory | In-memory copy and move | In-memory move | Unsupported | In-process |
 | Redis | Transactional writes | Copy then revision-checked delete | Unsupported | Redis container |
-| FTP / SFTP | Buffered copy and server rename | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
+| FTP / SFTP | Streamed copy through a temporary file, server rename for moves | Server rename | Unsupported | Embedded FTP, SFTP container with host-key verification |
 | S3 | Server-side copy preserves metadata. Moves check the source ETag. | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
-| GCS | Buffered copy. Server-side moves check the source generation. | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
+| GCS | Server-side copy preserves object metadata. Moves check the source generation. | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
 | Dropbox | Provider copy and move | Provider move | Temporary link | SDK fakes |
 | Rclone | Provider-native copy or streamed transfer | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
 
 Rclone uses native copy when the remote supports it and streams the transfer
 otherwise. The remote determines which source metadata it preserves. The
 `Get` and `Put` methods still operate on whole byte slices.
+
+FTP copies require two concurrent sessions and permission to upload and rename a
+sibling temporary file. If an FTP server rejects rename over an existing file,
+copy to a new path. A rejected rename leaves the existing destination in place.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process
