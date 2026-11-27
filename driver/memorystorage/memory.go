@@ -70,12 +70,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 //	})
 //	_ = fs
 func New(cfg Config) (storagecore.Storage, error) {
-	return NewContext(context.Background(), cfg)
-}
-
-// NewContext validates cfg and creates an isolated in-memory store.
-func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
-	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+	return newFromDiskConfig(context.Background(), cfg.ResolvedConfig())
 }
 
 // newFromDiskConfig normalizes the prefix and initializes empty synchronized indexes.

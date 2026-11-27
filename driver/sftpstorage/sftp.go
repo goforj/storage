@@ -136,12 +136,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 //	})
 //	_ = fs
 func New(cfg Config) (storagecore.Storage, error) {
-	return NewContext(context.Background(), cfg)
-}
-
-// NewContext validates cfg and establishes an SFTP session.
-func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
-	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+	return newFromDiskConfig(context.Background(), cfg.ResolvedConfig())
 }
 
 // newFromDiskConfig validates authentication and host verification before dialing SSH.

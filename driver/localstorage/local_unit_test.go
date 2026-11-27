@@ -20,14 +20,14 @@ func TestLocalConstructors(t *testing.T) {
 		}
 	})
 
-	t.Run("new context success", func(t *testing.T) {
+	t.Run("new success", func(t *testing.T) {
 		root := t.TempDir()
-		got, err := NewContext(context.Background(), Config{Root: root, Prefix: "pre"})
+		got, err := New(Config{Root: root, Prefix: "pre"})
 		if err != nil {
-			t.Fatalf("NewContext: %v", err)
+			t.Fatalf("New: %v", err)
 		}
 		if got == nil {
-			t.Fatal("NewContext returned nil storage")
+			t.Fatal("New returned nil storage")
 		}
 	})
 }

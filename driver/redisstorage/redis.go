@@ -103,12 +103,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 //	})
 //	_ = fs
 func New(cfg Config) (storagecore.Storage, error) {
-	return NewContext(context.Background(), cfg)
-}
-
-// NewContext constructs Redis-backed storage while honoring startup cancellation.
-func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
-	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+	return newFromDiskConfig(context.Background(), cfg.ResolvedConfig())
 }
 
 // newFromDiskConfig validates shared configuration and verifies the Redis connection before returning it.

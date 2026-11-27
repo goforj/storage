@@ -356,8 +356,8 @@ func TestLocalFilesystemAndStreamFailures(t *testing.T) {
 func TestLocalConstructorAndAtomicEdges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := NewContext(ctx, Config{Root: t.TempDir()}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("NewContext canceled error = %v", err)
+	if _, err := newFromDiskConfig(ctx, Config{Root: t.TempDir()}.ResolvedConfig()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("setup canceled error = %v", err)
 	}
 	if _, err := New(Config{}); err == nil {
 		t.Fatal("New missing root returned nil error")

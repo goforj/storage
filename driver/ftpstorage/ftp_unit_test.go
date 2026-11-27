@@ -31,20 +31,20 @@ func TestFTPConstructors(t *testing.T) {
 		}
 	})
 
-	t.Run("new context applies defaults", func(t *testing.T) {
-		got, err := NewContext(context.Background(), Config{Host: "127.0.0.1", Prefix: "pre"})
+	t.Run("new applies defaults", func(t *testing.T) {
+		got, err := New(Config{Host: "127.0.0.1", Prefix: "pre"})
 		if err != nil {
-			t.Fatalf("NewContext: %v", err)
+			t.Fatalf("New: %v", err)
 		}
 		if got == nil {
-			t.Fatal("NewContext returned nil storage")
+			t.Fatal("New returned nil storage")
 		}
 	})
 
 	t.Run("TLS options require TLS", func(t *testing.T) {
-		_, err := NewContext(context.Background(), Config{Host: "127.0.0.1", InsecureSkipVerify: true})
+		_, err := New(Config{Host: "127.0.0.1", InsecureSkipVerify: true})
 		if err == nil {
-			t.Fatal("NewContext accepted a TLS-only option without TLS")
+			t.Fatal("New accepted a TLS-only option without TLS")
 		}
 	})
 }

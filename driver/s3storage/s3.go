@@ -137,12 +137,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 //	})
 //	_ = fs
 func New(cfg Config) (storagecore.Storage, error) {
-	return NewContext(context.Background(), cfg)
-}
-
-// NewContext constructs S3-backed storage and honors cancellation during setup.
-func NewContext(ctx context.Context, cfg Config) (storagecore.Storage, error) {
-	return newFromDiskConfig(ctx, cfg.ResolvedConfig())
+	return newFromDiskConfig(context.Background(), cfg.ResolvedConfig())
 }
 
 // newFromDiskConfig validates the namespace and connection settings before constructing AWS clients.
