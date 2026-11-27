@@ -68,6 +68,7 @@ Add the S3 driver with `go get github.com/goforj/storage/driver/s3storage`.
 Replace the local driver import with `github.com/goforj/storage/driver/s3storage`
 and replace the construction call with this configuration for an existing
 bucket. The AWS SDK reads credentials from its standard credential chain.
+To create a bucket explicitly, use [`s3storage.PrepareBucketContext`](#s3storage-preparebucketcontext).
 
 ```go
 disk, err := storage.Build(s3storage.Config{
@@ -138,27 +139,32 @@ driver constructor can access the `*Context` methods through
 
 ### Streaming objects
 
-`storage.Objects(disk)` discovers streaming on a disk built through `storage`.
-Use `storagecore.Objects(disk)` with a direct driver constructor. The S3 driver supports paged object walking, streaming reads and
-writes, metadata preservation, version-pinned reads, and conditional reads using
-an observed ETag. Unsupported drivers return `storage.ErrUnsupported`; there is
-no implicit fallback that buffers whole objects in memory.
+Use [`storage.Objects(disk)`](#objects) with the S3 driver. For a disk built with a
+direct driver constructor, use `storagecore.Objects(disk)`.
 
-Object keys are opaque and relative to the configured disk prefix. Unlike the
-existing file API, these methods preserve dot segments and repeated slashes.
-Each operation takes an explicit context. Close every returned `ObjectReader`.
-Writes declare an exact size and leave ownership of the input reader with the
-caller; provide a seekable reader when provider retries are required.
-For non-seekable S3 uploads, HTTPS retains the SDK's streaming checksums. Plain
-HTTP requires explicit `s3storage.Config.UnsignedPayload` opt-in; only that case
-skips optional SDK checksum precomputation. Signed HTTP uploads require a seekable
-reader. The library never silently disables configured payload signing or spools
-whole objects to disk. Cancellation stops subsequent source reads, including SDK
-prehashing; a reader that blocks inside its own `Read` must honor cancellation or
-be unblocked by its owner.
+- `OpenObjectContext` opens a reader you must close. You can pin the read to an object version or ETag.
+- `PutObjectContext` uploads from a reader with an exact byte count and optional metadata. The caller owns the reader.
+- `WalkObjectsContext` visits objects one provider page at a time.
 
-Bucket creation remains explicit through `s3storage.PrepareBucketContext`.
-Ordinary storage construction and object reads never provision provider resources.
+Pass a context to each call. Keys are relative to the disk prefix and preserve
+dot segments and repeated slashes.
+
+<details>
+<summary>S3 upload and driver compatibility</summary>
+
+Unsupported drivers return `storage.ErrUnsupported`. Check the
+[capability matrix](#capability-matrix) for driver support.
+
+Provide a seekable reader when the SDK needs to rewind an upload for retries.
+For non-seekable bodies, HTTPS retains the SDK's streaming checksums. Over plain
+HTTP, non-empty uploads with non-seekable bodies require explicit
+`s3storage.Config.UnsignedPayload` opt-in. This also skips optional SDK checksum
+precomputation for those uploads.
+
+Cancellation stops subsequent reads, including SDK prehashing. A reader
+blocked inside its own `Read` must honor cancellation or be unblocked by its owner.
+
+</details>
 
 ### Manager and named disks
 
