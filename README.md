@@ -1433,9 +1433,7 @@ fmt.Println(p)
 ```
 <!-- api:embed:end -->
 
-## Contributing
-
-The badges count root-module test runs and shared integration cases.
+## Development
 
 <p>
 <!-- test-count:embed:start -->
@@ -1444,16 +1442,16 @@ The badges count root-module test runs and shared integration cases.
 <!-- test-count:embed:end -->
 </p>
 
-Shared contract tests live in `storagetest`.
+```sh
+make test                         # Test the root module
+make test-examples                # Test the examples module
+make test-integration             # Test all driver fixtures with Docker
+make test-integration gcs         # Test GCS with its emulator
+make test-coverage                # Generate combined coverage
+go run ./docs/readme/main.go      # Regenerate the API reference
+make docs-watch                   # Refresh generated docs and test badges as code changes
+```
 
-Centralized integration coverage lives in `integration` and runs the same contract across supported backends.
-That centralized matrix is the authoritative integration path for the repository.
-
-Current fixture types in the centralized matrix:
-- testcontainers: `s3`, `sftp`
-- emulator: `gcs`
-- embedded/local fixtures: `local`, `ftp`, `rclone_local`
-
-## Development
-
-Use `make test` for root-module tests, `make test-examples` for the examples module, and `make test-coverage` for the Codecov report. `make test-integration` runs the centralized matrix; pass a driver such as `make test-integration gcs` to select one backend. Integration may require Docker. `make bench` and `make bench-render` retain the benchmark workflow, while the `modules-check`, `release-tag`, `release-plan`, and `release-publish` targets support publication.
+Run `go test ./...` in each driver module you change. See `make help` for all
+targets, the [test plan](TEST_PLAN.md) for fixture details, and the
+[release runbook](scripts/RELEASE.md) for publishing.
