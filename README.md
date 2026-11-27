@@ -30,8 +30,10 @@ Save as `main.go`, then run `go run .`.
 package main
 
 import (
+    "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/goforj/storage"
     "github.com/goforj/storage/driver/localstorage"
@@ -42,6 +44,10 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    disk = disk.WithContext(ctx)
 
     if err := disk.Put("notes/hello.txt", []byte("hello from storage")); err != nil {
         log.Fatal(err)
@@ -54,6 +60,8 @@ func main() {
     // Output: hello from storage
 }
 ```
+
+The write and read share the same five-second deadline.
 
 ### Use S3 with the same operations
 
