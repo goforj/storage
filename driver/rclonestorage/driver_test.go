@@ -3,11 +3,14 @@
 package rclonestorage
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
+	"github.com/goforj/storage/storagecore"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 )
@@ -22,7 +25,14 @@ func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 
 	// Fake S3 server for exercising the rclone s3 backend.
 	fake := gofakes3.New(s3mem.New())
-	httpServer := httptest.NewServer(fake.Server())
+	var sawNativeCopy atomic.Bool
+	handler := fake.Server()
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("X-Amz-Copy-Source") != "" {
+			sawNativeCopy.Store(true)
+		}
+		handler.ServeHTTP(w, req)
+	}))
 	defer httpServer.Close()
 
 	localConf := MustRenderLocal(LocalRemote{Name: "localdisk"})
@@ -58,5 +68,37 @@ func TestRcloneStorageBuildsLocalAndS3Backends(t *testing.T) {
 	}
 	if err := s3FS.Put("hello.txt", []byte("s3")); err != nil {
 		t.Fatalf("s3 Put: %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		disk storagecore.Storage
+		want string
+	}{
+		{"local", localFS, "local"},
+		{"S3", s3FS, "s3"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.disk.Put("nested/copy.txt", []byte("previous contents")); err != nil {
+				t.Fatal(err)
+			}
+			if err := test.disk.Copy("hello.txt", "nested/copy.txt"); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := test.disk.Get("nested/copy.txt"); err != nil || string(got) != test.want {
+				t.Fatalf("read copy = %q, %v", got, err)
+			}
+			if err := test.disk.Move("nested/copy.txt", "moved.txt"); err != nil {
+				t.Fatal(err)
+			}
+			if exists, err := test.disk.Exists("nested/copy.txt"); err != nil || exists {
+				t.Fatalf("move source exists = %v, %v", exists, err)
+			}
+			if got, err := test.disk.Get("moved.txt"); err != nil || string(got) != test.want {
+				t.Fatalf("read moved file = %q, %v", got, err)
+			}
+		})
+	}
+	if !sawNativeCopy.Load() {
+		t.Fatal("Rclone did not send a server-side S3 copy request")
 	}
 }

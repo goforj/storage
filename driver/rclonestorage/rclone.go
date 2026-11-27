@@ -229,16 +229,22 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	if d.stripPrefix(remote) == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
-	if dir := path.Dir(remote); dir != "" && dir != "." {
-		if mkErr := d.fs.Mkdir(ctx, dir); mkErr != nil {
-			return wrapError(mkErr)
-		}
+	if err := d.makeObjectParent(ctx, remote); err != nil {
+		return err
 	}
 
 	modTime := time.Now().UTC()
 	src := object.NewStaticObjectInfo(remote, modTime, int64(len(contents)), true, nil, nil)
 	if _, err := d.fs.Put(ctx, bytes.NewReader(contents), src); err != nil {
 		return wrapError(err)
+	}
+	return nil
+}
+
+// makeObjectParent prepares the destination on remotes that require existing parent directories.
+func (d *driver) makeObjectParent(ctx context.Context, remote string) error {
+	if dir := path.Dir(remote); dir != "." {
+		return wrapError(d.fs.Mkdir(ctx, dir))
 	}
 	return nil
 }
@@ -542,7 +548,7 @@ func (d *driver) Copy(src, dst string) error {
 	return d.CopyContext(context.Background(), src, dst)
 }
 
-// CopyContext validates both paths and preserves a normalized same-path object unchanged.
+// CopyContext uses Rclone's transfer engine to copy without loading the whole object into memory.
 func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
@@ -562,14 +568,32 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	if srcPath == "" || dstPath == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
-	data, err := d.GetContext(ctx, src)
+	source, err := d.fs.NewObject(ctx, storagecore.JoinPrefix(d.prefix, srcPath))
 	if err != nil {
-		return err
+		return wrapError(err)
 	}
 	if srcPath == dstPath {
 		return nil
 	}
-	return d.PutContext(ctx, dst, data)
+	return d.copyObject(ctx, source, storagecore.JoinPrefix(d.prefix, dstPath))
+}
+
+// copyObject allows Rclone to use a provider copy or stage a streamed upload as the remote supports.
+func (d *driver) copyObject(ctx context.Context, source fs.Object, destination string) error {
+	if err := d.makeObjectParent(ctx, destination); err != nil {
+		return err
+	}
+
+	// Move relies on an actual copy before deleting the source, even when the host
+	// app uses Rclone's CLI settings for its own transfers.
+	ctx, config := fs.AddConfig(ctx)
+	config.DryRun = false
+	config.Interactive = false
+	config.NameTransform = nil
+	config.Inplace = false
+	config.LowLevelRetries = max(config.LowLevelRetries, 1)
+	_, err := operations.Copy(ctx, d.fs, nil, destination, source)
+	return wrapError(err)
 }
 
 // Move relocates an object or directory tree using a background context.
