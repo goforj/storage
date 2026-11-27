@@ -13,7 +13,7 @@ GOMODCACHE_DIR="${GOMODCACHE_DIR:-$DEFAULT_GOMODCACHE}"
 INTEGRATION_TAGS="${INTEGRATION_TAGS:-integration}"
 INTEGRATION_MODULE_DIR="${INTEGRATION_MODULE_DIR:-integration}"
 INTEGRATION_MODULE_PKGS="${INTEGRATION_MODULE_PKGS:-./all}"
-INTEGRATION_MODULE_COVERPKG="${INTEGRATION_MODULE_COVERPKG:-github.com/goforj/storage,github.com/goforj/storage/storagetest,github.com/goforj/storage/integration/...,github.com/goforj/storage/driver/localstorage,github.com/goforj/storage/driver/memorystorage,github.com/goforj/storage/driver/redisstorage,github.com/goforj/storage/driver/s3storage,github.com/goforj/storage/driver/gcsstorage,github.com/goforj/storage/driver/sftpstorage,github.com/goforj/storage/driver/ftpstorage,github.com/goforj/storage/driver/rclonestorage}"
+INTEGRATION_MODULE_COVERPKG="${INTEGRATION_MODULE_COVERPKG:-github.com/goforj/storage,github.com/goforj/storage/storagecore,github.com/goforj/storage/storagetest,github.com/goforj/storage/integration/...,github.com/goforj/storage/driver/localstorage,github.com/goforj/storage/driver/memorystorage,github.com/goforj/storage/driver/redisstorage,github.com/goforj/storage/driver/s3storage,github.com/goforj/storage/driver/gcsstorage,github.com/goforj/storage/driver/sftpstorage,github.com/goforj/storage/driver/ftpstorage,github.com/goforj/storage/driver/rclonestorage}"
 
 ROOT_COVER_DIR="$TMP_ROOT/root"
 STORAGETEST_COVER_DIR="$TMP_ROOT/storagetest"
@@ -47,7 +47,16 @@ echo "==> storagetest module coverage"
   go test -cover ./... -args -test.gocoverdir="$STORAGETEST_COVER_DIR"
 )
 
-merge_inputs=("$ROOT_COVER_DIR" "$STORAGETEST_COVER_DIR")
+STORAGECORE_COVER_DIR="$TMP_ROOT/storagecore"
+echo "==> storagecore module coverage"
+(
+  mkdir -p "$STORAGECORE_COVER_DIR"
+  cd storagecore
+  GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" \
+  go test -cover ./... -args -test.gocoverdir="$STORAGECORE_COVER_DIR"
+)
+
+merge_inputs=("$ROOT_COVER_DIR" "$STORAGETEST_COVER_DIR" "$STORAGECORE_COVER_DIR")
 
 for module_dir in "${DRIVER_MODULES[@]}"; do
   module_name="$(basename "$module_dir")"

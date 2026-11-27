@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +23,8 @@ import (
 
 type fakeS3 struct {
 	getErr       error
+	copyErr      error
+	copyInputs   []*s3.CopyObjectInput
 	putErr       error
 	delErr       error
 	headErr      error
@@ -95,6 +98,12 @@ func (f *fakeS3) PutObject(ctx context.Context, in *s3.PutObjectInput, _ ...func
 	return &s3.PutObjectOutput{}, f.putErr
 }
 
+// CopyObject records the source and destination without consuming an object body.
+func (f *fakeS3) CopyObject(_ context.Context, in *s3.CopyObjectInput, _ ...func(*s3.Options)) (*s3.CopyObjectOutput, error) {
+	f.copyInputs = append(f.copyInputs, in)
+	return &s3.CopyObjectOutput{}, f.copyErr
+}
+
 // DeleteObject records conditional deletion inputs before returning the configured service failure.
 func (f *fakeS3) DeleteObject(ctx context.Context, in *s3.DeleteObjectInput, _ ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
 	f.deleteInputs = append(f.deleteInputs, in)
@@ -115,7 +124,7 @@ func (f *fakeS3) HeadObject(ctx context.Context, in *s3.HeadObjectInput, _ ...fu
 		return nil, f.headErr
 	}
 	if f.headOK {
-		return &s3.HeadObjectOutput{}, nil
+		return &s3.HeadObjectOutput{ETag: aws.String(`"fixture"`)}, nil
 	}
 	return nil, &types.NotFound{}
 }
@@ -759,7 +768,7 @@ func TestS3CopyAndMoveSamePathAreNoOps(t *testing.T) {
 			if err := d.MoveContext(context.Background(), "file.txt", "file.txt"); err != nil {
 				t.Fatalf("MoveContext same path: %v", err)
 			}
-			if len(client.getInputs) != 1 || len(client.headInputs) != 1 {
+			if len(client.getInputs) != 0 || len(client.headInputs) != 2 {
 				t.Fatalf("source validation calls: get=%d head=%d", len(client.getInputs), len(client.headInputs))
 			}
 			if len(client.putInputs)+len(client.deleteInputs) != 0 {
@@ -768,7 +777,7 @@ func TestS3CopyAndMoveSamePathAreNoOps(t *testing.T) {
 		})
 	}
 
-	missing := &driver{client: &fakeS3{getErr: &types.NoSuchKey{}}, bucket: "bucket"}
+	missing := &driver{client: &fakeS3{headErr: &types.NoSuchKey{}}, bucket: "bucket"}
 	if err := missing.CopyContext(context.Background(), "missing.txt", "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 		t.Fatalf("CopyContext missing same path error = %v", err)
 	}
@@ -879,8 +888,8 @@ func TestS3ClientFailurePropagation(t *testing.T) {
 		{name: "list", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { _, err := d.List(""); return err }},
 		{name: "list page", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { _, err := d.ListPage("", 0, 1); return err }},
 		{name: "walk list", driver: &driver{client: &fakeS3{listErr: boom}}, call: func(d *driver) error { return d.Walk("", func(storagecore.Entry) error { return nil }) }},
-		{name: "copy read", driver: &driver{client: &fakeS3{getErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
-		{name: "copy write", driver: &driver{client: &fakeS3{getBody: "x", putErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
+		{name: "copy head", driver: &driver{client: &fakeS3{headErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
+		{name: "copy write", driver: &driver{client: &fakeS3{headOK: true, copyErr: boom}}, call: func(d *driver) error { return d.Copy("src", "dst") }},
 		{name: "move stat", driver: &driver{client: &fakeS3{headErr: boom}}, call: func(d *driver) error { return d.Move("src", "dst") }},
 		{name: "move delete", driver: &driver{client: &fakeS3{headOK: true, getBody: "x", delErr: boom}}, call: func(d *driver) error { return d.Move("src", "dst") }},
 	}
@@ -1036,3 +1045,43 @@ type shortWriter struct{}
 
 // Write reports a deliberately short successful write.
 func (shortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
+
+// TestS3MovePinsCopyAndDeletion verifies the copied object's ETag survives both provider operations.
+func TestS3MovePinsCopyAndDeletion(t *testing.T) {
+	client := &fakeS3{headOK: true, delErr: &smithy.GenericAPIError{Code: "PreconditionFailed"}}
+	disk := &driver{client: client, bucket: "bucket", prefix: "prefix"}
+	if err := disk.Move("folder/source +name", "target"); !errors.Is(err, storagecore.ErrConflict) {
+		t.Fatalf("Move = %v", err)
+	}
+	if len(client.copyInputs) != 1 || len(client.deleteInputs) != 1 || len(client.getInputs)+len(client.putInputs) != 0 {
+		t.Fatalf("unexpected native requests: copies=%d deletes=%d reads=%d writes=%d", len(client.copyInputs), len(client.deleteInputs), len(client.getInputs), len(client.putInputs))
+	}
+	copy := client.copyInputs[0]
+	if aws.ToString(copy.CopySource) != "bucket/prefix%2Ffolder%2Fsource%20%2Bname" ||
+		aws.ToString(copy.CopySourceIfMatch) != aws.ToString(client.deleteInputs[0].IfMatch) ||
+		copy.MetadataDirective != types.MetadataDirectiveCopy {
+		t.Fatalf("copy or delete lost source identity: %+v", copy)
+	}
+}
+
+// TestS3ListingRejectsOpaqueAliases keeps nonportable keys on the object API.
+func TestS3ListingRejectsOpaqueAliases(t *testing.T) {
+	disk := &driver{client: &fakeS3{listOut: &s3.ListObjectsV2Output{
+		Contents: []types.Object{{Key: aws.String("report ")}},
+	}}, bucket: "bucket"}
+	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List = %v", err)
+	}
+	if err := disk.Walk("", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}
+
+// TestS3CopySourceARN preserves access point addressing when server-side copy is used.
+func TestS3CopySourceARN(t *testing.T) {
+	arn := "arn:aws:s3:us-east-1:123456789012:accesspoint/example"
+	source, err := url.PathUnescape(copySource(arn, "path/a +b"))
+	if err != nil || source != arn+"/object/path/a +b" {
+		t.Fatalf("copy source = %q, %v", source, err)
+	}
+}

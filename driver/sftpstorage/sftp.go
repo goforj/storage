@@ -520,7 +520,13 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if info.Name() == "." || info.Name() == ".." {
+			continue
+		}
 		rel := path.Join(basePrefix, info.Name())
+		if err := storagecore.ValidateEntryPath(rel); err != nil {
+			return nil, err
+		}
 		size := info.Size()
 		if info.IsDir() {
 			size = 0
@@ -739,7 +745,13 @@ func (d *driver) walkDir(ctx context.Context, dir string, fn func(storagecore.En
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if info.Name() == "." || info.Name() == ".." {
+			continue
+		}
 		rel := d.stripPrefix(path.Join(dir, info.Name()))
+		if err := storagecore.ValidateEntryPath(rel); err != nil {
+			return err
+		}
 		entry := storagecore.Entry{Path: rel, Size: info.Size(), IsDir: info.IsDir()}
 		if entry.IsDir {
 			entry.Size = 0

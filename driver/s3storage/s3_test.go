@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -87,4 +88,30 @@ func ensureBucket(t *testing.T, endpoint, bucket string) {
 	if err != nil {
 		t.Fatalf("fake s3 bucket creation failed: %v", err)
 	}
+}
+
+// TestS3CopyPreservesMetadata verifies provider-native copy keeps content attributes and user metadata.
+func TestS3CopyPreservesMetadata(t *testing.T) {
+	ctx := context.Background()
+	server := fakeServer(t, gofakes3.New(s3mem.New()))
+	defer server.Close()
+	ensureBucket(t, server.URL, "bucket")
+	disk, err := New(Config{
+		Bucket: "bucket", Region: "us-east-1", Endpoint: server.URL,
+		AccessKeyID: "access", SecretAccessKey: "secret", UsePathStyle: true,
+	})
+	require.NoError(t, err)
+	objects, err := storagecore.Objects(disk)
+	require.NoError(t, err)
+	_, err = objects.PutObjectContext(ctx, "nested/source +name", strings.NewReader("hello"), storagecore.PutObjectOptions{
+		Size:     5,
+		Metadata: storagecore.ObjectMetadata{ContentType: "text/plain", Values: map[string]string{"owner": "fixture"}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, disk.Copy("nested/source +name", "copy"))
+	reader, err := objects.OpenObjectContext(ctx, "copy", storagecore.OpenObjectOptions{})
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, "text/plain", reader.Info.Metadata.ContentType)
+	require.Equal(t, "fixture", reader.Info.Metadata.Values["owner"])
 }

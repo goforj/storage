@@ -173,17 +173,32 @@ func (f fakeGCSClient) Bucket(string) gcsBucketHandle { return f.bucket }
 func (f fakeGCSClient) Close() error { return nil }
 
 type fakeGCSBucket struct {
-	object       *fakeGCSObject
-	objects      []*storage.ObjectAttrs
-	objectsErr   error
-	signedURL    string
-	signedErr    error
-	queryPrefix  string
-	iteratorHook func()
+	copyGeneration   int64
+	deleteGeneration int64
+	generationError  error
+	object           *fakeGCSObject
+	objects          []*storage.ObjectAttrs
+	objectsErr       error
+	signedURL        string
+	signedErr        error
+	queryPrefix      string
+	iteratorHook     func()
 }
 
 // Object returns the fake object shared by bucket operations.
 func (f *fakeGCSBucket) Object(string) gcsObjectHandle { return f.object }
+
+// CopyGeneration captures the observed generation passed to the provider.
+func (f *fakeGCSBucket) CopyGeneration(_ context.Context, _, _ string, generation int64) error {
+	f.copyGeneration = generation
+	return f.generationError
+}
+
+// DeleteGeneration captures the precondition instead of deleting by name alone.
+func (f *fakeGCSBucket) DeleteGeneration(_ context.Context, _ string, generation int64) error {
+	f.deleteGeneration = generation
+	return f.generationError
+}
 
 // Objects filters fixture metadata by query prefix and records that prefix.
 func (f *fakeGCSBucket) Objects(_ context.Context, q *storage.Query) gcsObjectIterator {
@@ -915,10 +930,12 @@ func TestGCSBackendFailureEdges(t *testing.T) {
 			t.Fatalf("Move missing source error = %v", err)
 		}
 
-		readErr := errors.New("read")
-		object = &fakeGCSObject{attrs: &storage.ObjectAttrs{}, readErr: readErr}
+		copyErr := errors.New("copy")
+		object = &fakeGCSObject{attrs: &storage.ObjectAttrs{Generation: 1}}
 		d = newFakeGCSDriver(object, nil)
-		if err := d.Move("source", "destination"); !errors.Is(err, readErr) {
+		bucket := d.client.Bucket(d.bucket).(*fakeGCSBucket)
+		bucket.generationError = copyErr
+		if err := d.Move("source", "destination"); !errors.Is(err, copyErr) {
 			t.Fatalf("Move copy error = %v", err)
 		}
 	})
@@ -990,3 +1007,36 @@ type errReader struct{}
 
 // Read injects a deterministic transfer failure after a reader opens successfully.
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+
+// TestGCSMovePinsSourceGeneration verifies both operations target the observed source generation.
+func TestGCSMovePinsSourceGeneration(t *testing.T) {
+	disk := newFakeGCSDriver(&fakeGCSObject{attrs: &storage.ObjectAttrs{Generation: 42}}, nil)
+	bucket := disk.client.Bucket(disk.bucket).(*fakeGCSBucket)
+	if err := disk.Move("source", "destination"); err != nil {
+		t.Fatal(err)
+	}
+	if bucket.copyGeneration != 42 || bucket.deleteGeneration != 42 {
+		t.Fatalf("copy generation = %d, delete generation = %d", bucket.copyGeneration, bucket.deleteGeneration)
+	}
+	bucket.generationError = &googleapi.Error{Code: 412}
+	if err := disk.DeleteMoveFileContext(context.Background(), "source", "42"); !errors.Is(err, storagecore.ErrConflict) {
+		t.Fatalf("delete with stale generation = %v", err)
+	}
+	if err := disk.DeleteMoveFileContext(context.Background(), "source", "bad"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("delete with invalid generation = %v", err)
+	}
+}
+
+// TestGCSListingRejectsAliases ensures logical paths cannot silently select different objects.
+func TestGCSListingRejectsAliases(t *testing.T) {
+	for _, attrs := range []*storage.ObjectAttrs{{Name: "report "}, {Prefix: "folder /"}} {
+		disk := newFakeGCSDriver(nil, []*storage.ObjectAttrs{attrs})
+		if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+			t.Fatalf("List %+v = %v", attrs, err)
+		}
+	}
+	disk := newFakeGCSDriver(nil, []*storage.ObjectAttrs{{Name: "folder//item"}})
+	if err := disk.Walk("", func(storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}

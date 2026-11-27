@@ -951,3 +951,21 @@ func (failingReadCloser) Read([]byte) (int, error) { return 0, errors.New("read 
 
 // Close makes cleanup of the failing test reader succeed.
 func (failingReadCloser) Close() error { return nil }
+
+// TestSFTPDirectoryReadsRejectAliases keeps nonportable remote filenames from mapping to siblings.
+func TestSFTPDirectoryReadsRejectAliases(t *testing.T) {
+	disk := &driver{client: &fakeSFTPClient{
+		statInfo: fakeFileInfo{isDir: true},
+		readDir: []os.FileInfo{
+			fakeFileInfo{name: ".", isDir: true},
+			fakeFileInfo{name: "..", isDir: true},
+			fakeFileInfo{name: "report "},
+		},
+	}}
+	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List = %v", err)
+	}
+	if err := disk.Walk("", func(entry storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}

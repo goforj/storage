@@ -227,7 +227,7 @@ func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Cont
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "redis:7-alpine",
+		Image:        "redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe",
 		ExposedPorts: []string{"6379/tcp"},
 		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
 	}

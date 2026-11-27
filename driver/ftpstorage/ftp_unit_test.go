@@ -729,3 +729,19 @@ type ftpErrorReader struct {
 
 // Read injects a source failure.
 func (r ftpErrorReader) Read([]byte) (int, error) { return 0, r.err }
+
+// TestFTPDirectoryReadsRejectAliases keeps nonportable server names out of listings and walks.
+func TestFTPDirectoryReadsRejectAliases(t *testing.T) {
+	conn := &fakeFTPConn{listEntries: []*ftp.Entry{
+		{Name: ".", Type: ftp.EntryTypeFolder},
+		{Name: "..", Type: ftp.EntryTypeFolder},
+		{Name: "report ", Type: ftp.EntryTypeFile},
+	}}
+	disk := &driver{conn: conn, dialFn: func() (ftpConn, error) { return conn, nil }}
+	if _, err := disk.List(""); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("List = %v", err)
+	}
+	if err := disk.Walk("", func(entry storagecore.Entry) error { return nil }); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Walk = %v", err)
+	}
+}

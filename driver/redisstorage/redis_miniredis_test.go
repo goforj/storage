@@ -1575,3 +1575,31 @@ func makeDirWithReleasedSchema(ctx context.Context, d *driver, key string) error
 	_, err := pipe.Exec(ctx)
 	return err
 }
+
+// TestRedisMoveDeletionPreservesRewrites verifies source revision checks share the deletion transaction.
+func TestRedisMoveDeletionPreservesRewrites(t *testing.T) {
+	ctx := context.Background()
+	disk := newMiniRedisDriver(t, "sandbox")
+	if _, err := disk.CopyMoveFileContext(ctx, "missing", "copy"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("missing copy source = %v", err)
+	}
+	if err := disk.Put("source", []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	revision, err := disk.CopyMoveFileContext(ctx, "source", "copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.Put("source", []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.DeleteMoveFileContext(ctx, "source", revision); !errors.Is(err, storagecore.ErrConflict) {
+		t.Fatalf("delete changed source = %v", err)
+	}
+	if got, err := disk.Get("source"); string(got) != "new" || err != nil {
+		t.Fatalf("source = %q, %v", got, err)
+	}
+	if got, err := disk.Get("copy"); string(got) != "old" || err != nil {
+		t.Fatalf("copy = %q, %v", got, err)
+	}
+}

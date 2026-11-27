@@ -42,6 +42,7 @@ type driver struct {
 }
 
 type s3API interface {
+	CopyObject(context.Context, *s3.CopyObjectInput, ...func(*s3.Options)) (*s3.CopyObjectOutput, error)
 	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
@@ -363,23 +364,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		return err
 	}
 	if entry.IsDir {
-		out, err := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-			Bucket:  aws.String(d.bucket),
-			Prefix:  aws.String(key + "/"),
-			MaxKeys: aws.Int32(2),
-		})
-		if err != nil {
-			return wrapError(err)
-		}
-		for _, object := range out.Contents {
-			if aws.ToString(object.Key) != key+"/" {
-				return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
-			}
-		}
-		if len(out.CommonPrefixes) > 0 || aws.ToBool(out.IsTruncated) {
-			return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
-		}
-		key += "/"
+		return d.DeleteMoveDirectoryContext(ctx, p)
 	}
 	_, err = d.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(d.bucket),
@@ -389,6 +374,39 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		return wrapError(err)
 	}
 	return nil
+}
+
+// DeleteMoveDirectoryContext removes only an empty directory marker, even if a file appears at its logical path.
+func (d *driver) DeleteMoveDirectoryContext(ctx context.Context, p string) error {
+	ctx = normalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if d.stripPrefix(key) == "" {
+		return fmt.Errorf("%w: logical root cannot be deleted", storagecore.ErrForbidden)
+	}
+	out, err := d.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  aws.String(d.bucket),
+		Prefix:  aws.String(key + "/"),
+		MaxKeys: aws.Int32(2),
+	})
+	if err != nil {
+		return wrapError(err)
+	}
+	for _, object := range out.Contents {
+		if aws.ToString(object.Key) != key+"/" {
+			return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
+		}
+	}
+	if len(out.CommonPrefixes) > 0 || aws.ToBool(out.IsTruncated) {
+		return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
+	}
+	_, err = d.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(d.bucket), Key: aws.String(key + "/")})
+	return wrapError(err)
 }
 
 // Stat implements storagecore.Storage using a background context.
@@ -531,6 +549,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			if rel == "" {
 				continue
 			}
+			if err := storagecore.ValidateEntryPath(rel); err != nil {
+				return nil, err
+			}
 			addDirectoryEntry(entryByPath, rel)
 		}
 		for _, obj := range out.Contents {
@@ -543,6 +564,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			rel := d.stripPrefix(aws.ToString(obj.Key))
 			if rel == "" {
 				continue
+			}
+			if err := storagecore.ValidateEntryPath(rel); err != nil {
+				return nil, err
 			}
 			entryByPath[rel] = storagecore.Entry{
 				Path:  rel,
@@ -632,6 +656,9 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 			if key != "" {
 				found = true
 			}
+			if err := storagecore.ValidateEntryPath(strings.TrimSuffix(d.stripPrefix(key), "/")); err != nil {
+				return err
+			}
 			if strings.HasSuffix(key, "/") {
 				dir := strings.TrimSuffix(d.stripPrefix(key), "/")
 				if dir != "" && dir != requestedPath && (requestedPath == "" || strings.HasPrefix(dir, requestedPath+"/")) {
@@ -692,31 +719,75 @@ func (d *driver) Copy(src, dst string) error {
 	return d.CopyContext(context.Background(), src, dst)
 }
 
-// CopyContext copies a file through the storage contract and treats identical paths as a no-op.
+// CopyContext duplicates an object on the provider, preserving its metadata.
 func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
+	_, err := d.CopyMoveFileContext(ctx, src, dst)
+	return err
+}
+
+// CopyMoveFileContext copies an observed object and returns its entity tag for conditional deletion.
+func (d *driver) CopyMoveFileContext(ctx context.Context, src, dst string) (string, error) {
+	ctx = normalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	srcKey, err := d.key(src)
+	if err != nil {
+		return "", err
+	}
+	dstKey, err := d.key(dst)
+	if err != nil {
+		return "", err
+	}
+	if d.stripPrefix(srcKey) == "" || d.stripPrefix(dstKey) == "" {
+		return "", fmt.Errorf("%w: copy requires non-root paths", storagecore.ErrForbidden)
+	}
+	source, err := d.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(d.bucket), Key: aws.String(srcKey)})
+	if err != nil {
+		return "", wrapError(err)
+	}
+	revision := aws.ToString(source.ETag)
+	if srcKey == dstKey {
+		return revision, nil
+	}
+	if revision == "" {
+		return "", fmt.Errorf("%w: S3 provider did not supply a source ETag", storagecore.ErrUnsupported)
+	}
+	_, err = d.client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:            aws.String(d.bucket),
+		Key:               aws.String(dstKey),
+		CopySource:        aws.String(copySource(d.bucket, srcKey)),
+		CopySourceIfMatch: aws.String(revision),
+		MetadataDirective: types.MetadataDirectiveCopy,
+	})
+	return revision, wrapError(err)
+}
+
+// copySource escapes keys and preserves the distinct object ARN form used by access points.
+func copySource(bucket, key string) string {
+	if strings.HasPrefix(bucket, "arn:") {
+		return strings.ReplaceAll(url.QueryEscape(bucket+"/object/"+key), "+", "%20")
+	}
+	return bucket + "/" + strings.ReplaceAll(url.QueryEscape(key), "+", "%20")
+}
+
+// DeleteMoveFileContext deletes the source only while its copied entity tag is current.
+func (d *driver) DeleteMoveFileContext(ctx context.Context, src, revision string) error {
 	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	normalizedSrc, err := storagecore.NormalizePath(src)
+	key, err := d.key(src)
 	if err != nil {
 		return err
 	}
-	normalizedDst, err := storagecore.NormalizePath(dst)
-	if err != nil {
-		return err
+	if d.stripPrefix(key) == "" || revision == "" {
+		return fmt.Errorf("%w: conditional deletion requires an object path and ETag", storagecore.ErrForbidden)
 	}
-	if normalizedSrc == "" || normalizedDst == "" {
-		return fmt.Errorf("%w: copy requires non-root paths", storagecore.ErrForbidden)
-	}
-	data, err := d.GetContext(ctx, src)
-	if err != nil {
-		return err
-	}
-	if normalizedSrc == normalizedDst {
-		return nil
-	}
-	return d.PutContext(ctx, dst, data)
+	_, err = d.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(d.bucket), Key: aws.String(key), IfMatch: aws.String(revision),
+	})
+	return wrapError(err)
 }
 
 // Move implements storagecore.Storage using a background context.
@@ -751,10 +822,11 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if srcEntry.IsDir {
 		return storagecore.MoveDirContext(ctx, d, src, dst)
 	}
-	if err := d.CopyContext(ctx, src, dst); err != nil {
+	revision, err := d.CopyMoveFileContext(ctx, src, dst)
+	if err != nil {
 		return err
 	}
-	return d.DeleteContext(ctx, src)
+	return d.DeleteMoveFileContext(ctx, src, revision)
 }
 
 // URL implements storagecore.Storage using a background context.
@@ -849,6 +921,8 @@ func wrapError(err error) error {
 		switch strings.ToLower(apiErr.ErrorCode()) {
 		case "nosuchbucket", "nosuchkey", "notfound":
 			return fmt.Errorf("%w: %w", storagecore.ErrNotFound, err)
+		case "preconditionfailed", "conditionalrequestconflict":
+			return fmt.Errorf("%w: %w", storagecore.ErrConflict, err)
 		case "accessdenied", "forbidden", "unauthorized", "invalidaccesskeyid", "signaturedoesnotmatch":
 			return fmt.Errorf("%w: %w", storagecore.ErrForbidden, err)
 		}
@@ -858,6 +932,8 @@ func wrapError(err error) error {
 		switch responseErr.HTTPStatusCode() {
 		case 404:
 			return fmt.Errorf("%w: %w", storagecore.ErrNotFound, err)
+		case 409, 412:
+			return fmt.Errorf("%w: %w", storagecore.ErrConflict, err)
 		case 401, 403:
 			return fmt.Errorf("%w: %w", storagecore.ErrForbidden, err)
 		}

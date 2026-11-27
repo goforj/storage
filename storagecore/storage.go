@@ -74,6 +74,8 @@ type Entry struct {
 var (
 	// ErrNotFound reports that a requested logical object or directory does not exist.
 	ErrNotFound = errors.New("storage: not found")
+	// ErrConflict reports that an entry changed during an operation.
+	ErrConflict = errors.New("storage: conflict")
 	// ErrForbidden reports an invalid operation or a backend permission denial.
 	ErrForbidden = errors.New("storage: forbidden")
 	// ErrUnsupported reports an operation that a backend cannot safely provide.
@@ -83,7 +85,8 @@ var (
 // DiskName identifies a configured disk in manager lookups.
 type DiskName string
 
-// ResolvedConfig is the driver-neutral configuration passed through the registry boundary.
+// ResolvedConfig carries the compatibility fields used by registry-based construction.
+// Driver-specific configuration belongs in the corresponding driver's typed Config.
 type ResolvedConfig struct {
 	Driver string
 
@@ -143,6 +146,15 @@ func NormalizePath(p string) (string, error) {
 		return "", fmt.Errorf("%w: invalid path", ErrForbidden)
 	}
 	return cleaned, nil
+}
+
+// ValidateEntryPath rejects backend names that would resolve to a different entry.
+func ValidateEntryPath(p string) error {
+	normalized, err := NormalizePath(p)
+	if err != nil || normalized != p {
+		return fmt.Errorf("%w: backend path %q is not a portable storage path", ErrUnsupported, p)
+	}
+	return nil
 }
 
 // JoinPrefix combines an already-normalized backend prefix with a logical path.

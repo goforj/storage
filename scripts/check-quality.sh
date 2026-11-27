@@ -24,20 +24,9 @@ scripts/check-published-modules.sh
 
 for module in "${published_modules[@]}"; do
   echo "==> Quality: $module"
-  (
-    cd "$module"
-    go mod tidy -diff
-    go vet ./...
-    go test -race -count=1 ./...
-  )
-done
-
-for module in "${published_modules[@]}"; do
-  echo "==> Published dependency compatibility: $module"
-  (
-    cd "$module"
-    GOWORK=off go test -run '^$' -count=1 ./...
-  )
+  GOWORK=off go -C "$module" mod tidy -diff
+  scripts/with-local-modfile.sh "$module" go vet ./...
+  scripts/with-local-modfile.sh "$module" go test -race -count=1 ./...
 done
 
 echo "==> Quality: examples"

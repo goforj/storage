@@ -70,6 +70,14 @@ func (s *boundStorage) Close() error {
 	return s.lifecycle.err
 }
 
+// Objects discovers the inner stream capability across context-bound handles.
+func (s *boundStorage) Objects() (storagecore.ObjectStorage, error) {
+	if s.bindErr != nil {
+		return nil, s.bindErr
+	}
+	return storagecore.Objects(s.inner)
+}
+
 // WithContext preserves a driver's public binding semantics before falling back to adapter dispatch.
 func (s *boundStorage) WithContext(ctx context.Context) Storage {
 	ctx = normalizeContext(ctx)

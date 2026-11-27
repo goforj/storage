@@ -451,3 +451,45 @@ func assertNoCallPrefix(t *testing.T, calls []string, prefix string) {
 		}
 	}
 }
+
+// TestMoveDirPreservesChangedSource proves the portable move cannot delete an observed rewrite.
+func TestMoveDirPreservesChangedSource(t *testing.T) {
+	store := newMoveTestStorage()
+	store.entries["src/file"] = Entry{Path: "src/file"}
+	store.data["src/file"] = []byte("old")
+	store.putHook = func(s *moveTestStorage, _ context.Context, name string, contents []byte) error {
+		s.entries[name] = Entry{Path: name}
+		s.data[name] = slices.Clone(contents)
+		s.data["src/file"] = []byte("new")
+		return nil
+	}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("move returned %v", err)
+	}
+	if string(store.data["src/file"]) != "new" || string(store.data["dst/file"]) != "old" {
+		t.Fatalf("unexpected copies: %q", store.data)
+	}
+	assertNoCallPrefix(t, deleteCalls(store.calls), "delete:")
+}
+
+// TestMoveDirRetainsReplacementFile prevents directory cleanup from deleting a file at the moved path.
+func TestMoveDirRetainsReplacementFile(t *testing.T) {
+	store := newMoveTestStorage()
+	store.entries["src/file"] = Entry{Path: "src/file"}
+	store.data["src/file"] = []byte("old")
+	store.deleteHook = func(s *moveTestStorage, _ context.Context, name string) error {
+		delete(s.entries, name)
+		delete(s.data, name)
+		if name == "src/file" {
+			s.entries["src"] = Entry{Path: "src"}
+			s.data["src"] = []byte("new file")
+		}
+		return nil
+	}
+	if err := MoveDirContext(context.Background(), store, "src", "dst"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("move returned %v", err)
+	}
+	if string(store.data["src"]) != "new file" || string(store.data["dst/file"]) != "old" {
+		t.Fatalf("unexpected paths after move: %q", store.data)
+	}
+}

@@ -367,8 +367,12 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		if childInfo.IsDir() {
 			size = 0
 		}
+		logicalPath := path.Join(base, child.Name())
+		if err := storagecore.ValidateEntryPath(logicalPath); err != nil {
+			return nil, err
+		}
 		result = append(result, storagecore.Entry{
-			Path:  path.Join(base, child.Name()),
+			Path:  logicalPath,
 			Size:  size,
 			IsDir: childInfo.IsDir(),
 		})
@@ -393,7 +397,7 @@ func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 	return d.WalkContext(context.Background(), p, fn)
 }
 
-// WalkContext traverses lexicographically through os.Root's restricted filesystem view.
+// WalkContext traverses depth-first in lexical sibling order through os.Root.
 func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
 	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
@@ -434,6 +438,9 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 		}
 		logicalPath, err := d.displayName(current)
 		if err != nil {
+			return err
+		}
+		if err := storagecore.ValidateEntryPath(logicalPath); err != nil {
 			return err
 		}
 		size := int64(0)

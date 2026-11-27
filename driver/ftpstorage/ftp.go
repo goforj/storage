@@ -560,9 +560,15 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			if e.Name == "." || e.Name == ".." {
+				continue
+			}
 			rel := e.Name
 			if fp != "" && fp != "." && fp != "/" {
 				rel = path.Join(d.stripPrefix(fp), e.Name)
+			}
+			if err := storagecore.ValidateEntryPath(rel); err != nil {
+				return err
 			}
 			size := int64(e.Size)
 			isDir := e.Type == ftp.EntryTypeFolder
@@ -795,6 +801,9 @@ func (d *driver) collectWalkEntries(ctx context.Context, c ftpConn, dir string, 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if e.Name == "." || e.Name == ".." {
+			continue
+		}
 		full := e.Name
 		if dir != "" && dir != "." && dir != "/" {
 			full = path.Join(dir, e.Name)
@@ -803,6 +812,9 @@ func (d *driver) collectWalkEntries(ctx context.Context, c ftpConn, dir string, 
 			Path:  d.stripPrefix(full),
 			Size:  int64(e.Size),
 			IsDir: e.Type == ftp.EntryTypeFolder,
+		}
+		if err := storagecore.ValidateEntryPath(entry.Path); err != nil {
+			return err
 		}
 		if entry.IsDir {
 			entry.Size = 0

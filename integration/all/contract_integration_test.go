@@ -30,6 +30,8 @@ import (
 	"github.com/goftp/server"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 type storageFactory struct {
@@ -269,13 +271,14 @@ func integrationFixtures(t *testing.T) []storageFactory {
 				t.Helper()
 				ctx := context.Background()
 				container, host, port := startSFTPContainer(t, ctx)
+				t.Cleanup(func() { shutdownContainer(t, container) })
 				cfg := sftpstorage.Config{
-					Host:                  host,
-					Port:                  port,
-					User:                  "storage",
-					Password:              "storage",
-					InsecureIgnoreHostKey: true,
-					Prefix:                "upload/itest",
+					Host:           host,
+					Port:           port,
+					User:           "storage",
+					Password:       "storage",
+					KnownHostsPath: containerKnownHosts(t, ctx, container, host, port),
+					Prefix:         "upload/itest",
 				}
 				var (
 					store storage.Storage
@@ -288,13 +291,14 @@ func integrationFixtures(t *testing.T) []storageFactory {
 						break
 					}
 					if time.Now().After(deadline) {
-						shutdownContainer(t, container)
 						t.Fatalf("build sftp storage: %v", err)
 					}
 					time.Sleep(250 * time.Millisecond)
 				}
 				return store, func() {
-					shutdownContainer(t, container)
+					if closer, ok := store.(io.Closer); ok {
+						_ = closer.Close()
+					}
 				}
 			},
 		})
@@ -378,7 +382,7 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "atmoz/sftp:latest",
+		Image:        "atmoz/sftp@sha256:0960390462a4441dbb63698d7c185b76a41ffcee7b78ff4adf275f3e66f9c475",
 		ExposedPorts: []string{"22/tcp"},
 		Cmd:          []string{"storage:storage:::upload"},
 		WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(30 * time.Second),
@@ -409,12 +413,40 @@ func startSFTPContainer(t *testing.T, ctx context.Context) (testcontainers.Conta
 	return container, host, parsed
 }
 
+// containerKnownHosts trusts the fixture's host key through the Docker control
+// channel, independently of the SFTP connection being tested.
+func containerKnownHosts(t *testing.T, ctx context.Context, container testcontainers.Container, host string, port int) string {
+	t.Helper()
+	var lines []string
+	address := net.JoinHostPort(host, strconv.Itoa(port))
+	for _, kind := range []string{"ed25519", "rsa"} {
+		f, err := container.CopyFileFromContainer(ctx, "/etc/ssh/ssh_host_"+kind+"_key.pub")
+		if err != nil {
+			t.Fatalf("read fixture host key: %v", err)
+		}
+		data, err := io.ReadAll(f)
+		if err := errors.Join(err, f.Close()); err != nil {
+			t.Fatalf("read fixture host key: %v", err)
+		}
+		key, _, _, _, err := ssh.ParseAuthorizedKey(data)
+		if err != nil {
+			t.Fatalf("parse fixture host key: %v", err)
+		}
+		lines = append(lines, knownhosts.Line([]string{address}, key))
+	}
+	name := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(name, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+		t.Fatalf("write fixture known_hosts: %v", err)
+	}
+	return name
+}
+
 // startRedisContainer provides a real Redis server for commands that miniredis cannot model faithfully.
 func startRedisContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "redis:7-alpine",
+		Image:        "redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe",
 		ExposedPorts: []string{"6379/tcp"},
 		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
 	}

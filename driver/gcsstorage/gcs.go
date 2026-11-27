@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +49,8 @@ type gcsClient interface {
 
 type gcsBucketHandle interface {
 	Object(name string) gcsObjectHandle
+	CopyGeneration(ctx context.Context, src, dst string, generation int64) error
+	DeleteGeneration(ctx context.Context, key string, generation int64) error
 	Objects(ctx context.Context, q *storage.Query) gcsObjectIterator
 	SignedURL(name string, opts *storage.SignedURLOptions) (string, error)
 }
@@ -322,26 +325,45 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 		return err
 	}
 	if entry.IsDir {
-		marker := key + "/"
-		it := d.client.Bucket(d.bucket).Objects(ctx, &storage.Query{Prefix: marker})
-		for {
-			attrs, iterErr := it.Next()
-			if iterErr == iterator.Done {
-				break
-			}
-			if iterErr != nil {
-				return wrapError(iterErr)
-			}
-			if attrs.Name != marker {
-				return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
-			}
-		}
-		key = marker
+		return d.DeleteMoveDirectoryContext(ctx, p)
 	}
 	if err := d.client.Bucket(d.bucket).Object(key).Delete(ctx); err != nil {
 		return wrapError(err)
 	}
 	return nil
+}
+
+// DeleteMoveDirectoryContext removes only an empty directory marker, even if a file appears at its logical path.
+func (d *driver) DeleteMoveDirectoryContext(ctx context.Context, p string) error {
+	ctx = normalizeContext(ctx)
+	if err := d.closedError(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(p)
+	if err != nil {
+		return err
+	}
+	if d.stripPrefix(key) == "" {
+		return fmt.Errorf("%w: logical root cannot be deleted", storagecore.ErrForbidden)
+	}
+	marker := key + "/"
+	it := d.client.Bucket(d.bucket).Objects(ctx, &storage.Query{Prefix: marker})
+	for {
+		attrs, iterErr := it.Next()
+		if iterErr == iterator.Done {
+			break
+		}
+		if iterErr != nil {
+			return wrapError(iterErr)
+		}
+		if attrs.Name != marker {
+			return fmt.Errorf("%w: directory not empty", storagecore.ErrForbidden)
+		}
+	}
+	return wrapError(d.client.Bucket(d.bucket).Object(marker).Delete(ctx))
 }
 
 // Stat inspects a logical GCS path using a background context.
@@ -466,6 +488,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		}
 		if obj.Prefix != "" {
 			rel := strings.TrimSuffix(d.stripPrefix(obj.Prefix), "/")
+			if err := storagecore.ValidateEntryPath(rel); err != nil {
+				return nil, err
+			}
 			if rel != "" {
 				entries = append(entries, storagecore.Entry{Path: rel, IsDir: true})
 			}
@@ -477,6 +502,9 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		rel := d.stripPrefix(obj.Name)
 		if rel == "" {
 			continue
+		}
+		if err := storagecore.ValidateEntryPath(rel); err != nil {
+			return nil, err
 		}
 		entries = append(entries, storagecore.Entry{
 			Path:  rel,
@@ -551,6 +579,9 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 			continue
 		}
 		found = true
+		if err := storagecore.ValidateEntryPath(strings.TrimSuffix(d.stripPrefix(obj.Name), "/")); err != nil {
+			return err
+		}
 		if strings.HasSuffix(obj.Name, "/") {
 			dir := strings.TrimSuffix(d.stripPrefix(obj.Name), "/")
 			if dir != "" && dir != requestedPath && (requestedPath == "" || strings.HasPrefix(dir, requestedPath+"/")) {
@@ -674,10 +705,62 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if srcEntry.IsDir {
 		return storagecore.MoveDirContext(ctx, d, src, dst)
 	}
-	if err := d.CopyContext(ctx, src, dst); err != nil {
+	revision, err := d.CopyMoveFileContext(ctx, srcPath, dstPath)
+	if err != nil {
 		return err
 	}
-	return d.DeleteContext(ctx, src)
+	return d.DeleteMoveFileContext(ctx, srcPath, revision)
+}
+
+// CopyMoveFileContext copies from the observed source generation without downloading its contents.
+func (d *driver) CopyMoveFileContext(ctx context.Context, src, dst string) (string, error) {
+	ctx = normalizeContext(ctx)
+	if err := d.closedError(); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	srcKey, err := d.key(src)
+	if err != nil {
+		return "", err
+	}
+	dstKey, err := d.key(dst)
+	if err != nil {
+		return "", err
+	}
+	if d.stripPrefix(srcKey) == "" || d.stripPrefix(dstKey) == "" {
+		return "", fmt.Errorf("%w: copy requires non-root paths", storagecore.ErrForbidden)
+	}
+	bucket := d.client.Bucket(d.bucket)
+	attrs, err := bucket.Object(srcKey).Attrs(ctx)
+	if err != nil {
+		return "", wrapError(err)
+	}
+	if attrs.Generation <= 0 {
+		return "", fmt.Errorf("%w: GCS provider did not supply a source generation", storagecore.ErrUnsupported)
+	}
+	return strconv.FormatInt(attrs.Generation, 10), wrapError(bucket.CopyGeneration(ctx, srcKey, dstKey, attrs.Generation))
+}
+
+// DeleteMoveFileContext keeps the current object when it no longer matches the copied generation.
+func (d *driver) DeleteMoveFileContext(ctx context.Context, src, revision string) error {
+	ctx = normalizeContext(ctx)
+	if err := d.closedError(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key, err := d.key(src)
+	if err != nil {
+		return err
+	}
+	generation, err := strconv.ParseInt(revision, 10, 64)
+	if err != nil || generation <= 0 || d.stripPrefix(key) == "" {
+		return fmt.Errorf("%w: conditional deletion requires an object path and generation", storagecore.ErrForbidden)
+	}
+	return wrapError(d.client.Bucket(d.bucket).DeleteGeneration(ctx, key, generation))
 }
 
 // URL creates an object URL using a background context.
@@ -758,6 +841,10 @@ func wrapError(err error) error {
 	}
 	if isForbidden(err) {
 		return fmt.Errorf("%w: %w", storagecore.ErrForbidden, err)
+	}
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusPreconditionFailed {
+		return fmt.Errorf("%w: %w", storagecore.ErrConflict, err)
 	}
 	return err
 }
@@ -863,6 +950,18 @@ func (c realGCSClient) Close() error {
 // Object adapts one concrete GCS object handle to the driver's testable interface.
 func (b realGCSBucket) Object(name string) gcsObjectHandle {
 	return realGCSObject{object: b.bucket.Object(name)}
+}
+
+// CopyGeneration conditions the rewrite on the current source generation.
+func (b realGCSBucket) CopyGeneration(ctx context.Context, src, dst string, generation int64) error {
+	source := b.bucket.Object(src).If(storage.Conditions{GenerationMatch: generation})
+	_, err := b.bucket.Object(dst).CopierFrom(source).Run(ctx)
+	return err
+}
+
+// DeleteGeneration conditions deletion on the current generation, including in versioned buckets.
+func (b realGCSBucket) DeleteGeneration(ctx context.Context, key string, generation int64) error {
+	return b.bucket.Object(key).If(storage.Conditions{GenerationMatch: generation}).Delete(ctx)
 }
 
 // Objects adapts a GCS query iterator to the driver's testable interface.
