@@ -174,6 +174,8 @@ func (f fakeGCSClient) Close() error { return nil }
 
 type fakeGCSBucket struct {
 	copyGeneration   int64
+	copySource       string
+	copyDestination  string
 	deleteGeneration int64
 	generationError  error
 	object           *fakeGCSObject
@@ -189,8 +191,9 @@ type fakeGCSBucket struct {
 func (f *fakeGCSBucket) Object(string) gcsObjectHandle { return f.object }
 
 // CopyGeneration captures the observed generation passed to the provider.
-func (f *fakeGCSBucket) CopyGeneration(_ context.Context, _, _ string, generation int64) error {
+func (f *fakeGCSBucket) CopyGeneration(_ context.Context, src, dst string, generation int64) error {
 	f.copyGeneration = generation
+	f.copySource, f.copyDestination = src, dst
 	return f.generationError
 }
 
@@ -585,7 +588,7 @@ func TestGCSFakeWalkAndErrorBranches(t *testing.T) {
 		if object.closeCalls != 0 {
 			t.Fatalf("same-path Copy committed %d writers", object.closeCalls)
 		}
-		object.readErr = storage.ErrObjectNotExist
+		object.attrsErr = storage.ErrObjectNotExist
 		if err := d.Copy("missing.txt", "missing.txt"); !errors.Is(err, storagecore.ErrNotFound) {
 			t.Fatalf("Copy missing same path error = %v", err)
 		}
@@ -1007,6 +1010,24 @@ type errReader struct{}
 
 // Read injects a deterministic transfer failure after a reader opens successfully.
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+
+// TestGCSCopyUsesProviderRewrite verifies copying needs neither a download nor a local upload.
+func TestGCSCopyUsesProviderRewrite(t *testing.T) {
+	object := &fakeGCSObject{readErr: errors.New("unexpected download")}
+	disk := newFakeGCSDriver(object, nil)
+	disk.prefix = "pre"
+	bucket := disk.client.Bucket(disk.bucket).(*fakeGCSBucket)
+	if err := disk.Copy("source", "nested/destination"); err != nil {
+		t.Fatal(err)
+	}
+	if bucket.copySource != "pre/source" || bucket.copyDestination != "pre/nested/destination" || bucket.copyGeneration != 0 || object.closeCalls != 0 {
+		t.Fatalf("copy = %q -> %q, generation %d, writer commits %d", bucket.copySource, bucket.copyDestination, bucket.copyGeneration, object.closeCalls)
+	}
+	bucket.generationError = &googleapi.Error{Code: 404}
+	if err := disk.Copy("missing", "destination"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("copy missing source = %v", err)
+	}
+}
 
 // TestGCSMovePinsSourceGeneration verifies both operations target the observed source generation.
 func TestGCSMovePinsSourceGeneration(t *testing.T) {
