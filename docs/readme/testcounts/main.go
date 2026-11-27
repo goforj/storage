@@ -1,7 +1,7 @@
 //go:build ignore
 // +build ignore
 
-// Command testcounts updates documented test metrics from reproducible repository data.
+// Command testcounts reports executed test totals from reproducible repository data.
 package main
 
 import (
@@ -20,27 +20,15 @@ import (
 	"strings"
 )
 
-const (
-	testCountStart = "<!-- test-count:embed:start -->"
-	testCountEnd   = "<!-- test-count:embed:end -->"
-)
-
-// Counts records executed unit and integration test totals for README badges.
-type Counts struct {
-	Unit        int
-	Integration int
-}
-
-// main refreshes executed-test badges and reports failures to the shell.
+// main reports executed test totals and propagates errors to the shell.
 func main() {
 	if err := run(); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
-	fmt.Println("✔ Test badges updated from executed test runs")
 }
 
-// run executes reproducible test subsets and updates their README badge counts.
+// run counts executed tests in the root module and shared integration suite.
 func run() error {
 	root, err := findRoot()
 	if err != nil {
@@ -64,21 +52,8 @@ func run() error {
 		return fmt.Errorf("count integration test runs: %w", err)
 	}
 
-	readmePath := filepath.Join(root, "README.md")
-	data, err := os.ReadFile(readmePath)
-	if err != nil {
-		return err
-	}
-
-	out, err := updateTestsSection(string(data), Counts{
-		Unit:        unitCount,
-		Integration: integrationCount,
-	})
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(readmePath, []byte(out), 0o644)
+	fmt.Printf("Root-module tests: %d\nIntegration tests: %d\n", unitCount, integrationCount)
+	return nil
 }
 
 // countRunEvents executes a Go test command and counts its structured run events.
@@ -227,31 +202,7 @@ func countRunEventsFromJSON(data []byte, topLevelNames map[string]struct{}) (int
 	return total, nil
 }
 
-// updateTestsSection replaces badge markup between test-count markers.
-func updateTestsSection(readme string, counts Counts) (string, error) {
-	start := strings.Index(readme, testCountStart)
-	end := strings.Index(readme, testCountEnd)
-	if start == -1 || end == -1 || end < start {
-		return "", fmt.Errorf("test count anchors not found or malformed")
-	}
-
-	before := readme[:start+len(testCountStart)]
-	body := readme[start+len(testCountStart) : end]
-	after := readme[end:]
-
-	leading := ""
-	if strings.HasPrefix(body, "\n") {
-		leading = "\n"
-	}
-
-	lines := []string{
-		fmt.Sprintf("  <img src=\"https://img.shields.io/badge/unit_tests-%d-brightgreen\" alt=\"Unit tests (executed count)\">", counts.Unit),
-		fmt.Sprintf("  <img src=\"https://img.shields.io/badge/integration_tests-%d-blue\" alt=\"Integration tests (executed count)\">", counts.Integration),
-	}
-	return before + leading + strings.Join(lines, "\n") + "\n" + after, nil
-}
-
-// findRoot locates the repository from each working directory supported by the generator.
+// findRoot locates the repository from each working directory supported by the command.
 func findRoot() (string, error) {
 	wd, _ := os.Getwd()
 	for _, c := range []string{wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", ".."), filepath.Join(wd, "..", "..", "..")} {

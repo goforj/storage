@@ -1435,13 +1435,6 @@ fmt.Println(p)
 
 ## Development
 
-<p>
-<!-- test-count:embed:start -->
-  <img src="https://img.shields.io/badge/unit_tests-47-brightgreen" alt="Unit tests (executed count)">
-  <img src="https://img.shields.io/badge/integration_tests-138-blue" alt="Integration tests (executed count)">
-<!-- test-count:embed:end -->
-</p>
-
 ```sh
 make test                         # Test the root module
 make test-examples                # Test the examples module
@@ -1449,7 +1442,7 @@ make test-integration             # Test all driver fixtures with Docker
 make test-integration gcs         # Test GCS with its emulator
 make test-coverage                # Generate combined coverage
 go run ./docs/readme/main.go      # Regenerate the API reference
-make docs-watch                   # Refresh generated docs and test badges as code changes
+make docs-watch                   # Regenerate docs and examples as code changes
 ```
 
 Run `go test ./...` in each driver module you change. See `make help` for all
