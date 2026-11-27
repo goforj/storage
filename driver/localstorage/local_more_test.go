@@ -629,3 +629,20 @@ func TestLocalWalkUsesDepthFirstOrder(t *testing.T) {
 		t.Fatalf("walk order = %v", actual)
 	}
 }
+
+// TestLocalPutReplacesSingleCharacterName exercises the smallest native rename payload.
+func TestLocalPutReplacesSingleCharacterName(t *testing.T) {
+	disk, err := New(Config{Root: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"old", "new"} {
+		if err := disk.Put("a", []byte(value)); err != nil {
+			t.Fatalf("Put a: %v", err)
+		}
+	}
+	value, err := disk.Get("a")
+	if err != nil || string(value) != "new" {
+		t.Fatalf("Get a = %q, %v", value, err)
+	}
+}

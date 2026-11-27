@@ -1040,3 +1040,45 @@ func TestGCSListingRejectsAliases(t *testing.T) {
 		t.Fatalf("Walk = %v", err)
 	}
 }
+
+// TestGCSMoveGuardsValidateInputs verifies the provider never sees an invalid move precondition.
+func TestGCSMoveGuardsValidateInputs(t *testing.T) {
+	ctx := context.Background()
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	disk := newFakeGCSDriver(&fakeGCSObject{attrs: &storage.ObjectAttrs{}}, nil)
+	for _, test := range []struct {
+		name string
+		want error
+		call func() error
+	}{
+		{"copy canceled", context.Canceled, func() error { _, err := disk.CopyMoveFileContext(canceled, "source", "dst"); return err }},
+		{"copy invalid source", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "../source", "dst"); return err }},
+		{"copy invalid target", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "source", "../dst"); return err }},
+		{"copy root", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "source", ""); return err }},
+		{"copy without generation", storagecore.ErrUnsupported, func() error { _, err := disk.CopyMoveFileContext(ctx, "source", "dst"); return err }},
+		{"delete file canceled", context.Canceled, func() error { return disk.DeleteMoveFileContext(canceled, "source", "1") }},
+		{"delete file invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveFileContext(ctx, "../file", "1") }},
+		{"delete directory canceled", context.Canceled, func() error { return disk.DeleteMoveDirectoryContext(canceled, "source") }},
+		{"delete directory invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "../source") }},
+		{"delete directory root", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+		})
+	}
+	if err := disk.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := disk.CopyMoveFileContext(ctx, "source", "dst"); err == nil {
+		t.Fatal("closed disk allowed a move copy")
+	}
+	if err := disk.DeleteMoveFileContext(ctx, "source", "1"); err == nil {
+		t.Fatal("closed disk allowed a move deletion")
+	}
+	if err := disk.DeleteMoveDirectoryContext(ctx, "source"); err == nil {
+		t.Fatal("closed disk allowed directory cleanup")
+	}
+}

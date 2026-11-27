@@ -1603,3 +1603,49 @@ func TestRedisMoveDeletionPreservesRewrites(t *testing.T) {
 		t.Fatalf("copy = %q, %v", got, err)
 	}
 }
+
+// TestRedisMoveGuardFailures exercises rejected preconditions and directory redispatch.
+func TestRedisMoveGuardFailures(t *testing.T) {
+	ctx := context.Background()
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	disk := newMiniRedisDriver(t, "sandbox")
+	if err := disk.Put("file", []byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		want error
+		call func() error
+	}{
+		{"copy canceled", context.Canceled, func() error { _, err := disk.CopyMoveFileContext(canceled, "file", "dst"); return err }},
+		{"copy invalid source", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "../file", "dst"); return err }},
+		{"copy root", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "", "dst"); return err }},
+		{"copy write failure", storagecore.ErrForbidden, func() error { _, err := disk.CopyMoveFileContext(ctx, "file", ""); return err }},
+		{"delete file canceled", context.Canceled, func() error { return disk.DeleteMoveFileContext(canceled, "file", "revision") }},
+		{"delete file invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveFileContext(ctx, "../file", "revision") }},
+		{"delete file without revision", storagecore.ErrForbidden, func() error { return disk.DeleteMoveFileContext(ctx, "file", "") }},
+		{"delete missing file", storagecore.ErrNotFound, func() error { return disk.DeleteMoveFileContext(ctx, "missing", "revision") }},
+		{"delete directory invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "../file") }},
+		{"delete directory root", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "") }},
+		{"delete replaced directory", storagecore.ErrConflict, func() error { return disk.DeleteMoveDirectoryContext(ctx, "file") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+		})
+	}
+	if err := disk.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := disk.CopyMoveFileContext(ctx, "file", "dst"); err == nil {
+		t.Fatal("closed disk allowed a move copy")
+	}
+	if err := disk.DeleteMoveFileContext(ctx, "file", "revision"); err == nil {
+		t.Fatal("closed disk allowed a move deletion")
+	}
+	if err := disk.DeleteMoveDirectoryContext(ctx, "file"); err == nil {
+		t.Fatal("closed disk allowed directory cleanup")
+	}
+}

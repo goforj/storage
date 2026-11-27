@@ -1085,3 +1085,36 @@ func TestS3CopySourceARN(t *testing.T) {
 		t.Fatalf("copy source = %q, %v", source, err)
 	}
 }
+
+// TestS3MoveGuardFailures checks the driver does not issue an unconditional mutation.
+func TestS3MoveGuardFailures(t *testing.T) {
+	ctx := context.Background()
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	client := &fakeS3{headByKey: map[string]*s3.HeadObjectOutput{"file": {}}}
+	disk := &driver{client: client, bucket: "bucket"}
+	if _, err := disk.CopyMoveFileContext(ctx, "file", "copy"); !errors.Is(err, storagecore.ErrUnsupported) {
+		t.Fatalf("Copy without ETag = %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		want error
+		call func() error
+	}{
+		{"delete file canceled", context.Canceled, func() error { return disk.DeleteMoveFileContext(canceled, "file", "revision") }},
+		{"delete file invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveFileContext(ctx, "../file", "revision") }},
+		{"delete file without ETag", storagecore.ErrForbidden, func() error { return disk.DeleteMoveFileContext(ctx, "file", "") }},
+		{"delete directory canceled", context.Canceled, func() error { return disk.DeleteMoveDirectoryContext(canceled, "dir") }},
+		{"delete directory invalid path", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "../dir") }},
+		{"delete directory root", storagecore.ErrForbidden, func() error { return disk.DeleteMoveDirectoryContext(ctx, "") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+		})
+	}
+	if len(client.copyInputs)+len(client.deleteInputs) != 0 {
+		t.Fatal("invalid guard reached a provider mutation")
+	}
+}

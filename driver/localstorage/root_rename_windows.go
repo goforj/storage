@@ -79,7 +79,9 @@ func renameAt(oldParent *os.File, oldName string, newParent *os.File, newName st
 // filesystems that do not implement extended POSIX rename semantics.
 func makeWindowsRenameBuffer(root windows.Handle, name []uint16) []byte {
 	var layout windowsFileRenameInformation
-	buffer := make([]byte, int(unsafe.Offsetof(layout.FileName))+len(name)*2)
+	// NT requires at least the padded structure size even for a one-character filename.
+	size := max(unsafe.Sizeof(layout), unsafe.Offsetof(layout.FileName)+uintptr(len(name)+1)*2)
+	buffer := make([]byte, size)
 	info := (*windowsFileRenameInformation)(unsafe.Pointer(&buffer[0]))
 	info.ReplaceIfExists = true
 	info.RootDirectory = root
@@ -92,7 +94,9 @@ func makeWindowsRenameBuffer(root windows.Handle, name []uint16) []byte {
 // existing destination is handled consistently with Unix atomic rename.
 func makeWindowsRenameBufferEx(root windows.Handle, name []uint16) []byte {
 	var layout windowsFileRenameInformationEx
-	buffer := make([]byte, int(unsafe.Offsetof(layout.FileName))+len(name)*2)
+	// NT requires at least the padded structure size even for a one-character filename.
+	size := max(unsafe.Sizeof(layout), unsafe.Offsetof(layout.FileName)+uintptr(len(name)+1)*2)
+	buffer := make([]byte, size)
 	info := (*windowsFileRenameInformationEx)(unsafe.Pointer(&buffer[0]))
 	info.Flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
 	info.RootDirectory = root
