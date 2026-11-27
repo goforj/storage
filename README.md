@@ -353,7 +353,11 @@ Notes:
 | S3 | Server-side copy preserves metadata. Moves check the source ETag. | Copy then revision-checked delete | Signed URL | MinIO and SDK fixtures |
 | GCS | Buffered copy. Server-side moves check the source generation. | Copy then revision-checked delete | Signed URL on GCS | GCS emulator |
 | Dropbox | Provider copy and move | Provider move | Temporary link | SDK fakes |
-| Rclone | Buffered copy and provider-dependent move | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
+| Rclone | Provider-native copy or streamed transfer | Copy then checked delete | Remote-dependent | Local contract and fake S3 tests |
+
+Rclone uses native copy when the remote supports it and streams the transfer
+otherwise. The remote determines which source metadata it preserves. The
+`Get` and `Put` methods still operate on whole byte slices.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process

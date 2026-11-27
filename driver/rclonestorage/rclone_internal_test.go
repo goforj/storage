@@ -1183,3 +1183,103 @@ func TestRcloneListingRejectsAliases(t *testing.T) {
 		t.Fatalf("Walk = %v", err)
 	}
 }
+
+// copyTrackingReader records source lifetime and can inject an error after the upload starts.
+type copyTrackingReader struct {
+	io.Reader
+	closed int
+}
+
+// Close records whether the transfer engine released the open source.
+func (r *copyTrackingReader) Close() error {
+	r.closed++
+	return nil
+}
+
+// TestRcloneCopyStreamsSource covers the manual transfer path without relying on a provider's native copy.
+func TestRcloneCopyStreamsSource(t *testing.T) {
+	const payload = "source data"
+	downloadErr := errors.New("download failed")
+	for _, test := range []struct {
+		name string
+		want error
+	}{
+		{"stream", nil},
+		{"read failure", downloadErr},
+		{"cancellation", context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fsys := newFakeFs()
+			disk := &driver{fs: fsys, prefix: "pre"}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ctx, config := fs.AddConfig(ctx)
+			config.BufferSize = 0
+			config.LowLevelRetries = 1
+			config.DryRun = true
+
+			data := strings.NewReader(payload)
+			source := &copyTrackingReader{Reader: data}
+			uploadStarted := false
+			fsys.newObjectFunc = func(_ context.Context, name string) (fs.Object, error) {
+				if name != "pre/source" {
+					t.Fatalf("source path = %q", name)
+				}
+				return &fakeObject{
+					fakeDirEntry: fakeDirEntry{remote: name, fsys: fsys, size: int64(len(payload))},
+					openRC:       source,
+				}, nil
+			}
+			fsys.putFunc = func(_ context.Context, body io.Reader, info fs.ObjectInfo, _ ...fs.OpenOption) (fs.Object, error) {
+				uploadStarted = true
+				if data.Len() != len(payload) || source.closed != 0 {
+					t.Fatalf("source consumed before upload: %d bytes left, %d closes", data.Len(), source.closed)
+				}
+				if info.Remote() != "pre/nested/copy" || info.Size() != int64(len(payload)) {
+					t.Fatalf("upload info = %q, %d bytes", info.Remote(), info.Size())
+				}
+				switch test.want {
+				case context.Canceled:
+					cancel()
+				case downloadErr:
+					source.Reader = errReadCloser{err: downloadErr}
+				}
+				got, err := io.ReadAll(body)
+				if err != nil {
+					return nil, err
+				}
+				if string(got) != payload {
+					t.Fatalf("copied data = %q", got)
+				}
+				return &fakeObject{fakeDirEntry: fakeDirEntry{remote: info.Remote(), fsys: fsys, size: int64(len(got))}}, nil
+			}
+			if err := disk.CopyContext(ctx, "source", "nested/copy"); !errors.Is(err, test.want) {
+				t.Fatalf("CopyContext = %v, want %v", err, test.want)
+			}
+			if !uploadStarted || source.closed != 1 {
+				t.Fatalf("upload started = %v, source closes = %d", uploadStarted, source.closed)
+			}
+		})
+	}
+}
+
+// TestRcloneCopyPreflight verifies that missing sources and rejected parents stop the transfer.
+func TestRcloneCopyPreflight(t *testing.T) {
+	fsys := newFakeFs()
+	disk := &driver{fs: fsys}
+	if err := disk.Copy("missing", "missing"); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("same-path missing source = %v", err)
+	}
+	fsys.newObjectFunc = func(_ context.Context, name string) (fs.Object, error) {
+		return &fakeObject{fakeDirEntry: fakeDirEntry{remote: name, fsys: fsys}}, nil
+	}
+	fsys.mkdirFunc = func(_ context.Context, name string) error {
+		if name != "nested" {
+			t.Fatalf("mkdir path = %q", name)
+		}
+		return fs.ErrorPermissionDenied
+	}
+	if err := disk.Copy("source", "nested/copy"); !errors.Is(err, storagecore.ErrForbidden) {
+		t.Fatalf("copy into forbidden parent = %v", err)
+	}
+}
