@@ -34,11 +34,12 @@ import (
 )
 
 const (
-	mib          int64 = 1 << 20
-	bucket             = "storage-transfer"
-	demoUser           = "storage"
-	demoPassword       = "storage-transfer"
-	loopback           = "127.0.0.1"
+	mib           int64 = 1 << 20
+	localBuffered       = "local-buffered"
+	bucket              = "storage-transfer"
+	demoUser            = "storage"
+	demoPassword        = "storage-transfer"
+	loopback            = "127.0.0.1"
 )
 
 var fixtureDrivers = []string{"local", "memory", "redis", "ftp", "sftp", "s3", "gcs", "rclone"}
@@ -72,7 +73,7 @@ func selectDrivers(selection string, hasDropbox bool) ([]string, error) {
 	selected := strings.Split(selection, ",")
 	for i, name := range selected {
 		name = strings.TrimSpace(name)
-		if !slices.Contains(fixtureDrivers, name) && name != "dropbox" {
+		if !slices.Contains(fixtureDrivers, name) && name != "dropbox" && name != localBuffered {
 			return nil, fmt.Errorf("unknown driver %q", name)
 		}
 		if name == "dropbox" && !hasDropbox {
@@ -109,7 +110,7 @@ func run(ctx context.Context, selection string, total, objectMiB int64, root str
 
 // runDriver builds the public disk and cleans up its resources after the last object.
 func runDriver(ctx context.Context, name string, total, objectSize int64, root, token string, stream bool) (err error) {
-	if name == "local" || name == "rclone" {
+	if name == "local" || name == localBuffered || name == "rclone" {
 		root, err = os.MkdirTemp(root, "storage-transfer-")
 		if err != nil {
 			return err
@@ -140,8 +141,8 @@ func runDriver(ctx context.Context, name string, total, objectSize int64, root, 
 // configuration uses the localhost Compose fixtures, plus optional live Dropbox credentials.
 func configuration(ctx context.Context, name, root, token string) (storage.DriverConfig, error) {
 	switch name {
-	case "local":
-		return localstorage.Config{Root: root}, nil
+	case "local", localBuffered:
+		return localstorage.Config{Root: root, BufferedWrites: name == localBuffered}, nil
 	case "memory":
 		return memorystorage.Config{}, nil
 	case "redis":

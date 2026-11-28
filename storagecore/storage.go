@@ -95,6 +95,9 @@ type ResolvedConfig struct {
 	RcloneConfigPath string
 	RcloneConfigData string
 
+	// LocalBufferedWrites lets the OS flush local writes asynchronously.
+	LocalBufferedWrites bool
+
 	S3Bucket          string
 	S3Endpoint        string
 	S3Region          string

@@ -78,6 +78,30 @@ throughput. Download timing includes checksum verification. Each run uses
 unique object names. On interruption the runner attempts to delete the
 current object before exiting.
 
+### Buffered local writes versus Rclone
+
+On the same ext4 NVMe volume, we ran each mode three times in rotating order.
+Each run uploaded and verified 4 GB with 32 MiB objects, deleting each object
+after verification. Buffered native writes finished within 1% of Rclone
+end to end.
+
+| Mode | Median upload | Median elapsed |
+| --- | ---: | ---: |
+| Native local, sync before rename | 1,603 MiB/s | 7.35 s |
+| Native local, buffered | 3,626 MiB/s | 5.97 s |
+| Rclone local remote | 3,796 MiB/s | 5.92 s |
+
+Run the three modes in sequence on the same filesystem. The
+`local-buffered` selector enables `localstorage.Config.BufferedWrites`.
+It still stages and atomically replaces files, with the OS flushing data
+asynchronously. Checksum verification confirms that readback matched what
+was written. A system crash can still lose a buffered write.
+
+```sh
+go run ./examples/transfer -driver local,local-buffered,rclone \
+  -bytes 4000000000 -scratch /path/to/test-volume
+```
+
 ## Dropbox
 
 The Docker run skips Dropbox. For a live Dropbox test, set `STORAGE_TRANSFER_DROPBOX_TOKEN` in the
