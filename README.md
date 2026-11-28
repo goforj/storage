@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  One Go API for local files, S3, SFTP, and more.
+  A fast, ergonomic, multi-driver storage library for Go.
 </p>
 
 <p align="center">
@@ -187,6 +187,13 @@ disk setup. If you call a driver's `New(cfg)` directly, use
 `storagecore.ContextStorage` for its context-aware operations.
 
 </details>
+
+### Buffered local writes
+
+Set `localstorage.Config.BufferedWrites` for scratch files, caches, or other
+data you can recreate. `Put` and `Copy` still replace files atomically. The
+default syncs file data before replacement. Buffered mode lets the OS flush
+it later, so a crash can lose a write that already returned successfully.
 
 ### Streaming objects
 
@@ -995,8 +1002,9 @@ _Example: define local storage config with all fields_
 
 ```go
 cfg := localstorage.Config{
-	Root:   "/tmp/storage-local",
-	Prefix: "sandbox", // default: ""
+	Root:           "/tmp/storage-local",
+	Prefix:         "sandbox", // default: ""
+	BufferedWrites: true,      // default: false
 }
 ```
 

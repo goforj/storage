@@ -12,32 +12,34 @@ On November 27, 2026, Go 1.27.0 on Linux amd64 verified **100 GB uploaded and
 100 GB downloaded per fixture** across eight fixtures. Each object was verified
 with SHA-256. Objects were up to 32 MiB. SFTP, S3, and GCS used four concurrent
 25 GB clients each. Elapsed time is the slowest client for a sharded fixture.
-The runs shared an Intel Core i7-12700 host and overlapped.
+The runs shared an Intel Core i7-12700 host and overlapped. Elapsed time includes
+upload, readback, checksum verification, and deletion, using each driver's
+default write behavior.
 
 | Driver | Fixture | Clients | Verified objects | Elapsed |
 | --- | --- | ---: | ---: | ---: |
-| local | Local filesystem | 1 | 2,981 | 6m 28s |
+| local | Local filesystem, sync before atomic rename | 1 | 2,981 | 6m 28s |
 | memory | In-process memory | 1 | 2,981 | 2m 26s |
 | redis | Redis 7.4 | 1 | 2,981 | 6m 00s |
 | ftp | vsftpd | 1 | 2,981 | 5m 55s |
 | sftp | OpenSSH | 4 | 2,984 | 6m 25s |
 | s3 | RustFS 1.0.6, streaming | 4 | 2,984 | 7m 11s |
 | gcs | fake-gcs-server 1.56.1 | 4 | 2,984 | 9m 12s |
-| rclone | Rclone local remote | 1 | 2,981 | 4m 09s |
+| rclone | Rclone local remote, buffered writes | 1 | 2,981 | 4m 09s |
 
 Dropbox requires a live account and was skipped in this run.
 
-### Local write timing
+<a id="local-write-timing"></a>
 
-The local driver syncs each file before atomically replacing the target.
-Rclone's local `Put` uses buffered writes to the target. This transfer test
-reads and deletes each object immediately, which favors writes that can stay
-in the OS cache.
+### Local uploads with matched write guarantees
 
-In a follow-up on the same ext4 disk, a test wrapper staged Rclone's writes,
-synced each file, and renamed it into place. Over three 2 GB runs using 32 MiB
-objects, median upload speed was 1,594 MiB/s for local and 1,643 MiB/s for
-Rclone with those steps.
+The round trip above reads and deletes each object immediately, which favors
+buffered writes that can stay in the OS cache.
+
+In a follow-up on the same ext4 disk, median upload speed was **1,594 MiB/s**
+for local and **1,643 MiB/s** for Rclone, a difference of about 3%. The Rclone
+test wrapper staged, synced, and renamed each write to match the local driver.
+These medians come from three 2 GB upload runs using 32 MiB objects.
 
 A separate ext4 backup prototype retained eight 128 MiB files, verified every
 checksum, and synced the files and directories before reporting success.
@@ -75,6 +77,30 @@ The runner prints verified bytes, elapsed time, and upload and download
 throughput. Download timing includes checksum verification. Each run uses
 unique object names. On interruption the runner attempts to delete the
 current object before exiting.
+
+### Buffered local writes versus Rclone
+
+On the same ext4 NVMe volume, we ran each mode three times in rotating order.
+Each run uploaded and verified 4 GB with 32 MiB objects, deleting each object
+after verification. Buffered native writes finished within 1% of Rclone
+end to end.
+
+| Mode | Median upload | Median elapsed |
+| --- | ---: | ---: |
+| Native local, sync before rename | 1,603 MiB/s | 7.35 s |
+| Native local, buffered | 3,626 MiB/s | 5.97 s |
+| Rclone local remote | 3,796 MiB/s | 5.92 s |
+
+Run the three modes in sequence on the same filesystem. The
+`local-buffered` selector enables `localstorage.Config.BufferedWrites`.
+It still stages and atomically replaces files, with the OS flushing data
+asynchronously. Checksum verification confirms that readback matched what
+was written. A system crash can still lose a buffered write.
+
+```sh
+go run ./examples/transfer -driver local,local-buffered,rclone \
+  -bytes 4000000000 -scratch /path/to/test-volume
+```
 
 ## Dropbox
 

@@ -21,6 +21,7 @@ func TestSelectDrivers(t *testing.T) {
 	}{
 		{selection: "all", token: true, want: fixtureDrivers},
 		{selection: "local, memory", want: []string{"local", "memory"}},
+		{selection: "local-buffered", want: []string{"local-buffered"}},
 		{selection: "dropbox", token: true, want: []string{"dropbox"}},
 		{selection: "dropbox", message: "requires STORAGE_TRANSFER_DROPBOX_TOKEN"},
 		{selection: "unknown", message: "unknown driver"},
@@ -110,5 +111,20 @@ func TestTransferVerifiesAndCleansUp(t *testing.T) {
 				t.Fatalf("cleanup left object behind: %v", err)
 			}
 		})
+	}
+}
+
+// TestRunBufferedLocal exercises the buffered variant through the public registry.
+func TestRunBufferedLocal(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := configuration(context.Background(), "local-buffered", root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ResolvedConfig().LocalBufferedWrites {
+		t.Fatal("local-buffered did not enable buffered writes")
+	}
+	if err := run(context.Background(), "local-buffered", 32, 1, root, false); err != nil {
+		t.Fatal(err)
 	}
 }
