@@ -1,0 +1,39 @@
+name: storage-transfer
+
+services:
+  redis:
+    image: redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:16379:6379"
+
+  ftp:
+    image: delfer/alpine-ftp-server@sha256:b27013e7436cea343826ba7edb77aa3a8b2d22df14e366b82d10a3b0b5ecc880
+    ports:
+      - "127.0.0.1:12121:21"
+      - "127.0.0.1:21000-21010:21000-21010"
+    environment:
+      USERS: "storage|storage-transfer"
+      ADDRESS: "127.0.0.1"
+
+  sftp:
+    image: atmoz/sftp@sha256:0960390462a4441dbb63698d7c185b76a41ffcee7b78ff4adf275f3e66f9c475
+    command: ["storage:storage-transfer:::upload"]
+    ports:
+      - "127.0.0.1:12222:22"
+
+  s3:
+    image: rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    command: ["/data"]
+    ports:
+      - "127.0.0.1:19090:9000"
+    environment:
+      RUSTFS_ACCESS_KEY: storage
+      RUSTFS_SECRET_KEY: storage-transfer
+      RUSTFS_CONSOLE_ENABLE: "false"
+
+  gcs:
+    image: fsouza/fake-gcs-server:1.56.1@sha256:797ce226d62f947c009dc40246b30cfb456b8473d8241407f9d6f2c04e4d69ef
+    command: ["-scheme", "http", "-backend", "filesystem", "-external-url", "http://127.0.0.1:14443", "-public-host", "127.0.0.1:14443"]
+    ports:
+      - "127.0.0.1:14443:4443"

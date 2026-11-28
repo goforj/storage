@@ -1403,6 +1403,9 @@ go run ./docs/readme/main.go      # Regenerate the API reference
 make docs-watch                   # Regenerate docs and examples as code changes
 ```
 
+Run the [100 GB transfer test](examples/transfer/README.md) to verify sustained
+uploads and downloads across the driver fixtures.
+
 Run `go test ./...` in each driver module you change. See `make help` for all
 targets, the [test plan](TEST_PLAN.md) for fixture details, and the
 [release runbook](scripts/RELEASE.md) for publishing.
