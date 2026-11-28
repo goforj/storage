@@ -66,30 +66,6 @@ func main() {
 }
 ```
 
-### Run a backup locally and on S3
-
-From this repository with Go 1.26+, run the same job against a local folder
-and S3-compatible MinIO. The `backups` disk config picks the backend.
-
-```sh
-go run ./examples/backup
-docker compose -f examples/backup/compose.yaml up -d --build
-go run ./examples/backup -backend minio
-```
-
-Both runs save, list, and restore the same snapshot.
-
-```text
-Saved: snapshots/config.json
-Found: snapshots/config.json
-Restored: {"site":"example","version":1}
-```
-
-Docker builds the MinIO fixture on the first run. Stop it with
-`docker compose -f examples/backup/compose.yaml down`.
-
-[Demo source](examples/backup/main.go) · [GoForj backup adapter](https://github.com/goforj/goforj/blob/main/internal/backup/remote_storage.go)
-
 ## Driver Matrix
 
 Install the driver modules you use. Each driver has its own dependencies and
@@ -102,7 +78,7 @@ minimum Go version.
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/redisstorage"><img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"></a> | Small blobs shared across processes |
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/ftpstorage"><img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"></a> | Existing FTP servers |
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/sftpstorage"><img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"></a> | File transfers over SSH |
-| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/s3storage"><img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"></a> | Amazon S3 and S3-compatible stores such as MinIO |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/s3storage"><img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"></a> | Amazon S3 and compatible stores such as RustFS |
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/gcsstorage"><img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"></a> | Google Cloud Storage buckets |
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/dropboxstorage"><img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"></a> | Dropbox files and temporary access links |
 | <a href="https://pkg.go.dev/github.com/goforj/storage/driver/rclonestorage"><img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"></a> | Any [Rclone remote](https://rclone.org/overview/), subject to its capabilities |
@@ -186,7 +162,7 @@ go get github.com/goforj/storage github.com/goforj/storage/driver/s3storage
 | When you need | Use |
 | --- | --- |
 | One disk | [`storage.Build(cfg)`](#build) |
-| Several named disks | [`storage.New(cfg)`](#new) and [`manager.Disk(name)`](#manager-disk). See the [backup demo](examples/backup/main.go). |
+| Several named disks | [`storage.New(cfg)`](#new) and [`manager.Disk(name)`](#manager-disk). See the [backup example](examples/backup/README.md). |
 | Cancellation or a deadline for disk operations | [`disk.WithContext(ctx)`](#storage-withcontext) |
 
 At shutdown, call [`manager.Close()`](#manager-close). Close standalone disks that implement `io.Closer`.
@@ -501,7 +477,7 @@ PrepareBucketContext creates a missing bucket using the same configuration and c
 Existing buckets are unchanged. Permission failures never trigger a creation attempt.
 
 ```go
-// Start the backup demo's MinIO container before running this example.
+// Start the backup demo's RustFS container before running this example.
 ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 defer cancel()
 
@@ -1402,7 +1378,7 @@ Objects returns a driver's streaming object capability. Each streaming call
 takes its own context. Unsupported drivers return ErrUnsupported.
 
 ```go
-// Run the MinIO backup demo first to create the bucket.
+// Run the RustFS backup demo first to create the bucket.
 ctx := context.Background()
 disk, err := storage.Build(s3storage.Config{
 	Bucket:          "storage-demo",

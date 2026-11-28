@@ -17,8 +17,8 @@ func main() {
 	// Objects returns a driver's streaming object capability. Each streaming call
 	// takes its own context. Unsupported drivers return ErrUnsupported.
 
-	// Example: stream an upload into the MinIO bucket from the backup demo
-	// Run the MinIO backup demo first to create the bucket.
+	// Example: stream an upload into the RustFS bucket from the backup demo
+	// Run the RustFS backup demo first to create the bucket.
 	ctx := context.Background()
 	disk, err := storage.Build(s3storage.Config{
 		Bucket:          "storage-demo",

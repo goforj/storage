@@ -6,9 +6,9 @@ import "github.com/goforj/storage/storagecore"
 // takes its own context. Unsupported drivers return ErrUnsupported.
 // @group Streaming
 //
-// Example: stream an upload into the MinIO bucket from the backup demo
+// Example: stream an upload into the RustFS bucket from the backup demo
 //
-//	// Run the MinIO backup demo first to create the bucket.
+//	// Run the RustFS backup demo first to create the bucket.
 //	ctx := context.Background()
 //	disk, err := storage.Build(s3storage.Config{
 //		Bucket:          "storage-demo",

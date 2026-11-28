@@ -15,8 +15,8 @@ func main() {
 	// PrepareBucketContext creates a missing bucket using the same configuration and credentials as the driver.
 	// Existing buckets are unchanged. Permission failures never trigger a creation attempt.
 
-	// Example: prepare a bucket on the MinIO instance from the backup demo
-	// Start the backup demo's MinIO container before running this example.
+	// Example: prepare a bucket on the RustFS instance from the backup demo
+	// Start the backup demo's RustFS container before running this example.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

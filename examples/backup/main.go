@@ -1,4 +1,4 @@
-// Command backup demonstrates the same backup job on a local disk and MinIO.
+// Command backup demonstrates the same backup job on a local disk and RustFS.
 package main
 
 import (
@@ -16,7 +16,7 @@ import (
 
 // main selects the disk and gives the demo a deadline for bucket setup and storage operations.
 func main() {
-	backend := flag.String("backend", "local", "backup backend (local or minio)")
+	backend := flag.String("backend", "local", "backup backend (local or rustfs)")
 	root := flag.String("root", "./tmp/backup-demo", "local backup directory")
 	flag.Parse()
 
@@ -33,8 +33,8 @@ func run(ctx context.Context, backend, root string) (err error) {
 	var cfg storage.DriverConfig = localstorage.Config{Root: root}
 	switch backend {
 	case "local":
-	case "minio":
-		minio := s3storage.Config{
+	case "rustfs":
+		s3 := s3storage.Config{
 			Bucket:          "storage-demo",
 			Region:          "us-east-1",
 			Endpoint:        "http://127.0.0.1:19000",
@@ -42,12 +42,12 @@ func run(ctx context.Context, backend, root string) (err error) {
 			SecretAccessKey: "storage-demo-password",
 			UsePathStyle:    true,
 		}
-		if err := s3storage.PrepareBucketContext(ctx, minio); err != nil {
+		if err := s3storage.PrepareBucketContext(ctx, s3); err != nil {
 			return err
 		}
-		cfg = minio
+		cfg = s3
 	default:
-		return fmt.Errorf("unknown backend %q, choose local or minio", backend)
+		return fmt.Errorf("unknown backend %q, choose local or rustfs", backend)
 	}
 
 	manager, err := storage.New(storage.Config{

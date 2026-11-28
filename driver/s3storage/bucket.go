@@ -22,9 +22,9 @@ type bucketAPI interface {
 // Existing buckets are unchanged. Permission failures never trigger a creation attempt.
 // @group Construction
 //
-// Example: prepare a bucket on the MinIO instance from the backup demo
+// Example: prepare a bucket on the RustFS instance from the backup demo
 //
-//	// Start the backup demo's MinIO container before running this example.
+//	// Start the backup demo's RustFS container before running this example.
 //	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 //	defer cancel()
 //
