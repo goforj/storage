@@ -71,26 +71,11 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 	})
 
 	t.Run("new from disk success and failures", func(t *testing.T) {
-		origDial := sshDial
-		origNewClient := newSFTPClient
-		origCloseSSHClient := closeSSHClient
-		t.Cleanup(func() {
-			sshDial = origDial
-			newSFTPClient = origNewClient
-			closeSSHClient = origCloseSSHClient
-		})
-		closeSSHClient = func(*ssh.Client) error { return nil }
-
-		sshDial = func(network, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		original := connectSFTP
+		t.Cleanup(func() { connectSFTP = original })
+		connectSFTP = func(_ context.Context, addr string, _ *ssh.ClientConfig) (sftpClient, error) {
 			if addr == "bad:22" {
 				return nil, errors.New("dial boom")
-			}
-			return &ssh.Client{}, nil
-		}
-
-		newSFTPClient = func(client *ssh.Client) (sftpClient, error) {
-			if client == nil {
-				return nil, errors.New("nil client")
 			}
 			return &fakeSFTPClient{}, nil
 		}
@@ -113,16 +98,6 @@ func TestSFTPConstructorsAndAuth(t *testing.T) {
 			t.Fatal("newFromDiskConfig dial returned nil error")
 		}
 
-		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return nil, errors.New("client boom") }
-		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
-			SFTPHost:                  "good",
-			SFTPPassword:              "secret",
-			SFTPInsecureIgnoreHostKey: true,
-		}); err == nil {
-			t.Fatal("newFromDiskConfig client returned nil error")
-		}
-
-		newSFTPClient = func(*ssh.Client) (sftpClient, error) { return &fakeSFTPClient{}, nil }
 		if _, err := newFromDiskConfig(context.Background(), storagecore.ResolvedConfig{
 			SFTPHost:                  "good",
 			SFTPPassword:              "secret",

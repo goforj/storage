@@ -25,16 +25,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
-var sshDial = ssh.Dial
-var closeSSHClient = func(client *ssh.Client) error { return client.Close() }
-
-var newSFTPClient = func(sshClient *ssh.Client) (sftpClient, error) {
-	client, err := sftp.NewClient(sshClient)
-	if err != nil {
-		return nil, err
-	}
-	return &realSFTPClient{client: client, sshClient: sshClient}, nil
-}
+var connectSFTP = openSFTPClient
 
 // init registers package integration before callers construct storage.
 func init() {
@@ -185,19 +176,42 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	}
 
 	addr := net.JoinHostPort(cfg.SFTPHost, strconv.Itoa(port))
-	sshClient, err := sshDial("tcp", addr, sshCfg)
+	client, err := connectSFTP(ctx, addr, sshCfg)
 	if err != nil {
-		return nil, fmt.Errorf("storage: sftp dial: %w", err)
-	}
-	client, err := newSFTPClient(sshClient)
-	if err != nil {
-		return nil, joinCleanup(fmt.Errorf("storage: sftp client: %w", err), closeSSHClient(sshClient))
+		return nil, err
 	}
 
 	return &driver{
 		client: client,
 		prefix: prefix,
 	}, nil
+}
+
+// openSFTPClient limits dialing, SSH negotiation, and SFTP startup to the setup context.
+func openSFTPClient(ctx context.Context, addr string, cfg *ssh.ClientConfig) (sftpClient, error) {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("storage: sftp dial: %w", errors.Join(err, ctx.Err()))
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+
+	transport, channels, requests, err := ssh.NewClientConn(conn, addr, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("storage: sftp handshake: %w", errors.Join(err, ctx.Err()))
+	}
+	sshClient := ssh.NewClient(transport, channels, requests)
+	client, err := sftp.NewClient(sshClient)
+	// Detach the connection before returning it for operations with their own contexts.
+	stop()
+	if err := errors.Join(err, ctx.Err()); err != nil {
+		return nil, joinCleanup(fmt.Errorf("storage: sftp client: %w", err), sshClient.Close())
+	}
+	return &realSFTPClient{client: client, sshClient: sshClient}, nil
 }
 
 // buildAuth assembles password and private-key methods and rejects anonymous SFTP access.
@@ -890,21 +904,18 @@ func (c *realSFTPClient) ReadDir(path string) ([]os.FileInfo, error) {
 	return c.client.ReadDir(path)
 }
 
-// Close releases both SFTP and owning SSH clients once while retaining all failures.
+// Close stops the SSH transport before waiting for the SFTP receive loop to exit.
 func (c *realSFTPClient) Close() error {
 	c.closeOnce.Do(func() {
-		var errs []error
-		if c.client != nil {
-			if err := c.client.Close(); err != nil {
-				errs = append(errs, err)
-			}
-		}
 		if c.sshClient != nil {
-			if err := c.sshClient.Close(); err != nil {
-				errs = append(errs, err)
+			c.closeErr = c.sshClient.Close()
+		}
+		if c.client != nil {
+			err := c.client.Close()
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				c.closeErr = errors.Join(c.closeErr, err)
 			}
 		}
-		c.closeErr = errors.Join(errs...)
 	})
 	return c.closeErr
 }
