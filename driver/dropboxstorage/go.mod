@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.4
-	github.com/goforj/storage/storagecore v0.10.0
+	github.com/goforj/storage/storagecore v0.11.0
 )
 
 require golang.org/x/oauth2 v0.38.0 // indirect
