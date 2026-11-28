@@ -3,11 +3,14 @@ package sftpstorage
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/goforj/storage/storagecore"
+	"github.com/pkg/sftp"
 )
 
 const (
@@ -167,8 +170,9 @@ func runSFTP[T any](ctx context.Context, d *driver, run func(*driver) (T, error)
 		if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
 			err = joinCleanup(ctx.Err(), err)
 		}
-		reusable := stopped && ctx.Err() == nil && (err == nil || errors.Is(err, storagecore.ErrNotFound) || errors.Is(err, storagecore.ErrForbidden))
-		d.sessions.release(client, reusable && temporary == "")
+		reusable := err == nil || (!sftpConnectionLost(err) &&
+			(errors.Is(err, storagecore.ErrNotFound) || errors.Is(err, storagecore.ErrForbidden)))
+		d.sessions.release(client, reusable && stopped && ctx.Err() == nil && temporary == "")
 		if temporary != "" {
 			cleanupErr := wrapError(d.sessions.removeTemporary(ctx, temporary))
 			if !errors.Is(cleanupErr, storagecore.ErrNotFound) {
@@ -181,6 +185,22 @@ func runSFTP[T any](ctx context.Context, d *driver, run func(*driver) (T, error)
 		temporary = path
 		return nil
 	}})
+}
+
+// runSFTPRead retries once after transport loss, before returning any read results to the caller.
+func runSFTPRead[T any](ctx context.Context, d *driver, run func(*driver) (T, error)) (T, error) {
+	ctx = normalizeContext(ctx)
+	result, err := runSFTP(ctx, d, run)
+	if err == nil || ctx.Err() != nil || !sftpConnectionLost(err) {
+		return result, err
+	}
+	return runSFTP(ctx, d, run)
+}
+
+// sftpConnectionLost recognizes both SFTP receive failures and SSH writes racing with a disconnect.
+func sftpConnectionLost(err error) bool {
+	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed)
 }
 
 // runSFTPCommand leases a transport for operations that only return an error.

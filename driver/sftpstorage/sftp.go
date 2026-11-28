@@ -264,7 +264,7 @@ func (d *driver) Get(p string) ([]byte, error) {
 // GetContext reads one remote file and preserves both transfer and close failures.
 func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) ([]byte, error) {
+		return runSFTPRead(ctx, d, func(session *driver) ([]byte, error) {
 			return session.GetContext(ctx, p)
 		})
 	}
@@ -462,7 +462,7 @@ func (d *driver) Stat(p string) (storagecore.Entry, error) {
 // StatContext converts remote file metadata to the storage entry contract.
 func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) (storagecore.Entry, error) {
+		return runSFTPRead(ctx, d, func(session *driver) (storagecore.Entry, error) {
 			return session.StatContext(ctx, p)
 		})
 	}
@@ -499,7 +499,7 @@ func (d *driver) Exists(p string) (bool, error) {
 // ExistsContext reports concrete files while treating directories and missing paths as absent.
 func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) (bool, error) {
+		return runSFTPRead(ctx, d, func(session *driver) (bool, error) {
 			return session.ExistsContext(ctx, p)
 		})
 	}
@@ -543,7 +543,7 @@ func (d *driver) ListPage(p string, offset, limit int) (storagecore.ListPageResu
 // ListContext returns sorted immediate remote children with directory sizes normalized to zero.
 func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) ([]storagecore.Entry, error) {
+		return runSFTPRead(ctx, d, func(session *driver) ([]storagecore.Entry, error) {
 			return session.ListContext(ctx, p)
 		})
 	}
@@ -812,7 +812,7 @@ func (d *driver) discardTemporary(ctx context.Context, name string, writer io.Cl
 // walkStat releases the session before a walk can invoke user code.
 func (d *driver) walkStat(ctx context.Context, name string) (os.FileInfo, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) (os.FileInfo, error) {
+		return runSFTPRead(ctx, d, func(session *driver) (os.FileInfo, error) {
 			return session.walkStat(ctx, name)
 		})
 	}
@@ -823,7 +823,7 @@ func (d *driver) walkStat(ctx context.Context, name string) (os.FileInfo, error)
 // walkReadDir borrows only for directory I/O so callbacks can use the same disk.
 func (d *driver) walkReadDir(ctx context.Context, name string) ([]os.FileInfo, error) {
 	if d.sessions != nil {
-		return runSFTP(ctx, d, func(session *driver) ([]os.FileInfo, error) {
+		return runSFTPRead(ctx, d, func(session *driver) ([]os.FileInfo, error) {
 			return session.walkReadDir(ctx, name)
 		})
 	}

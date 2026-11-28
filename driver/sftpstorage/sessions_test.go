@@ -3,7 +3,9 @@ package sftpstorage
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -335,5 +337,59 @@ func testSFTPFailedWriteCleanup(t *testing.T, cleanupErr error) {
 	}
 	if len(cleanup.removePaths) != 1 || cleanup.removePaths[0] != failed.openFilePath {
 		t.Fatalf("cleanup removed %v, expected %q", cleanup.removePaths, failed.openFilePath)
+	}
+}
+
+// TestSFTPReadRecoveryIsBounded verifies retryable errors, non-retryable errors, and cancellation.
+func TestSFTPReadRecoveryIsBounded(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		first       error
+		cancel      bool
+		wantRetries int
+		want        error
+	}{
+		{"connection lost", sftp.ErrSSHFxConnectionLost, false, 1, sftp.ErrSSHFxConnectionLost},
+		{"SSH channel closed", io.EOF, false, 1, sftp.ErrSSHFxConnectionLost},
+		{"partial SSH packet", io.ErrUnexpectedEOF, false, 1, sftp.ErrSSHFxConnectionLost},
+		{"closed socket", net.ErrClosed, false, 1, sftp.ErrSSHFxConnectionLost},
+		{"operation error", fs.ErrPermission, false, 0, fs.ErrPermission},
+		{"caller canceled", sftp.ErrSSHFxConnectionLost, true, 0, context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			first := &fakeSFTPClient{openErr: test.first}
+			if test.cancel {
+				first.openHook = cancel
+			}
+			var dials int
+			sessions := newSFTPSessions(first, func(context.Context) (sftpClient, error) {
+				dials++
+				return &fakeSFTPClient{openErr: sftp.ErrSSHFxConnectionLost}, nil
+			})
+			d := &driver{sessions: sessions}
+			defer d.Close()
+
+			_, err := d.GetContext(ctx, "file")
+			if !errors.Is(err, test.want) || dials != test.wantRetries {
+				t.Fatalf("Get = %v after %d replacement dials, want %v and %d", err, dials, test.want, test.wantRetries)
+			}
+		})
+	}
+}
+
+// TestSFTPPutDoesNotRetryTransportLoss verifies writes never use the read retry path.
+func TestSFTPPutDoesNotRetryTransportLoss(t *testing.T) {
+	lost := sftp.ErrSSHFxConnectionLost
+	sessions := newSFTPSessions(&fakeSFTPClient{mkdirErr: lost}, func(context.Context) (sftpClient, error) {
+		t.Error("Put attempted to open a replacement transport")
+		return &fakeSFTPClient{}, nil
+	})
+	d := &driver{sessions: sessions}
+	defer d.Close()
+
+	if err := d.Put("file", []byte("payload")); !errors.Is(err, lost) {
+		t.Fatalf("Put = %v, want connection lost", err)
 	}
 }

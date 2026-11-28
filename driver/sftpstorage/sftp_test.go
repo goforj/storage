@@ -46,7 +46,8 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ln.Close() })
 
-	go acceptLoop(ln, serverConfig, func(channel ssh.Channel) {
+	accepted := make(chan net.Conn, 2*maxSFTPSessions)
+	go acceptLoop(sftpTrackedListener{Listener: ln, accepted: accepted}, serverConfig, func(channel ssh.Channel) {
 		defer channel.Close()
 		server, err := sftp.NewServer(channel, sftp.WithServerWorkingDirectory(root))
 		if err == nil {
@@ -81,12 +82,121 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("Get = %q", got)
 	}
 
-	exerciseSharedSFTPDisk(t, fs.(storagecore.ContextStorage))
+	contextDisk := fs.(storagecore.ContextStorage)
+	exerciseSFTPIdleRecovery(t, contextDisk, accepted)
+	exerciseSharedSFTPDisk(t, contextDisk)
 
 	// The embedded server leaves the channel open when it finishes serving.
 	if err := fs.(io.Closer).Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
+}
+
+type sftpTrackedListener struct {
+	net.Listener
+	accepted chan<- net.Conn
+}
+
+// Accept records each server-side transport so the test can simulate an idle disconnect.
+func (l sftpTrackedListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.accepted <- conn
+	}
+	return conn, err
+}
+
+// exerciseSFTPIdleRecovery drops the current SSH connection before each kind of buffered read.
+func exerciseSFTPIdleRecovery(t *testing.T, disk storagecore.ContextStorage, accepted <-chan net.Conn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	reads := []struct {
+		name string
+		run  func() error
+	}{
+		{"get", func() error {
+			got, err := disk.GetContext(ctx, "hello.txt")
+			if err == nil && string(got) != "sftp" {
+				return fmt.Errorf("read %q, want sftp", got)
+			}
+			return err
+		}},
+		{"stat", func() error {
+			entry, err := disk.StatContext(ctx, "hello.txt")
+			if err == nil && (entry.Path != "hello.txt" || entry.Size != 4) {
+				return fmt.Errorf("unexpected entry: %+v", entry)
+			}
+			return err
+		}},
+		{"exists", func() error {
+			exists, err := disk.ExistsContext(ctx, "hello.txt")
+			if err == nil && !exists {
+				return errors.New("file reported missing")
+			}
+			return err
+		}},
+		{"list", func() error {
+			entries, err := disk.ListContext(ctx, "")
+			if err == nil && (len(entries) != 1 || entries[0].Path != "hello.txt") {
+				return fmt.Errorf("unexpected entries: %+v", entries)
+			}
+			return err
+		}},
+		{"walk", func() error {
+			var paths []string
+			err := disk.WalkContext(ctx, "", func(entry storagecore.Entry) error {
+				paths = append(paths, entry.Path)
+				return nil
+			})
+			if err == nil && (len(paths) != 1 || paths[0] != "hello.txt") {
+				return fmt.Errorf("unexpected callbacks: %v", paths)
+			}
+			return err
+		}},
+	}
+	for _, read := range reads {
+		select {
+		case conn := <-accepted:
+			if err := conn.Close(); err != nil {
+				t.Fatalf("%s disconnect: %v", read.name, err)
+			}
+		case <-ctx.Done():
+			t.Fatalf("%s did not have a connection to drop: %v", read.name, ctx.Err())
+		}
+		if err := read.run(); err != nil {
+			t.Fatalf("%s did not recover from an idle disconnect: %v", read.name, err)
+		}
+	}
+
+	if err := disk.PutContext(ctx, "nested/file", []byte("sftp")); err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	err := disk.WalkContext(ctx, "", func(entry storagecore.Entry) error {
+		paths = append(paths, entry.Path)
+		if entry.Path == "nested" {
+			// The directory callback has already run when the next read loses its transport.
+			select {
+			case conn := <-accepted:
+				return conn.Close()
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return nil
+	})
+	if err != nil || strings.Join(paths, ",") != "hello.txt,nested,nested/file" {
+		t.Fatalf("walk after mid-traversal disconnect = %v, %v", paths, err)
+	}
+	if err := disk.DeleteContext(ctx, "nested/file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.DeleteContext(ctx, "nested"); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 // exerciseSharedSFTPDisk uses one SSH-backed disk from overlapping walks, reads, and writes.
