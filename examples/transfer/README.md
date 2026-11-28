@@ -6,6 +6,27 @@ that object before writing the next one. The default object size is 32 MiB.
 The test exercises sustained transfer without requiring 100 GB of storage
 capacity at once. It uses multiple objects and verifies them individually.
 
+## Recorded run
+
+On November 27, 2026, Go 1.27.0 on Linux amd64 verified **100 GB uploaded and
+100 GB downloaded per fixture** across eight fixtures. Each object was verified
+with SHA-256. Objects were up to 32 MiB. SFTP, S3, and GCS used four concurrent
+25 GB clients each. Elapsed time is the slowest client for a sharded fixture.
+The runs shared an Intel Core i7-12700 host and overlapped.
+
+| Driver | Fixture | Clients | Verified objects | Elapsed |
+| --- | --- | ---: | ---: | ---: |
+| local | Local filesystem | 1 | 2,981 | 6m 28s |
+| memory | In-process memory | 1 | 2,981 | 2m 26s |
+| redis | Redis 7.4 | 1 | 2,981 | 6m 00s |
+| ftp | vsftpd | 1 | 2,981 | 5m 55s |
+| sftp | OpenSSH | 4 | 2,984 | 6m 25s |
+| s3 | RustFS 1.0.6, streaming | 4 | 2,984 | 7m 11s |
+| gcs | fake-gcs-server 1.56.1 | 4 | 2,984 | 9m 12s |
+| rclone | Rclone local remote | 1 | 2,981 | 4m 09s |
+
+Dropbox requires a live account and was skipped in this run.
+
 ## Run the fixtures
 
 From the repository root with Go 1.26 or newer and Docker Compose:

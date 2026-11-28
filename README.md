@@ -216,6 +216,10 @@ Reading an 8 MiB object from MinIO with the S3 streaming API allocated about
 [benchmark results](docs/bench/README.md) for copy timings, the local Rclone
 tradeoff, and how to reproduce the measurements.
 
+The [100 GB transfer run](examples/transfer/README.md#recorded-run) verified
+100 GB in each direction per fixture across eight fixtures, with a SHA-256
+check on every object.
+
 <!-- bench:embed:start -->
 
 **8 MiB copy on local benchmark fixtures**
@@ -1402,9 +1406,6 @@ make test-coverage                # Generate combined coverage
 go run ./docs/readme/main.go      # Regenerate the API reference
 make docs-watch                   # Regenerate docs and examples as code changes
 ```
-
-Run the [100 GB transfer test](examples/transfer/README.md) to verify sustained
-uploads and downloads across the driver fixtures.
 
 Run `go test ./...` in each driver module you change. See `make help` for all
 targets, the [test plan](TEST_PLAN.md) for fixture details, and the
