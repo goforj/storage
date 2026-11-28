@@ -27,8 +27,9 @@ func init() {
 }
 
 type driver struct {
-	root   string
-	prefix string
+	root           string
+	prefix         string
+	bufferedWrites bool
 }
 
 // Config defines local storage rooted at a filesystem path.
@@ -45,13 +46,19 @@ type driver struct {
 // Example: define local storage config with all fields
 //
 //	cfg := localstorage.Config{
-//		Root:   "/tmp/storage-local",
-//		Prefix: "sandbox", // default: ""
+//		Root:           "/tmp/storage-local",
+//		Prefix:         "sandbox", // default: ""
+//		BufferedWrites: true,      // default: false
 //	}
 //	_ = cfg
 type Config struct {
 	Root   string
 	Prefix string
+
+	// BufferedWrites lets the OS flush Put and Copy data asynchronously.
+	// Writes still replace the destination atomically. A system crash can lose
+	// writes that have returned successfully.
+	BufferedWrites bool
 }
 
 // DriverName returns the registry name for local storage.
@@ -75,9 +82,10 @@ func (Config) DriverName() string { return "local" }
 //	// Output: local ./data uploads
 func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 	return storagecore.ResolvedConfig{
-		Driver: "local",
-		Remote: c.Root,
-		Prefix: c.Prefix,
+		Driver:              "local",
+		Remote:              c.Root,
+		Prefix:              c.Prefix,
+		LocalBufferedWrites: c.BufferedWrites,
 	}
 }
 
@@ -128,7 +136,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	if err := rootHandle.Close(); err != nil {
 		return nil, wrapLocalError(fmt.Errorf("close local root: %w", err))
 	}
-	return &driver{root: root, prefix: cleanPrefix}, nil
+	return &driver{root: root, prefix: cleanPrefix, bufferedWrites: cfg.LocalBufferedWrites}, nil
 }
 
 // Get reads one traversal-confined local file without caller cancellation.
@@ -194,7 +202,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 		return wrapLocalError(fmt.Errorf("storage: mkdir %q: %w", path.Dir(name), err))
 	}
 	mode := existingMode(root, name, 0o644)
-	return atomicWrite(ctx, root, name, mode, func(file *os.File) error {
+	return atomicWrite(ctx, root, name, mode, d.bufferedWrites, func(file *os.File) error {
 		return writeBytesContext(ctx, file, contents)
 	})
 }
@@ -506,7 +514,7 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	if err != nil {
 		return wrapLocalError(err)
 	}
-	writeErr := atomicWrite(ctx, root, dstName, existingMode(root, dstName, srcInfo.Mode().Perm()), func(file *os.File) error {
+	writeErr := atomicWrite(ctx, root, dstName, existingMode(root, dstName, srcInfo.Mode().Perm()), d.bufferedWrites, func(file *os.File) error {
 		return copyContext(ctx, file, source)
 	})
 	closeErr := source.Close()
@@ -681,8 +689,8 @@ func (d *driver) openRoot() (*os.Root, error) {
 	return root, nil
 }
 
-// atomicWrite writes, syncs, and closes a unique temporary file before replacing the target.
-func atomicWrite(ctx context.Context, root *os.Root, target string, mode fs.FileMode, write func(*os.File) error) error {
+// atomicWrite stages complete content before replacing the target, with an optional file sync.
+func atomicWrite(ctx context.Context, root *os.Root, target string, mode fs.FileMode, buffered bool, write func(*os.File) error) error {
 	temporary, file, err := createTemporary(root, target, mode)
 	if err != nil {
 		return wrapLocalError(err)
@@ -693,8 +701,10 @@ func atomicWrite(ctx context.Context, root *os.Root, target string, mode fs.File
 	if err := ctx.Err(); err != nil {
 		return discardTemporary(root, temporary, file, err)
 	}
-	if err := file.Sync(); err != nil {
-		return discardTemporary(root, temporary, file, wrapLocalError(err))
+	if !buffered {
+		if err := file.Sync(); err != nil {
+			return discardTemporary(root, temporary, file, wrapLocalError(err))
+		}
 	}
 	if err := file.Close(); err != nil {
 		return discardTemporary(root, temporary, nil, wrapLocalError(err))
