@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -212,12 +213,15 @@ func TestSFTPClosePreservesTransportErrors(t *testing.T) {
 
 // TestSFTPCanceledOverwrite verifies session isolation, staged-file cleanup, and recovery on real sockets.
 func TestSFTPCanceledOverwrite(t *testing.T) {
-	t.Run("open reply", func(t *testing.T) { testSFTPCanceledOverwrite(t, true) })
-	t.Run("write reply", func(t *testing.T) { testSFTPCanceledOverwrite(t, false) })
+	t.Run("open reply", func(t *testing.T) { testSFTPCanceledOverwrite(t, true, false) })
+	t.Run("write reply", func(t *testing.T) {
+		testSFTPCanceledOverwrite(t, false, false)
+	})
+	t.Run("Close during write", func(t *testing.T) { testSFTPCanceledOverwrite(t, false, true) })
 }
 
 // testSFTPCanceledOverwrite interrupts creation or writing after the server has created the stage.
-func testSFTPCanceledOverwrite(t *testing.T, stallOpen bool) {
+func testSFTPCanceledOverwrite(t *testing.T, stallOpen, shutdown bool) {
 	t.Helper()
 	hostSigner, err := generateSigner()
 	if err != nil {
@@ -245,14 +249,22 @@ func testSFTPCanceledOverwrite(t *testing.T, stallOpen bool) {
 
 	testCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
-	disk, err := newFromDiskConfig(testCtx, (Config{
+	diskCfg := Config{
 		Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, User: "test", Password: "test", InsecureIgnoreHostKey: true,
-	}).ResolvedConfig())
+	}
+	disk, err := newFromDiskConfig(testCtx, diskCfg.ResolvedConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	storage := disk.(storagecore.ContextStorage)
 	t.Cleanup(func() { _ = disk.(io.Closer).Close() })
+	sessions := disk.(*driver).sessions
+	dial := sessions.dial
+	var dials atomic.Int32
+	sessions.dial = func(ctx context.Context) (sftpClient, error) {
+		dials.Add(1)
+		return dial(ctx)
+	}
 
 	if err := storage.PutContext(testCtx, "file", []byte("original")); err != nil {
 		t.Fatal(err)
@@ -271,6 +283,32 @@ func testSFTPCanceledOverwrite(t *testing.T, stallOpen bool) {
 	if body, err := storage.GetContext(testCtx, "file"); err != nil || string(body) != "original" {
 		t.Fatalf("concurrent read = %q, %v", body, err)
 	}
+	if shutdown {
+		beforeClose := dials.Load()
+		if err := disk.(io.Closer).Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-failed:
+			if !errors.Is(err, fs.ErrClosed) {
+				t.Fatalf("Put during shutdown = %v", err)
+			}
+		case <-testCtx.Done():
+			t.Fatal("Put stayed blocked after Close")
+		}
+		if afterClose := dials.Load(); afterClose != beforeClose {
+			t.Fatalf("shutdown opened %d extra connections", afterClose-beforeClose)
+		}
+		newDisk, err := newFromDiskConfig(testCtx, diskCfg.ResolvedConfig())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer newDisk.(io.Closer).Close()
+		if body, err := newDisk.Get("file"); err != nil || string(body) != "original" {
+			t.Fatalf("read after shutdown = %q, %v", body, err)
+		}
+		return
+	}
 	cancel()
 	select {
 	case err := <-failed:
@@ -280,6 +318,7 @@ func testSFTPCanceledOverwrite(t *testing.T, stallOpen bool) {
 	case <-testCtx.Done():
 		t.Fatal("canceled Put stayed blocked on the server")
 	}
+
 	entries, err := storage.ListContext(testCtx, "")
 	if err != nil || len(entries) != 1 || entries[0].Path != "file" {
 		t.Fatalf("listing after interruption = %+v, %v", entries, err)

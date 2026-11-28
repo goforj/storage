@@ -118,10 +118,16 @@ minimum Go version.
 
 All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
 
-FTP uploads and copies stage data in a sibling temporary file before publishing
-it by rename. Copies require two concurrent sessions. If the server rejects
-rename over an existing file, use a new path. A rejected rename preserves the
-existing destination.
+FTP uploads write directly by default, so an interrupted upload can leave a
+partial file at its destination. Enable `ftpstorage.Config.StagedWrites`
+to upload to a sibling temporary file and publish by rename. That mode requires
+rename permission and server support for replacing an existing file. FTP copies
+always stage uploads and require two concurrent sessions. If the server rejects
+a rename, the existing destination stays in place.
+
+Cancel active SFTP writes and allow them to finish cleanup before closing the
+disk when practical. Closing the disk also closes its connections. An interrupted
+staged write can leave a `.storage-tmp-` file if cleanup cannot reach the server.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process
@@ -937,6 +943,7 @@ cfg := ftpstorage.Config{
 	Port:               21,        // default: 21
 	User:               "demo",    // default: ""
 	Password:           "secret",  // default: ""
+	StagedWrites:       false,     // default: false
 	TLS:                false,     // default: false
 	InsecureSkipVerify: false,     // default: false
 	Prefix:             "uploads", // default: ""

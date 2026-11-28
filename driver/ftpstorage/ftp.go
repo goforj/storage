@@ -42,6 +42,7 @@ type driver struct {
 	user          string
 	pass          string
 	prefix        string
+	stagedWrites  bool
 	tls           bool
 	insecure      bool
 	serverName    string
@@ -89,16 +90,20 @@ type realFTPConn struct {
 //		Port:               21,        // default: 21
 //		User:               "demo",    // default: ""
 //		Password:           "secret",  // default: ""
+//		StagedWrites:       false,     // default: false
 //		TLS:                false,     // default: false
 //		InsecureSkipVerify: false,     // default: false
 //		Prefix:             "uploads", // default: ""
 //	}
 //	_ = cfg
 type Config struct {
-	Host               string
-	Port               int
-	User               string
-	Password           string
+	Host     string
+	Port     int
+	User     string
+	Password string
+	// StagedWrites uploads to a sibling file and publishes it by rename.
+	// It requires rename permission and server support for replacing existing files.
+	StagedWrites       bool
 	TLS                bool
 	InsecureSkipVerify bool
 	Prefix             string
@@ -115,6 +120,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 		FTPPort:               c.Port,
 		FTPUser:               c.User,
 		FTPPassword:           c.Password,
+		FTPStagedWrites:       c.StagedWrites,
 		FTPTLS:                c.TLS,
 		FTPInsecureSkipVerify: c.InsecureSkipVerify,
 		Prefix:                c.Prefix,
@@ -174,6 +180,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		user:          user,
 		pass:          pass,
 		prefix:        prefix,
+		stagedWrites:  cfg.FTPStagedWrites,
 		tls:           cfg.FTPTLS,
 		insecure:      cfg.FTPInsecureSkipVerify,
 		serverName:    serverName,
@@ -371,8 +378,8 @@ func (d *driver) MakeDir(p string) error {
 	return d.MakeDirContext(context.Background(), p)
 }
 
-// PutContext creates missing parents and stages uploads before publishing them by rename.
-// Overwriting requires server support for renaming over an existing file.
+// PutContext creates missing parents and uploads the file.
+// With StagedWrites enabled, it publishes a fully uploaded sibling file by rename.
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
@@ -398,7 +405,11 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 				return err
 			}
 		}
-		return d.publishUpload(ctx, c, fp, bytes.NewReader(contents), nil)
+		body := bytes.NewReader(contents)
+		if d.stagedWrites {
+			return d.publishUpload(ctx, c, fp, body, nil)
+		}
+		return c.Stor(fp, &contextReader{ctx: ctx, reader: body})
 	}, false))
 }
 

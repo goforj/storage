@@ -50,7 +50,7 @@ func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown bool
 
 	cfg := Config{
 		Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, User: "test",
-		TLS: tlsConfig != nil, InsecureSkipVerify: tlsConfig != nil,
+		TLS: tlsConfig != nil, InsecureSkipVerify: tlsConfig != nil, StagedWrites: true,
 	}
 	disk, err := New(cfg)
 	if err != nil {
@@ -124,13 +124,70 @@ func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown bool
 	}
 }
 
+// TestFTPWriteCompatibility verifies direct uploads on servers with restricted rename permissions.
+func TestFTPWriteCompatibility(t *testing.T) {
+	for _, restriction := range []string{"deny rename", "deny replace"} {
+		t.Run(restriction, func(t *testing.T) {
+			listener, err := net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = listener.Close() })
+			server := &ftpUploadFixture{
+				files: map[string]string{"existing": "original"}, renameRestriction: restriction,
+			}
+			go server.serve(listener)
+			cfg := Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, User: "test"}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			disk, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = disk.(io.Closer).Close() })
+			store := disk.(storagecore.ContextStorage)
+			if err := store.PutContext(ctx, "new", []byte("created")); err != nil {
+				t.Fatalf("direct create: %v", err)
+			}
+			if err := store.PutContext(ctx, "existing", []byte("replacement")); err != nil {
+				t.Fatalf("direct overwrite: %v", err)
+			}
+			for key, want := range map[string]string{"new": "created", "existing": "replacement"} {
+				got, err := store.GetContext(ctx, key)
+				if err != nil || string(got) != want {
+					t.Fatalf("read %s = %q, %v", key, got, err)
+				}
+			}
+
+			cfg.StagedWrites = true
+			staged, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = staged.(io.Closer).Close() })
+			stagedStore := staged.(storagecore.ContextStorage)
+			if err := stagedStore.PutContext(ctx, "existing", []byte("must not publish")); !errors.Is(err, storagecore.ErrForbidden) {
+				t.Fatalf("rejected rename: %v", err)
+			}
+			server.mu.Lock()
+			files, existing := len(server.files), server.files["existing"]
+			server.mu.Unlock()
+			if files != 2 || existing != "replacement" {
+				t.Fatalf("after rejected rename, %d files and existing = %q", files, existing)
+			}
+		})
+	}
+}
+
 type ftpUploadFixture struct {
-	mu      sync.Mutex
-	files   map[string]string
-	stall   sync.Once
-	staged  chan struct{}
-	release <-chan struct{}
-	tls     *tls.Config
+	mu                sync.Mutex
+	files             map[string]string
+	stall             sync.Once
+	staged            chan struct{}
+	release           <-chan struct{}
+	tls               *tls.Config
+	renameRestriction string
 }
 
 // serve accepts replacement connections while a prior transfer stops answering.
@@ -192,7 +249,7 @@ func (f *ftpUploadFixture) session(conn net.Conn) {
 				reply("426 Transfer failed")
 				return
 			}
-			if command == "STOR" {
+			if command == "STOR" && f.staged != nil {
 				stalled := false
 				f.stall.Do(func() { stalled = true })
 				if stalled {
@@ -208,10 +265,19 @@ func (f *ftpUploadFixture) session(conn net.Conn) {
 			f.mu.Unlock()
 			reply("250 Deleted")
 		case "RNFR":
+			if f.renameRestriction == "deny rename" {
+				reply("550 Permission denied")
+				continue
+			}
 			renameFrom = argument
 			reply("350 Ready for destination")
 		case "RNTO":
 			f.mu.Lock()
+			if _, exists := f.files[argument]; exists && f.renameRestriction == "deny replace" {
+				f.mu.Unlock()
+				reply("550 File already exists")
+				continue
+			}
 			f.files[argument] = f.files[renameFrom]
 			delete(f.files, renameFrom)
 			f.mu.Unlock()
@@ -251,4 +317,54 @@ func (f *ftpUploadFixture) transfer(listener net.Listener, command, name string)
 	f.mu.Unlock()
 	_, err = io.WriteString(conn, body)
 	return exists && err == nil
+}
+
+// TestFTPSetupCancellation verifies that a stalled server greeting cannot strand a session.
+func TestFTPSetupCancellation(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	connected := make(chan struct{})
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+		close(connected)
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+
+	disk, err := New(Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer disk.(io.Closer).Close()
+	limit, deadline := context.WithTimeout(context.Background(), 5*time.Second)
+	defer deadline()
+	ctx, cancel := context.WithCancel(limit)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := disk.(storagecore.ContextStorage).GetContext(ctx, "file")
+		done <- err
+	}()
+	select {
+	case <-connected:
+		cancel()
+	case <-limit.Done():
+		t.Fatal("FTP client did not connect")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("setup cancellation = %v", err)
+		}
+	case <-limit.Done():
+		t.Fatal("FTP greeting stayed blocked")
+	}
 }

@@ -35,13 +35,13 @@ func init() {
 }
 
 type driver struct {
-	client    sftpClient
-	sessions  *sftpSessions
-	reconnect func(context.Context) (sftpClient, error)
-	prefix    string
-	closed    atomic.Bool
-	closeOnce sync.Once
-	closeErr  error
+	client           sftpClient
+	sessions         *sftpSessions
+	cleanupTemporary func(context.Context, string) error
+	prefix           string
+	closed           atomic.Bool
+	closeOnce        sync.Once
+	closeErr         error
 }
 
 type sftpClient interface {
@@ -187,7 +187,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	}
 
 	return &driver{
-		sessions: &sftpSessions{idle: client, active: make(map[sftpClient]struct{}), dial: dial},
+		sessions: newSFTPSessions(client, dial),
 		prefix:   prefix,
 	}, nil
 }
@@ -804,8 +804,8 @@ func (d *driver) discardTemporary(ctx context.Context, name string, writer io.Cl
 		cleanupErr = wrapError(writer.Close())
 	}
 	removeErr := d.client.Remove(name)
-	if removeErr != nil && !errors.Is(wrapError(removeErr), storagecore.ErrNotFound) && d.reconnect != nil {
-		removeErr = removeWithSFTPReconnect(ctx, d.reconnect, name)
+	if removeErr != nil && !errors.Is(wrapError(removeErr), storagecore.ErrNotFound) && d.cleanupTemporary != nil {
+		removeErr = d.cleanupTemporary(ctx, name)
 	}
 	if errors.Is(wrapError(removeErr), storagecore.ErrNotFound) {
 		removeErr = nil
