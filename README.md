@@ -128,10 +128,11 @@ a rename, the existing destination stays in place. When upgrading FTP and
 `storagecore.ResolvedConfig` so additional fields do not affect construction.
 
 Each SFTP disk reuses up to eight connections and starts at most two concurrent
-SSH handshakes. Buffered SFTP reads retry once after a connection drops while
-the operation context is still active. Cancel active writes and allow cleanup
-before closing the disk when practical. An interrupted staged write can leave a
-`.storage-tmp-` file if cleanup cannot reach the server.
+SSH handshakes. Buffered SFTP reads retry once on a fresh connection
+after a connection drops, while the operation context is still active. Cancel
+active writes and allow cleanup before closing the disk when practical. An
+interrupted staged write can leave a `.storage-tmp-` file if cleanup cannot
+reach the server.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process

@@ -46,6 +46,11 @@ func newSFTPSessions(idle sftpClient, dial func(context.Context) (sftpClient, er
 
 // acquire prefers a reusable session, then reserves capacity for a handshake if available.
 func (s *sftpSessions) acquire(ctx context.Context) (sftpClient, error) {
+	return s.borrow(ctx, false)
+}
+
+// borrow can force a new transport when an outage may have invalidated the idle pool.
+func (s *sftpSessions) borrow(ctx context.Context, fresh bool) (sftpClient, error) {
 	for {
 		s.mu.Lock()
 		if s.lifetime.Err() != nil {
@@ -56,19 +61,23 @@ func (s *sftpSessions) acquire(ctx context.Context) (sftpClient, error) {
 			s.mu.Unlock()
 			return nil, err
 		}
-		if n := len(s.idle); n != 0 {
-			client := s.idle[n-1]
-			s.idle[n-1] = nil
-			s.idle = s.idle[:n-1]
+		if !fresh && len(s.idle) != 0 {
+			client := s.popIdleLocked()
 			s.active[client] = struct{}{}
 			s.mu.Unlock()
 			return client, nil
 		}
-		if s.opening < maxSFTPHandshakes && len(s.active)+s.opening < maxSFTPSessions {
+		atCapacity := len(s.active)+len(s.idle)+s.opening >= maxSFTPSessions
+		if s.opening < maxSFTPHandshakes && (!atCapacity || len(s.idle) != 0) {
+			var discard sftpClient
+			if atCapacity {
+				// Reserve the idle connection's slot before closing it outside the lock.
+				discard = s.popIdleLocked()
+			}
 			s.opening++
 			s.dials.Add(1)
 			s.mu.Unlock()
-			return s.open(ctx)
+			return s.open(ctx, discard)
 		}
 		if s.changed == nil {
 			s.changed = make(chan struct{})
@@ -86,9 +95,21 @@ func (s *sftpSessions) acquire(ctx context.Context) (sftpClient, error) {
 	}
 }
 
+// popIdleLocked transfers ownership of an idle client while the pool is locked.
+func (s *sftpSessions) popIdleLocked() sftpClient {
+	last := len(s.idle) - 1
+	client := s.idle[last]
+	s.idle[last] = nil
+	s.idle = s.idle[:last]
+	return client
+}
+
 // open registers a new session or discards it when shutdown wins the race.
-func (s *sftpSessions) open(ctx context.Context) (sftpClient, error) {
+func (s *sftpSessions) open(ctx context.Context, discard sftpClient) (sftpClient, error) {
 	defer s.dials.Done()
+	if discard != nil {
+		_ = discard.Close()
+	}
 	setup, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.lifetime, cancel)
@@ -154,12 +175,12 @@ func (s *sftpSessions) close() error {
 }
 
 // runSFTP binds cancellation to the operation's transport, leaving other callers connected.
-func runSFTP[T any](ctx context.Context, d *driver, run func(*driver) (T, error)) (value T, err error) {
+func runSFTP[T any](ctx context.Context, d *driver, fresh bool, run func(*driver) (T, error)) (value T, err error) {
 	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return value, err
 	}
-	client, err := d.sessions.acquire(ctx)
+	client, err := d.sessions.borrow(ctx, fresh)
 	if err != nil {
 		return value, err
 	}
@@ -190,11 +211,11 @@ func runSFTP[T any](ctx context.Context, d *driver, run func(*driver) (T, error)
 // runSFTPRead retries once after transport loss, before returning any read results to the caller.
 func runSFTPRead[T any](ctx context.Context, d *driver, run func(*driver) (T, error)) (T, error) {
 	ctx = normalizeContext(ctx)
-	result, err := runSFTP(ctx, d, run)
+	result, err := runSFTP(ctx, d, false, run)
 	if err == nil || ctx.Err() != nil || !sftpConnectionLost(err) {
 		return result, err
 	}
-	return runSFTP(ctx, d, run)
+	return runSFTP(ctx, d, true, run)
 }
 
 // sftpConnectionLost recognizes both SFTP receive failures and SSH writes racing with a disconnect.
@@ -205,7 +226,7 @@ func sftpConnectionLost(err error) bool {
 
 // runSFTPCommand leases a transport for operations that only return an error.
 func runSFTPCommand(ctx context.Context, d *driver, run func(*driver) error) error {
-	_, err := runSFTP(ctx, d, func(session *driver) (struct{}, error) {
+	_, err := runSFTP(ctx, d, false, func(session *driver) (struct{}, error) {
 		return struct{}{}, run(session)
 	})
 	return err

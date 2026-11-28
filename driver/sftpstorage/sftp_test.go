@@ -85,6 +85,7 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 	contextDisk := fs.(storagecore.ContextStorage)
 	exerciseSFTPIdleRecovery(t, contextDisk, accepted)
 	exerciseSharedSFTPDisk(t, contextDisk)
+	exerciseSFTPPoolRecovery(t, fs.(*driver), accepted)
 
 	// The embedded server leaves the channel open when it finishes serving.
 	if err := fs.(io.Closer).Close(); err != nil {
@@ -197,6 +198,45 @@ func exerciseSFTPIdleRecovery(t *testing.T, disk storagecore.ContextStorage, acc
 		t.Fatal(err)
 	}
 
+}
+
+// exerciseSFTPPoolRecovery verifies a read connects anew after the peer drops the idle pool.
+func exerciseSFTPPoolRecovery(t *testing.T, disk *driver, accepted <-chan net.Conn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	disk.sessions.mu.Lock()
+	count := max(len(disk.sessions.idle), 3)
+	disk.sessions.mu.Unlock()
+	clients := make([]sftpClient, 0, count)
+	for range count {
+		client, err := disk.sessions.acquire(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients = append(clients, client)
+	}
+	for _, client := range clients {
+		disk.sessions.release(client, true)
+	}
+	for range clients {
+		select {
+		case conn := <-accepted:
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("peer did not accept the pooled connections")
+		}
+	}
+	if got, err := disk.GetContext(ctx, "hello.txt"); err != nil || string(got) != "sftp" {
+		t.Fatalf("first read after dropping %d idle connections = %q, %v", len(clients), got, err)
+	}
+	select {
+	case <-accepted:
+	case <-ctx.Done():
+		t.Fatal("read retry did not open a fresh connection")
+	}
 }
 
 // exerciseSharedSFTPDisk uses one SSH-backed disk from overlapping walks, reads, and writes.

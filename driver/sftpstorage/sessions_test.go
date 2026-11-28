@@ -393,3 +393,55 @@ func TestSFTPPutDoesNotRetryTransportLoss(t *testing.T) {
 		t.Fatalf("Put = %v, want connection lost", err)
 	}
 }
+
+// TestSFTPFreshBorrowRespectsPoolCapacity replaces an idle transport before a fresh handshake.
+func TestSFTPFreshBorrowRespectsPoolCapacity(t *testing.T) {
+	live := 0
+	newClient := func() sftpClient {
+		live++
+		return &sftpCountedClient{onClose: func() { live-- }}
+	}
+	sessions := newSFTPSessions(newClient(), func(context.Context) (sftpClient, error) {
+		if live >= maxSFTPSessions {
+			t.Errorf("handshake started with %d live clients", live)
+		}
+		return newClient(), nil
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+
+	clients := make([]sftpClient, 0, maxSFTPSessions)
+	for range cap(clients) {
+		client, err := sessions.acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients = append(clients, client)
+	}
+	for _, client := range clients {
+		sessions.release(client, true)
+	}
+	fresh, err := sessions.borrow(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range clients {
+		if fresh == original {
+			t.Fatal("fresh borrow reused an idle client")
+		}
+	}
+	if live != maxSFTPSessions {
+		t.Fatalf("live clients after replacement = %d", live)
+	}
+	sessions.release(fresh, true)
+}
+
+type sftpCountedClient struct {
+	fakeSFTPClient
+	onClose func()
+}
+
+// Close records when the session slot is physically freed.
+func (c *sftpCountedClient) Close() error {
+	c.onClose()
+	return nil
+}

@@ -988,7 +988,10 @@ func (c *realSFTPClient) ReadDir(path string) ([]os.FileInfo, error) {
 func (c *realSFTPClient) Close() error {
 	c.closeOnce.Do(func() {
 		if c.sshClient != nil {
-			c.closeErr = c.sshClient.Close()
+			err := c.sshClient.Close()
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				c.closeErr = err
+			}
 		}
 		if c.client != nil {
 			err := c.client.Close()
