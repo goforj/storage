@@ -46,9 +46,7 @@ updates:
         versions: [">=0.43.0"]
   # These modules retain Go 1.25.0.
   - package-ecosystem: gomod
-    directories:
-      - /driver/dropboxstorage
-      - /driver/localstorage
+    directory: /driver/localstorage
     schedule:
       interval: monthly
     cooldown:
@@ -61,16 +59,14 @@ updates:
       go1250-compatible:
         patterns: ["*"]
         update-types: [minor, patch]
-    # oauth2 v0.37.0 requires Go 1.26; keep the Dropbox driver on Go 1.25.
     ignore:
-      - dependency-name: golang.org/x/oauth2
-        versions: [">=0.37.0"]
       - dependency-name: golang.org/x/sys
         versions: [">=0.48.0"] # Requires Go 1.26.
   # These modules retain Go 1.26.0.
   - package-ecosystem: gomod
     directories:
       - /docs/bench
+      - /driver/dropboxstorage
       - /driver/gcsstorage
       - /driver/rclonestorage
       - /driver/redisstorage

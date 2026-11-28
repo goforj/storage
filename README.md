@@ -164,8 +164,8 @@ go get github.com/goforj/storage github.com/goforj/storage/driver/s3storage
 | Modules | Minimum Go version |
 | --- | --- |
 | Root, storagecore, FTP, memory, and S3 | 1.24.4 |
-| Dropbox and local storage | 1.25.0 |
-| GCS, Rclone, Redis, SFTP, storagetest, examples, integration, and benchmarks | 1.26.0 |
+| Local storage | 1.25.0 |
+| Dropbox, GCS, Rclone, Redis, SFTP, storagetest, examples, integration, and benchmarks | 1.26.0 |
 
 ## Usage
 

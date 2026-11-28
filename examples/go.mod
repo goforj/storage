@@ -115,7 +115,7 @@ require (
 	github.com/cronokirby/saferith v0.33.1-0.20250226174546-1f11f94ce488 // indirect
 	github.com/diskfs/go-diskfs v1.9.4 // indirect
 	github.com/dromara/dongle v1.0.1 // indirect
-	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2 // indirect
+	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.4 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/emersion/go-vcard v0.0.0-20260618161152-d854b7e0e2d3 // indirect

@@ -221,8 +221,8 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dromara/dongle v1.0.1 h1:si/7UP/EXxnFVZok1cNos70GiMGxInAYMilHQFP5dJs=
 github.com/dromara/dongle v1.0.1/go.mod h1:ebFhTaDgxaDIKppycENTWlBsxz8mWCPWOLnsEgDpMv4=
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2 h1:zRpx93GLA2IYx4z2NTW6uTJgQ2f0CJ93xIj+w6Aoy3U=
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2/go.mod h1:M8nJfTVC7mxuxRSMHWbhg38bhkW63+3MoAGi/6R/umg=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.4 h1:esz3gYajpm2OdM7kwi9v3Ji5kpEwX0bOARYctLBkOMY=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.4/go.mod h1:94hvIjV6FZIOiHudKXEwTCV9NFoa0CP6E8S0es17wxQ=
 github.com/dsnet/try v0.0.3 h1:ptR59SsrcFUYbT/FhAbKTV6iLkeD6O18qfIWRml2fqI=
 github.com/dsnet/try v0.0.3/go.mod h1:WBM8tRpUmnXXhY1U6/S8dt6UWdHTQ7y8A5YSkRCkq40=
 github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0=

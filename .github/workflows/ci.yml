@@ -20,7 +20,7 @@ jobs:
         include:
           - { module: '.', go-version: '1.24.4' }
           - { module: storagecore, go-version: '1.24.4' }
-          - { module: driver/dropboxstorage, go-version: '1.25.0' }
+          - { module: driver/dropboxstorage, go-version: '1.26.0' }
           - { module: driver/ftpstorage, go-version: '1.24.4' }
           - { module: driver/localstorage, go-version: '1.25.0' }
           - { module: driver/memorystorage, go-version: '1.24.4' }
