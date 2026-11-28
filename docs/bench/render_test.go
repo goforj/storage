@@ -138,8 +138,8 @@ func TestRenderReadmeSection(t *testing.T) {
 		"put_small": {{Driver: "memory"}},
 	}
 	section := renderReadmeSection("test", rows)
-	want := "| `local` | 0.250 | 1.0 | 2.0 |\n| `s3` | 1.500 | 2.0 | 3.5 |\n\n<details>"
-	if !strings.Contains(section, want) || strings.Contains(section, "`memory`") {
+	want := "| local | 0.250 | 1.0 | 2.0 |\n| s3 | 1.500 | 2.0 | 3.5 |\n\n<details>"
+	if !strings.Contains(section, want) || strings.Contains(section, "| memory |") {
 		t.Fatalf("unexpected copy summary:\n%s", section)
 	}
 

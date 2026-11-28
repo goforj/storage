@@ -759,7 +759,7 @@ func renderReadmeSection(cacheBuster string, rows map[string][]benchRow) string 
 		}
 		for _, driver := range orderedDrivers(rows) {
 			if row, ok := byDriver[driver]; ok {
-				lines = append(lines, fmt.Sprintf("| `%s` | %.3f | %.1f | %.1f |",
+				lines = append(lines, fmt.Sprintf("| %s | %.3f | %.1f | %.1f |",
 					driver, row.NsOp/1e6, row.BytesOp/1024, row.AllocsOp))
 			}
 		}
