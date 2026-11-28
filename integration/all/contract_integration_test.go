@@ -615,6 +615,8 @@ func startEmbeddedFTPServer(t *testing.T, host string, port int, root string) *s
 		Port:     port,
 		Hostname: host,
 		Auth:     &server.SimpleAuth{Name: "ftpuser", Password: "ftppass"},
+		// Keep passive listeners outside the macOS ephemeral client port range.
+		PassivePorts: "20000-40000",
 	})
 	stopped := make(chan error, 1)
 	go func() { stopped <- srv.ListenAndServe() }()
