@@ -20,6 +20,27 @@ type bucketAPI interface {
 
 // PrepareBucketContext creates a missing bucket using the same configuration and credentials as the driver.
 // Existing buckets are unchanged. Permission failures never trigger a creation attempt.
+// @group Construction
+//
+// Example: prepare a bucket on the MinIO instance from the backup demo
+//
+//	// Start the backup demo's MinIO container before running this example.
+//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//	defer cancel()
+//
+//	cfg := s3storage.Config{
+//		Bucket:          "storage-demo",
+//		Region:          "us-east-1",
+//		Endpoint:        "http://127.0.0.1:19000",
+//		UsePathStyle:    true,
+//		AccessKeyID:     "storage-demo",
+//		SecretAccessKey: "storage-demo-password",
+//	}
+//	if err := s3storage.PrepareBucketContext(ctx, cfg); err != nil {
+//		panic(err)
+//	}
+//	fmt.Println("bucket ready")
+//	// Output: bucket ready
 func PrepareBucketContext(ctx context.Context, cfg Config) error {
 	ctx = normalizeContext(ctx)
 	store, err := newFromDiskConfig(ctx, cfg.ResolvedConfig())

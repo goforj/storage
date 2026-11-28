@@ -38,6 +38,19 @@ func CountFiles(disk fileCounterWalker, p string) (int, error) {
 // CountFilesContext returns the recursive count of non-directory entries under
 // path using the caller-provided context.
 // @group Context
+//
+// Example: count files with a deadline
+//
+//	disk, _ := storage.Build(memorystorage.Config{})
+//	_ = disk.Put("docs/readme.txt", []byte("hello"))
+//	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+//	defer cancel()
+//	total, err := storage.CountFilesContext(ctx, disk, "docs")
+//	if err != nil {
+//		panic(err)
+//	}
+//	fmt.Println(total)
+//	// Output: 1
 func CountFilesContext(ctx context.Context, disk any, p string) (int, error) {
 	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {

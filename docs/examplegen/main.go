@@ -507,6 +507,7 @@ func writeExampleMain(base, slug string, fd *FuncDoc, ex Example, importPath str
 		{re: regexp.MustCompile(`\bdropboxstorage\.`), imp: "github.com/goforj/storage/driver/dropboxstorage"},
 		{re: regexp.MustCompile(`\brclonestorage\.`), imp: "github.com/goforj/storage/driver/rclonestorage"},
 		{re: regexp.MustCompile(`\bstorage\.`), imp: "github.com/goforj/storage"},
+		{re: regexp.MustCompile(`\bstoragecore\.`), imp: "github.com/goforj/storage/storagecore"},
 	}
 	for _, pattern := range patternImports {
 		if pattern.re.MatchString(ex.Code) {

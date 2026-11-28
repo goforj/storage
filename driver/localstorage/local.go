@@ -55,9 +55,24 @@ type Config struct {
 }
 
 // DriverName returns the registry name for local storage.
+// @group Driver Config
+//
+// Example: identify a local driver config
+//
+//	cfg := localstorage.Config{Root: "./data"}
+//	fmt.Println(cfg.DriverName())
+//	// Output: local
 func (Config) DriverName() string { return "local" }
 
 // ResolvedConfig translates Config into the shared driver boundary.
+// @group Driver Config
+//
+// Example: inspect the resolved fields of a local config
+//
+//	cfg := localstorage.Config{Root: "./data", Prefix: "uploads"}
+//	resolved := cfg.ResolvedConfig()
+//	fmt.Println(resolved.Driver, resolved.Remote, resolved.Prefix)
+//	// Output: local ./data uploads
 func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 	return storagecore.ResolvedConfig{
 		Driver: "local",

@@ -234,14 +234,50 @@ type Storage interface {
 
 // ListPageResult describes a paginated one-level directory listing.
 // @group Core
+//
+// Example: find the offset for the next page
+//
+//	page := storage.ListPageResult{
+//		Entries: []storage.Entry{{Path: "notes.txt"}},
+//		Offset:  0,
+//		Limit:   1,
+//		HasMore: true,
+//	}
+//	if page.HasMore {
+//		fmt.Println("Next offset:", page.Offset+len(page.Entries))
+//		// Output: Next offset: 1
+//	}
 type ListPageResult = storagecore.ListPageResult
 
 // PagedStorage exposes paginated one-level listing when a backend can support it.
 // Use Storage for the common path and type-assert to PagedStorage when you need
 // backend-driven pagination.
 // @group Core
+//
+// Example: discover pagination support on a disk
+//
+//	disk, _ := storage.Build(memorystorage.Config{})
+//	_, ok := disk.(storage.PagedStorage)
+//	fmt.Println("Pagination available:", ok)
+//	// Output: Pagination available: true
 type PagedStorage interface {
 	// ListPage returns one page of immediate children under path.
+	//
+	// Example: list the first child of a directory
+	//
+	//	disk, _ := storage.Build(memorystorage.Config{})
+	//	_ = disk.Put("docs/a.txt", []byte("a"))
+	//	_ = disk.Put("docs/b.txt", []byte("b"))
+	//	paged, ok := disk.(storage.PagedStorage)
+	//	if !ok {
+	//		panic("disk does not support pagination")
+	//	}
+	//	page, err := paged.ListPage("docs", 0, 1)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	fmt.Println(page.Entries[0].Path, page.HasMore)
+	//	// Output: docs/a.txt true
 	ListPage(p string, offset, limit int) (ListPageResult, error)
 }
 
@@ -275,6 +311,14 @@ var (
 )
 
 // PaginateEntries returns a clamped page without mutating the caller's entry slice.
+// @group Core
+//
+// Example: page an in-memory listing
+//
+//	entries := []storage.Entry{{Path: "a.txt"}, {Path: "b.txt"}, {Path: "c.txt"}}
+//	page := storage.PaginateEntries(entries, 1, 1)
+//	fmt.Println(page.Entries[0].Path, page.HasMore)
+//	// Output: b.txt true
 func PaginateEntries(entries []Entry, offset, limit int) ListPageResult {
 	return storagecore.PaginateEntries(entries, offset, limit)
 }
