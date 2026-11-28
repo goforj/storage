@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  One Go API for local files, S3, SFTP, and more.
+  A fast, ergonomic, multi-driver storage library for Go.
 </p>
 
 <p align="center">
