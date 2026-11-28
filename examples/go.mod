@@ -3,17 +3,17 @@ module github.com/goforj/storage/examples
 go 1.26.0
 
 require (
-	github.com/goforj/storage v0.9.0
-	github.com/goforj/storage/driver/dropboxstorage v0.9.0
-	github.com/goforj/storage/driver/ftpstorage v0.9.0
-	github.com/goforj/storage/driver/gcsstorage v0.9.0
-	github.com/goforj/storage/driver/localstorage v0.9.0
-	github.com/goforj/storage/driver/memorystorage v0.9.0
-	github.com/goforj/storage/driver/rclonestorage v0.9.0
-	github.com/goforj/storage/driver/redisstorage v0.9.0
-	github.com/goforj/storage/driver/s3storage v0.9.0
-	github.com/goforj/storage/driver/sftpstorage v0.9.0
-	github.com/goforj/storage/storagecore v0.9.0
+	github.com/goforj/storage v0.10.0
+	github.com/goforj/storage/driver/dropboxstorage v0.10.0
+	github.com/goforj/storage/driver/ftpstorage v0.10.0
+	github.com/goforj/storage/driver/gcsstorage v0.10.0
+	github.com/goforj/storage/driver/localstorage v0.10.0
+	github.com/goforj/storage/driver/memorystorage v0.10.0
+	github.com/goforj/storage/driver/rclonestorage v0.10.0
+	github.com/goforj/storage/driver/redisstorage v0.10.0
+	github.com/goforj/storage/driver/s3storage v0.10.0
+	github.com/goforj/storage/driver/sftpstorage v0.10.0
+	github.com/goforj/storage/storagecore v0.10.0
 )
 
 replace github.com/goforj/storage => ./..

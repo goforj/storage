@@ -4,17 +4,17 @@ go 1.26.0
 
 require (
 	github.com/fsouza/fake-gcs-server v1.56.1
-	github.com/goforj/storage v0.9.0
-	github.com/goforj/storage/driver/ftpstorage v0.9.0
-	github.com/goforj/storage/driver/gcsstorage v0.9.0
-	github.com/goforj/storage/driver/localstorage v0.9.0
-	github.com/goforj/storage/driver/memorystorage v0.9.0
-	github.com/goforj/storage/driver/rclonestorage v0.9.0
-	github.com/goforj/storage/driver/redisstorage v0.9.0
-	github.com/goforj/storage/driver/s3storage v0.9.0
-	github.com/goforj/storage/driver/sftpstorage v0.9.0
-	github.com/goforj/storage/storagecore v0.9.0
-	github.com/goforj/storage/storagetest v0.9.0
+	github.com/goforj/storage v0.10.0
+	github.com/goforj/storage/driver/ftpstorage v0.10.0
+	github.com/goforj/storage/driver/gcsstorage v0.10.0
+	github.com/goforj/storage/driver/localstorage v0.10.0
+	github.com/goforj/storage/driver/memorystorage v0.10.0
+	github.com/goforj/storage/driver/rclonestorage v0.10.0
+	github.com/goforj/storage/driver/redisstorage v0.10.0
+	github.com/goforj/storage/driver/s3storage v0.10.0
+	github.com/goforj/storage/driver/sftpstorage v0.10.0
+	github.com/goforj/storage/storagecore v0.10.0
+	github.com/goforj/storage/storagetest v0.10.0
 	github.com/goftp/server v0.0.0-20200708154336-f64f7c2d8a42
 	github.com/testcontainers/testcontainers-go v0.44.0
 )
