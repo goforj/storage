@@ -118,9 +118,10 @@ minimum Go version.
 
 All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
 
-FTP copies require two concurrent sessions and permission to upload and rename a
-sibling temporary file. If an FTP server rejects rename over an existing file,
-copy to a new path. A rejected rename leaves the existing destination in place.
+FTP uploads and copies stage data in a sibling temporary file before publishing
+it by rename. Copies require two concurrent sessions. If the server rejects
+rename over an existing file, use a new path. A rejected rename preserves the
+existing destination.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process

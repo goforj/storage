@@ -36,6 +36,8 @@ func init() {
 
 type driver struct {
 	client    sftpClient
+	sessions  *sftpSessions
+	reconnect func(context.Context) (sftpClient, error)
 	prefix    string
 	closed    atomic.Bool
 	closeOnce sync.Once
@@ -176,14 +178,17 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	}
 
 	addr := net.JoinHostPort(cfg.SFTPHost, strconv.Itoa(port))
-	client, err := connectSFTP(ctx, addr, sshCfg)
+	dial := func(ctx context.Context) (sftpClient, error) {
+		return connectSFTP(ctx, addr, sshCfg)
+	}
+	client, err := dial(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &driver{
-		client: client,
-		prefix: prefix,
+		sessions: &sftpSessions{idle: client, active: make(map[sftpClient]struct{}), dial: dial},
+		prefix:   prefix,
 	}, nil
 }
 
@@ -258,6 +263,11 @@ func (d *driver) Get(p string) ([]byte, error) {
 
 // GetContext reads one remote file and preserves both transfer and close failures.
 func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) ([]byte, error) {
+			return session.GetContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return nil, err
@@ -303,6 +313,11 @@ func (d *driver) MakeDir(p string) error {
 
 // PutContext writes a unique sibling temporary and atomically renames it over the destination.
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.PutContext(ctx, p, contents)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -345,25 +360,33 @@ func (d *driver) writeStaged(ctx context.Context, fp string, write func(io.Write
 	temporary := path.Join(dir, ".storage-tmp-"+rand.Text())
 	f, err := d.client.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
 	if err != nil {
+		if errors.Is(err, sftp.ErrSSHFxConnectionLost) {
+			return d.discardTemporary(ctx, temporary, nil, wrapError(err))
+		}
 		return wrapError(err)
 	}
 	if err := write(f); err != nil {
-		return d.discardTemporary(temporary, f, wrapError(err))
+		return d.discardTemporary(ctx, temporary, f, wrapError(err))
 	}
 	if err := f.Close(); err != nil {
-		return d.discardTemporary(temporary, nil, wrapError(err))
+		return d.discardTemporary(ctx, temporary, nil, wrapError(err))
 	}
 	if err := ctx.Err(); err != nil {
-		return d.discardTemporary(temporary, nil, err)
+		return d.discardTemporary(ctx, temporary, nil, err)
 	}
 	if err := d.client.PosixRename(temporary, fp); err != nil {
-		return d.discardTemporary(temporary, nil, wrapError(err))
+		return d.discardTemporary(ctx, temporary, nil, wrapError(err))
 	}
 	return nil
 }
 
 // MakeDirContext recursively creates a remote directory and treats the logical root as existing.
 func (d *driver) MakeDirContext(ctx context.Context, p string) error {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.MakeDirContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -391,6 +414,11 @@ func (d *driver) Delete(p string) error {
 
 // DeleteContext stats the path before selecting non-recursive file or directory removal.
 func (d *driver) DeleteContext(ctx context.Context, p string) error {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.DeleteContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -433,6 +461,11 @@ func (d *driver) Stat(p string) (storagecore.Entry, error) {
 
 // StatContext converts remote file metadata to the storage entry contract.
 func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) (storagecore.Entry, error) {
+			return session.StatContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return storagecore.Entry{}, err
@@ -465,6 +498,11 @@ func (d *driver) Exists(p string) (bool, error) {
 
 // ExistsContext reports concrete files while treating directories and missing paths as absent.
 func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) (bool, error) {
+			return session.ExistsContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return false, err
@@ -504,6 +542,11 @@ func (d *driver) ListPage(p string, offset, limit int) (storagecore.ListPageResu
 
 // ListContext returns sorted immediate remote children with directory sizes normalized to zero.
 func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) ([]storagecore.Entry, error) {
+			return session.ListContext(ctx, p)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return nil, err
@@ -573,6 +616,11 @@ func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 
 // WalkContext distinguishes a file root from a directory before recursive traversal.
 func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.WalkContext(ctx, p, fn)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -617,6 +665,11 @@ func (d *driver) Copy(src, dst string) error {
 
 // CopyContext streams the source into a sibling temporary before replacing the destination.
 func (d *driver) CopyContext(ctx context.Context, src, dst string) (err error) {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.CopyContext(ctx, src, dst)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -666,6 +719,11 @@ func (d *driver) Move(src, dst string) error {
 
 // MoveContext validates the source, creates destination parents, and uses POSIX rename.
 func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
+	if d.sessions != nil {
+		return runSFTPCommand(ctx, d, func(session *driver) error {
+			return session.MoveContext(ctx, src, dst)
+		})
+	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -740,13 +798,16 @@ func (d *driver) stripPrefix(p string) string {
 
 // discardTemporary closes and removes a partial upload while preserving the
 // triggering error exactly when cleanup succeeds.
-func (d *driver) discardTemporary(name string, writer io.Closer, operationErr error) error {
+func (d *driver) discardTemporary(ctx context.Context, name string, writer io.Closer, operationErr error) error {
 	var cleanupErr error
 	if writer != nil {
 		cleanupErr = wrapError(writer.Close())
 	}
 	removeErr := d.client.Remove(name)
-	if os.IsNotExist(removeErr) {
+	if removeErr != nil && !errors.Is(wrapError(removeErr), storagecore.ErrNotFound) && d.reconnect != nil {
+		removeErr = removeWithSFTPReconnect(ctx, d.reconnect, name)
+	}
+	if errors.Is(wrapError(removeErr), storagecore.ErrNotFound) {
 		removeErr = nil
 	}
 	cleanupErr = joinCleanup(cleanupErr, wrapError(removeErr))
@@ -845,11 +906,13 @@ func joinCleanup(primary, cleanup error) error {
 	return errors.Join(primary, cleanup)
 }
 
-// Close releases the SFTP session and its owning SSH transport once.
+// Close releases idle and active SFTP sessions and their SSH transports once.
 func (d *driver) Close() error {
 	d.closeOnce.Do(func() {
 		d.closed.Store(true)
-		if d.client != nil {
+		if d.sessions != nil {
+			d.closeErr = d.sessions.close()
+		} else if d.client != nil {
 			d.closeErr = d.client.Close()
 		}
 	})

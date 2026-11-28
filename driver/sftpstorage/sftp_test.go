@@ -10,11 +10,14 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/goforj/storage/storagecore"
 )
 
 // TestSFTPWithEmbeddedServer verifies a real SSH/SFTP session can upload and download data.
@@ -42,7 +45,14 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ln.Close() })
 
-	go acceptLoop(t, ln, serverConfig, root)
+	go acceptLoop(ln, serverConfig, func(channel ssh.Channel) {
+		defer channel.Close()
+		server, err := sftp.NewServer(channel, sftp.WithServerWorkingDirectory(root))
+		if err == nil {
+			defer server.Close()
+			_ = server.Serve()
+		}
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -200,8 +210,125 @@ func TestSFTPClosePreservesTransportErrors(t *testing.T) {
 	}
 }
 
+// TestSFTPCanceledOverwrite verifies session isolation, staged-file cleanup, and recovery on real sockets.
+func TestSFTPCanceledOverwrite(t *testing.T) {
+	t.Run("open reply", func(t *testing.T) { testSFTPCanceledOverwrite(t, true) })
+	t.Run("write reply", func(t *testing.T) { testSFTPCanceledOverwrite(t, false) })
+}
+
+// testSFTPCanceledOverwrite interrupts creation or writing after the server has created the stage.
+func testSFTPCanceledOverwrite(t *testing.T, stallOpen bool) {
+	t.Helper()
+	hostSigner, err := generateSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &ssh.ServerConfig{NoClientAuth: true}
+	cfg.AddHostKey(hostSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	handlers := sftp.InMemHandler()
+	uploads := &stallingSFTPWriter{
+		FileWriter: handlers.FilePut, stallOpen: stallOpen, started: make(chan struct{}), release: make(chan struct{}),
+	}
+	handlers.FilePut = uploads
+	defer close(uploads.release)
+	go acceptLoop(listener, cfg, func(channel ssh.Channel) {
+		requests := sftp.NewRequestServer(channel, handlers)
+		defer requests.Close()
+		_ = requests.Serve()
+	})
+
+	testCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	disk, err := newFromDiskConfig(testCtx, (Config{
+		Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, User: "test", Password: "test", InsecureIgnoreHostKey: true,
+	}).ResolvedConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage := disk.(storagecore.ContextStorage)
+	t.Cleanup(func() { _ = disk.(io.Closer).Close() })
+
+	if err := storage.PutContext(testCtx, "file", []byte("original")); err != nil {
+		t.Fatal(err)
+	}
+	uploads.stall.Store(true)
+	ctx, cancel := context.WithCancel(testCtx)
+	defer cancel()
+	failed := make(chan error, 1)
+	go func() { failed <- storage.PutContext(ctx, "file", []byte("interrupted")) }()
+
+	select {
+	case <-uploads.started:
+	case <-testCtx.Done():
+		t.Fatal("server did not reach the staged write")
+	}
+	if body, err := storage.GetContext(testCtx, "file"); err != nil || string(body) != "original" {
+		t.Fatalf("concurrent read = %q, %v", body, err)
+	}
+	cancel()
+	select {
+	case err := <-failed:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("interrupted Put = %v", err)
+		}
+	case <-testCtx.Done():
+		t.Fatal("canceled Put stayed blocked on the server")
+	}
+	entries, err := storage.ListContext(testCtx, "")
+	if err != nil || len(entries) != 1 || entries[0].Path != "file" {
+		t.Fatalf("listing after interruption = %+v, %v", entries, err)
+	}
+	if err := storage.PutContext(testCtx, "file", []byte("replacement")); err != nil {
+		t.Fatal(err)
+	}
+	if body, err := storage.GetContext(testCtx, "file"); err != nil || string(body) != "replacement" {
+		t.Fatalf("read after recovery = %q, %v", body, err)
+	}
+}
+
+type stallingSFTPWriter struct {
+	sftp.FileWriter
+	stall     atomic.Bool
+	stallOpen bool
+	started   chan struct{}
+	release   chan struct{}
+}
+
+// Filewrite pauses the selected staging write after the server has created the temporary file.
+func (f *stallingSFTPWriter) Filewrite(request *sftp.Request) (io.WriterAt, error) {
+	writer, err := f.FileWriter.Filewrite(request)
+	if err == nil && f.stall.Swap(false) {
+		if f.stallOpen {
+			close(f.started)
+			<-f.release
+			return writer, nil
+		}
+		return stalledSFTPFile{WriterAt: writer, started: f.started, release: f.release}, nil
+	}
+	return writer, err
+}
+
+type stalledSFTPFile struct {
+	io.WriterAt
+	started chan struct{}
+	release <-chan struct{}
+}
+
+// WriteAt waits for test teardown so only client-side cancellation can unblock the operation.
+func (f stalledSFTPFile) WriteAt(data []byte, offset int64) (int, error) {
+	close(f.started)
+	<-f.release
+	return f.WriterAt.WriteAt(data, offset)
+}
+
 // acceptLoop upgrades accepted loopback connections into embedded SSH sessions.
-func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root string) {
+func acceptLoop(ln net.Listener, cfg *ssh.ServerConfig, serve func(ssh.Channel)) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -214,13 +341,13 @@ func acceptLoop(t *testing.T, ln net.Listener, cfg *ssh.ServerConfig, root strin
 				return
 			}
 			go ssh.DiscardRequests(reqs)
-			go handleChannels(t, chans, root)
+			handleChannels(chans, serve)
 		}(conn)
 	}
 }
 
 // handleChannels accepts only session channels that request the SFTP subsystem.
-func handleChannels(t *testing.T, chans <-chan ssh.NewChannel, root string) {
+func handleChannels(chans <-chan ssh.NewChannel, serve func(ssh.Channel)) {
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
@@ -240,14 +367,7 @@ func handleChannels(t *testing.T, chans <-chan ssh.NewChannel, root string) {
 					}
 					if err := ssh.Unmarshal(req.Payload, &payload); err == nil && payload.Name == "sftp" {
 						req.Reply(true, nil)
-						server, err := sftp.NewServer(channel, sftp.WithDebug(nil), sftp.WithServerWorkingDirectory(root))
-						if err != nil {
-							req.Reply(false, nil)
-							return
-						}
-						if err := server.Serve(); err == io.EOF {
-							_ = server.Close()
-						}
+						serve(channel)
 						return
 					}
 					req.Reply(false, nil)
