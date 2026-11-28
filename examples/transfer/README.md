@@ -27,6 +27,19 @@ The runs shared an Intel Core i7-12700 host and overlapped.
 
 Dropbox requires a live account and was skipped in this run.
 
+### Local write timing
+
+The local driver syncs each file before atomically replacing the target.
+Rclone's local `Put` uses buffered writes to the target. This transfer test
+reads and deletes each object immediately, which favors writes that can stay
+in the OS cache.
+
+A separate ext4 backup prototype retained eight 128 MiB files, verified every
+checksum, and synced the files and directories before reporting success.
+Median elapsed time over three runs was 1.11 s with serial writes and per-file
+sync, 0.57 s with four concurrent writers and per-file sync, and 1.06 s with
+serial writes and four workers syncing at commit.
+
 ## Run the fixtures
 
 From the repository root with Go 1.26 or newer and Docker Compose:
