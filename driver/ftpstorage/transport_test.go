@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,18 +21,19 @@ import (
 
 // TestFTPCanceledOverwrite exercises a hung final reply and recovery through real passive sockets.
 func TestFTPCanceledOverwrite(t *testing.T) {
-	t.Run("FTP", func(t *testing.T) { testFTPCanceledOverwrite(t, nil, false) })
-	t.Run("Close during upload", func(t *testing.T) { testFTPCanceledOverwrite(t, nil, true) })
+	t.Run("FTP", func(t *testing.T) { testFTPCanceledOverwrite(t, nil, false, false) })
+	t.Run("Close during upload", func(t *testing.T) { testFTPCanceledOverwrite(t, nil, true, false) })
+	t.Run("cleanup connection refused", func(t *testing.T) { testFTPCanceledOverwrite(t, nil, false, true) })
 	t.Run("FTPS", func(t *testing.T) {
 		certificates := httptest.NewUnstartedServer(nil)
 		certificates.StartTLS()
 		defer certificates.Close()
-		testFTPCanceledOverwrite(t, certificates.TLS, false)
+		testFTPCanceledOverwrite(t, certificates.TLS, false, false)
 	})
 }
 
 // testFTPCanceledOverwrite checks that control and passive data sockets recover in both modes.
-func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown bool) {
+func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown, refuseReconnect bool) {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -96,6 +98,11 @@ func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown bool
 		t.Cleanup(func() { _ = newDisk.(io.Closer).Close() })
 		storage = newDisk.(storagecore.ContextStorage)
 	} else {
+		if refuseReconnect {
+			if err := listener.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
 		cancel()
 	}
 	select {
@@ -103,10 +110,22 @@ func testFTPCanceledOverwrite(t *testing.T, tlsConfig *tls.Config, shutdown bool
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("interrupted Put = %v", err)
 		}
+		if refuseReconnect && !errors.Is(err, syscall.ECONNREFUSED) {
+			t.Fatalf("interrupted Put omitted cleanup connection error: %v", err)
+		}
 	case <-testCtx.Done():
 		t.Fatal("canceled Put stayed blocked on the server")
 	}
 
+	if refuseReconnect {
+		server.mu.Lock()
+		original := server.files["file"]
+		server.mu.Unlock()
+		if original != "original" {
+			t.Fatalf("failed cleanup changed destination to %q", original)
+		}
+		return
+	}
 	if body, err := storage.GetContext(testCtx, "file"); err != nil || string(body) != "original" {
 		t.Fatalf("read after interruption = %q, %v", body, err)
 	}

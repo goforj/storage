@@ -113,3 +113,25 @@ func TestSFTPShutdownClosesLateHandshake(t *testing.T) {
 		t.Fatalf("late handshake = %v", err)
 	}
 }
+
+// TestSFTPLeaseCancellationPreservesOperationError preserves context and transport errors together.
+func TestSFTPLeaseCancellationPreservesOperationError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sessions := newSFTPSessions(&fakeSFTPClient{}, func(context.Context) (sftpClient, error) {
+		t.Fatal("unexpected handshake")
+		return nil, nil
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+	wireErr := errors.New("transport disconnected")
+	err := runSFTPCommand(ctx, &driver{sessions: sessions}, func(*driver) error {
+		cancel()
+		return wireErr
+	})
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, wireErr) {
+		t.Fatalf("operation error = %v, want cancellation and transport errors", err)
+	}
+	if _, err := sessions.acquire(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled acquire = %v", err)
+	}
+}
