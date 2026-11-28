@@ -29,15 +29,15 @@ type driver struct {
 }
 
 type dropboxClient interface {
-	Download(*files.DownloadArg) (*files.FileMetadata, io.ReadCloser, error)
-	Upload(*files.UploadArg, io.Reader) (*files.FileMetadata, error)
-	DeleteV2(*files.DeleteArg) (*files.DeleteResult, error)
-	CreateFolderV2(*files.CreateFolderArg) (*files.CreateFolderResult, error)
-	MoveV2(*files.RelocationArg) (*files.RelocationResult, error)
-	GetMetadata(*files.GetMetadataArg) (files.IsMetadata, error)
-	ListFolder(*files.ListFolderArg) (*files.ListFolderResult, error)
-	ListFolderContinue(*files.ListFolderContinueArg) (*files.ListFolderResult, error)
-	GetTemporaryLink(*files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error)
+	DownloadContext(context.Context, *files.DownloadArg) (*files.FileMetadata, io.ReadCloser, error)
+	UploadContext(context.Context, *files.UploadArg, io.Reader) (*files.FileMetadata, error)
+	DeleteV2Context(context.Context, *files.DeleteArg) (*files.DeleteResult, error)
+	CreateFolderV2Context(context.Context, *files.CreateFolderArg) (*files.CreateFolderResult, error)
+	MoveV2Context(context.Context, *files.RelocationArg) (*files.RelocationResult, error)
+	GetMetadataContext(context.Context, *files.GetMetadataArg) (files.IsMetadata, error)
+	ListFolderContext(context.Context, *files.ListFolderArg) (*files.ListFolderResult, error)
+	ListFolderContinueContext(context.Context, *files.ListFolderContinueArg) (*files.ListFolderResult, error)
+	GetTemporaryLinkContext(context.Context, *files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error)
 }
 
 // Config defines a Dropbox-backed storage disk.
@@ -100,7 +100,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	if err != nil {
 		return nil, err
 	}
-	dbx := files.New(dropbox.Config{
+	dbx := files.NewContext(dropbox.Config{
 		Token:    cfg.DropboxToken,
 		LogLevel: dropbox.LogOff,
 	})
@@ -129,7 +129,7 @@ func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, content, err := d.client.Download(files.NewDownloadArg(full))
+	_, content, err := d.client.DownloadContext(ctx, files.NewDownloadArg(full))
 	if contextErr := ctx.Err(); contextErr != nil {
 		if content == nil {
 			return nil, contextErr
@@ -189,7 +189,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	}
 	arg := files.NewUploadArg(full)
 	arg.Mode = &files.WriteMode{Tagged: dropbox.Tagged{Tag: files.WriteModeOverwrite}}
-	_, err = d.client.Upload(arg, &contextReader{ctx: ctx, reader: bytes.NewReader(contents)})
+	_, err = d.client.UploadContext(ctx, arg, &contextReader{ctx: ctx, reader: bytes.NewReader(contents)})
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -241,7 +241,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
-	metadata, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
+	metadata, err := d.client.GetMetadataContext(ctx, files.NewGetMetadataArg(full))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -254,7 +254,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	}
 	deleteArg := files.NewDeleteArg(full)
 	deleteArg.ParentRev = file.Rev
-	_, err = d.client.DeleteV2(deleteArg)
+	_, err = d.client.DeleteV2Context(ctx, deleteArg)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -286,7 +286,7 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 	if err != nil {
 		return storagecore.Entry{}, err
 	}
-	meta, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
+	meta, err := d.client.GetMetadataContext(ctx, files.NewGetMetadataArg(full))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return storagecore.Entry{}, contextErr
 	}
@@ -328,7 +328,7 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	metadata, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
+	metadata, err := d.client.GetMetadataContext(ctx, files.NewGetMetadataArg(full))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return false, contextErr
 	}
@@ -400,7 +400,7 @@ func (d *driver) listPage(ctx context.Context, arg *files.ListFolderArg, entries
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	res, err := d.client.ListFolder(arg)
+	res, err := d.client.ListFolderContext(ctx, arg)
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -426,7 +426,7 @@ func (d *driver) listContinue(ctx context.Context, arg *files.ListFolderContinue
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		res, err := d.client.ListFolderContinue(arg)
+		res, err := d.client.ListFolderContinueContext(ctx, arg)
 		if contextErr := ctx.Err(); contextErr != nil {
 			return contextErr
 		}
@@ -562,7 +562,7 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	if err := d.ensureParentDirectories(ctx, dstPath); err != nil {
 		return err
 	}
-	_, err = d.client.MoveV2(files.NewRelocationArg(srcPath, dstPath))
+	_, err = d.client.MoveV2Context(ctx, files.NewRelocationArg(srcPath, dstPath))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -594,7 +594,7 @@ func (d *driver) URLContext(ctx context.Context, p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	link, err := d.client.GetTemporaryLink(&files.GetTemporaryLinkArg{
+	link, err := d.client.GetTemporaryLinkContext(ctx, &files.GetTemporaryLinkArg{
 		Path: full,
 	})
 	if contextErr := ctx.Err(); contextErr != nil {
@@ -675,7 +675,7 @@ func (d *driver) ensureSingleDirectory(ctx context.Context, full string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	metadata, err := d.client.GetMetadata(files.NewGetMetadataArg(full))
+	metadata, err := d.client.GetMetadataContext(ctx, files.NewGetMetadataArg(full))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
@@ -688,14 +688,14 @@ func (d *driver) ensureSingleDirectory(ctx context.Context, full string) error {
 	if !isNotFound(err) {
 		return wrapError(err)
 	}
-	if _, err := d.client.CreateFolderV2(files.NewCreateFolderArg(full)); err == nil {
+	if _, err := d.client.CreateFolderV2Context(ctx, files.NewCreateFolderArg(full)); err == nil {
 		return ctx.Err()
 	} else {
 		if contextErr := ctx.Err(); contextErr != nil {
 			return contextErr
 		}
 		// A concurrent creator can win between the lookup and create calls.
-		metadata, lookupErr := d.client.GetMetadata(files.NewGetMetadataArg(full))
+		metadata, lookupErr := d.client.GetMetadataContext(ctx, files.NewGetMetadataArg(full))
 		if lookupErr == nil {
 			if err := ctx.Err(); err != nil {
 				return err
