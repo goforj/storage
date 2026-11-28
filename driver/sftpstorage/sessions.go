@@ -10,110 +10,124 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
-// sftpSessions keeps one idle session and gives each operation exclusive transport ownership.
+const (
+	maxSFTPSessions   = 8
+	maxSFTPHandshakes = 2
+)
+
+// sftpSessions bounds the connections per disk and lends each transport to one operation at a time.
 type sftpSessions struct {
-	mu        sync.Mutex
-	idle      sftpClient
-	active    map[sftpClient]struct{}
-	dial      func(context.Context) (sftpClient, error)
-	lifetime  context.Context
-	stop      context.CancelFunc
-	dialSlots chan struct{}
-	dials     sync.WaitGroup
+	mu       sync.Mutex
+	idle     []sftpClient
+	active   map[sftpClient]struct{}
+	opening  int
+	changed  chan struct{}
+	dial     func(context.Context) (sftpClient, error)
+	lifetime context.Context
+	stop     context.CancelFunc
+	dials    sync.WaitGroup
 }
 
-// newSFTPSessions limits simultaneous handshakes while allowing established operations to overlap.
+// newSFTPSessions owns the initial transport and limits subsequent connection setup.
 func newSFTPSessions(idle sftpClient, dial func(context.Context) (sftpClient, error)) *sftpSessions {
 	lifetime, stop := context.WithCancel(context.Background())
-	return &sftpSessions{
-		idle: idle, active: make(map[sftpClient]struct{}), dial: dial,
-		lifetime: lifetime, stop: stop, dialSlots: make(chan struct{}, 2),
+	s := &sftpSessions{
+		active: make(map[sftpClient]struct{}), dial: dial,
+		lifetime: lifetime, stop: stop,
+	}
+	if idle != nil {
+		s.idle = append(s.idle, idle)
+	}
+	return s
+}
+
+// acquire prefers a reusable session, then reserves capacity for a handshake if available.
+func (s *sftpSessions) acquire(ctx context.Context) (sftpClient, error) {
+	for {
+		s.mu.Lock()
+		if s.lifetime.Err() != nil {
+			s.mu.Unlock()
+			return nil, fs.ErrClosed
+		}
+		if err := ctx.Err(); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		if n := len(s.idle); n != 0 {
+			client := s.idle[n-1]
+			s.idle[n-1] = nil
+			s.idle = s.idle[:n-1]
+			s.active[client] = struct{}{}
+			s.mu.Unlock()
+			return client, nil
+		}
+		if s.opening < maxSFTPHandshakes && len(s.active)+s.opening < maxSFTPSessions {
+			s.opening++
+			s.dials.Add(1)
+			s.mu.Unlock()
+			return s.open(ctx)
+		}
+		if s.changed == nil {
+			s.changed = make(chan struct{})
+		}
+		changed := s.changed
+		s.mu.Unlock()
+
+		select {
+		case <-changed:
+		case <-s.lifetime.Done():
+			return nil, fs.ErrClosed
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
 
-// acquire reuses an idle session or queues for a bounded handshake.
-func (s *sftpSessions) acquire(ctx context.Context) (sftpClient, error) {
-	s.mu.Lock()
-	if s.lifetime.Err() != nil {
-		s.mu.Unlock()
-		return nil, fs.ErrClosed
-	}
-	if err := ctx.Err(); err != nil {
-		s.mu.Unlock()
-		return nil, err
-	}
-	if client := s.takeIdleLocked(); client != nil {
-		s.mu.Unlock()
-		return client, nil
-	}
-	s.dials.Add(1)
-	s.mu.Unlock()
+// open registers a new session or discards it when shutdown wins the race.
+func (s *sftpSessions) open(ctx context.Context) (sftpClient, error) {
 	defer s.dials.Done()
-
-	select {
-	case s.dialSlots <- struct{}{}:
-		defer func() { <-s.dialSlots }()
-	case <-s.lifetime.Done():
-		return nil, fs.ErrClosed
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
-	s.mu.Lock()
-	if s.lifetime.Err() != nil {
-		s.mu.Unlock()
-		return nil, fs.ErrClosed
-	}
-	if client := s.takeIdleLocked(); client != nil {
-		s.mu.Unlock()
-		return client, nil
-	}
-	s.mu.Unlock()
-
 	setup, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.lifetime, cancel)
 	defer stop()
 	client, err := s.dial(setup)
-	if err != nil {
-		if s.lifetime.Err() != nil {
-			return nil, joinCleanup(fs.ErrClosed, err)
-		}
-		return nil, err
-	}
-	s.mu.Lock()
-	if s.lifetime.Err() != nil {
-		s.mu.Unlock()
-		return nil, joinCleanup(fs.ErrClosed, client.Close())
-	}
-	s.active[client] = struct{}{}
-	s.mu.Unlock()
-	return client, nil
-}
 
-// takeIdleLocked reserves the idle transport for the caller before it drops the pool lock.
-func (s *sftpSessions) takeIdleLocked() sftpClient {
-	client := s.idle
-	if client != nil {
-		s.idle = nil
+	s.mu.Lock()
+	s.opening--
+	s.signalLocked()
+	closed := s.lifetime.Err() != nil
+	if err == nil && !closed {
 		s.active[client] = struct{}{}
 	}
-	return client
+	s.mu.Unlock()
+	if closed {
+		if err == nil {
+			err = client.Close()
+		}
+		return nil, joinCleanup(fs.ErrClosed, err)
+	}
+	return client, err
 }
 
-// release retains a healthy connection only when the idle slot is empty.
-func (s *sftpSessions) release(client sftpClient, reusable bool) {
-	s.mu.Lock()
-	if reusable && s.lifetime.Err() == nil && s.idle == nil {
-		delete(s.active, client)
-		s.idle = client
-		s.mu.Unlock()
-		return
+// signalLocked wakes all waiters so they can choose between reuse and available dial capacity.
+func (s *sftpSessions) signalLocked() {
+	if s.changed != nil {
+		close(s.changed)
+		s.changed = nil
 	}
-	s.mu.Unlock()
-	_ = client.Close()
+}
+
+// release returns healthy transports to the pool and counts unhealthy ones until they close.
+func (s *sftpSessions) release(client sftpClient, reusable bool) {
+	if !reusable {
+		_ = client.Close()
+	}
 	s.mu.Lock()
 	delete(s.active, client)
+	if reusable && s.lifetime.Err() == nil {
+		s.idle = append(s.idle, client)
+	}
+	s.signalLocked()
 	s.mu.Unlock()
 }
 
@@ -126,8 +140,8 @@ func (s *sftpSessions) close() error {
 	s.mu.Unlock()
 
 	var err error
-	if idle != nil {
-		err = idle.Close()
+	for _, client := range idle {
+		err = errors.Join(err, client.Close())
 	}
 	for client := range active {
 		err = errors.Join(err, client.Close())
@@ -147,14 +161,26 @@ func runSFTP[T any](ctx context.Context, d *driver, run func(*driver) (T, error)
 		return value, err
 	}
 	stop := context.AfterFunc(ctx, func() { _ = client.Close() })
+	var temporary string
 	defer func() {
 		stopped := stop()
 		if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
 			err = joinCleanup(ctx.Err(), err)
 		}
-		d.sessions.release(client, stopped && ctx.Err() == nil && (err == nil || errors.Is(err, storagecore.ErrNotFound) || errors.Is(err, storagecore.ErrForbidden)))
+		reusable := stopped && ctx.Err() == nil && (err == nil || errors.Is(err, storagecore.ErrNotFound) || errors.Is(err, storagecore.ErrForbidden))
+		d.sessions.release(client, reusable && temporary == "")
+		if temporary != "" {
+			cleanupErr := wrapError(d.sessions.removeTemporary(ctx, temporary))
+			if !errors.Is(cleanupErr, storagecore.ErrNotFound) {
+				err = joinCleanup(err, cleanupErr)
+			}
+		}
 	}()
-	return run(&driver{client: client, prefix: d.prefix, cleanupTemporary: d.sessions.removeTemporary})
+	return run(&driver{client: client, prefix: d.prefix, cleanupTemporary: func(_ context.Context, path string) error {
+		// Cleanup must borrow only after the failed operation releases its slot.
+		temporary = path
+		return nil
+	}})
 }
 
 // runSFTPCommand leases a transport for operations that only return an error.

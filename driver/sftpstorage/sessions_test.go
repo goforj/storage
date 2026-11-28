@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pkg/sftp"
 )
 
 // TestSFTPShutdownCancelsQueuedAndActiveHandshakes verifies the handshake bound and shutdown ownership.
@@ -149,9 +151,7 @@ func TestSFTPShutdownReleasesHandshakeWaiters(t *testing.T) {
 		t.Error("shutdown attempted a handshake")
 		return nil, fs.ErrClosed
 	})
-	for range cap(sessions.dialSlots) {
-		sessions.dialSlots <- struct{}{}
-	}
+	sessions.opening = maxSFTPHandshakes
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	waitCtx := &sftpWaitContext{Context: ctx, waiting: make(chan struct{})}
@@ -180,4 +180,160 @@ type sftpWaitContext struct {
 func (c *sftpWaitContext) Done() <-chan struct{} {
 	c.once.Do(func() { close(c.waiting) })
 	return c.Context.Done()
+}
+
+// TestSFTPQueuedBorrowerUsesReturnedSession ensures a healthy release wakes a borrower during stalled setup.
+func TestSFTPQueuedBorrowerUsesReturnedSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	healthy := &fakeSFTPClient{}
+	entered := make(chan struct{}, maxSFTPHandshakes)
+	sessions := newSFTPSessions(healthy, func(ctx context.Context) (sftpClient, error) {
+		entered <- struct{}{}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+
+	held, err := sessions.acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range maxSFTPHandshakes {
+		go func() { _, _ = sessions.acquire(ctx) }()
+		select {
+		case <-entered:
+		case <-ctx.Done():
+			t.Fatal("handshake did not start")
+		}
+	}
+
+	waitCtx := &sftpWaitContext{Context: ctx, waiting: make(chan struct{})}
+	result := make(chan error, 1)
+	go func() {
+		client, err := sessions.acquire(waitCtx)
+		if err == nil {
+			sessions.release(client, true)
+			if client != healthy {
+				err = errors.New("borrower obtained a different session")
+			}
+		}
+		result <- err
+	}()
+	select {
+	case <-waitCtx.waiting:
+	case <-ctx.Done():
+		t.Fatal("borrower did not queue")
+	}
+	sessions.release(held, true)
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("healthy session did not wake the borrower")
+	}
+}
+
+// TestSFTPConnectionLimitAndReuse holds a burst of connections and verifies that queued callers reuse them.
+func TestSFTPConnectionLimitAndReuse(t *testing.T) {
+	const callers = 32
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var opened atomic.Int32
+	sessions := newSFTPSessions(&fakeSFTPClient{}, func(context.Context) (sftpClient, error) {
+		opened.Add(1)
+		return &fakeSFTPClient{}, nil
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+	acquired := make(chan struct{}, callers)
+	done := make(chan error, callers)
+	unblock := make(chan struct{})
+	defer close(unblock)
+	for range callers {
+		go func() {
+			client, err := sessions.acquire(ctx)
+			if err == nil {
+				acquired <- struct{}{}
+				select {
+				case <-unblock:
+				case <-ctx.Done():
+				}
+				sessions.release(client, true)
+			}
+			done <- err
+		}()
+	}
+
+	for range maxSFTPSessions {
+		select {
+		case <-acquired:
+		case <-ctx.Done():
+			t.Fatal("pool did not reach capacity")
+		}
+	}
+	waiting, stopWaiting := context.WithTimeout(ctx, 30*time.Millisecond)
+	defer stopWaiting()
+	if _, err := sessions.acquire(waiting); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("acquire at capacity = %v", err)
+	}
+	for range callers {
+		// Each token releases one borrower, making room for another without reconnecting.
+		select {
+		case unblock <- struct{}{}:
+		case <-ctx.Done():
+			t.Fatal("queued caller could not use a returned session")
+		}
+	}
+	for range callers {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if actual := opened.Load(); actual != maxSFTPSessions-1 {
+		t.Fatalf("opened %d additional connections, want %d", actual, maxSFTPSessions-1)
+	}
+}
+
+// TestSFTPFailedWriteReleasesCapacityForCleanup checks cleanup when all other sessions are busy.
+func TestSFTPFailedWriteReleasesCapacityForCleanup(t *testing.T) {
+	t.Run("remove stage", func(t *testing.T) { testSFTPFailedWriteCleanup(t, nil) })
+	t.Run("stage already absent", func(t *testing.T) { testSFTPFailedWriteCleanup(t, fs.ErrNotExist) })
+}
+
+// testSFTPFailedWriteCleanup checks recovery over a replacement session at full capacity.
+func testSFTPFailedWriteCleanup(t *testing.T, cleanupErr error) {
+	t.Helper()
+	lost := sftp.ErrSSHFxConnectionLost
+	failed := &fakeSFTPClient{openFileErr: lost, removeErr: lost}
+	cleanup := &fakeSFTPClient{removeErr: cleanupErr}
+	var opened int
+	sessions := newSFTPSessions(failed, func(context.Context) (sftpClient, error) {
+		opened++
+		if opened == maxSFTPSessions {
+			return cleanup, nil
+		}
+		return &fakeSFTPClient{}, nil
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := sessions.acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range maxSFTPSessions - 1 {
+		if _, err := sessions.acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessions.release(client, true)
+
+	if err := (&driver{sessions: sessions}).PutContext(ctx, "file", []byte("body")); !errors.Is(err, lost) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("failed write = %v", err)
+	}
+	if len(cleanup.removePaths) != 1 || cleanup.removePaths[0] != failed.openFilePath {
+		t.Fatalf("cleanup removed %v, expected %q", cleanup.removePaths, failed.openFilePath)
+	}
 }

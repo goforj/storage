@@ -81,9 +81,74 @@ func TestSFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("Get = %q", got)
 	}
 
+	exerciseSharedSFTPDisk(t, fs.(storagecore.ContextStorage))
+
 	// The embedded server leaves the channel open when it finishes serving.
 	if err := fs.(io.Closer).Close(); err != nil {
 		t.Fatalf("Close: %v", err)
+	}
+}
+
+// exerciseSharedSFTPDisk uses one SSH-backed disk from overlapping walks, reads, and writes.
+func exerciseSharedSFTPDisk(t *testing.T, disk storagecore.ContextStorage) {
+	t.Helper()
+	const workers = 2 * maxSFTPSessions
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	arrived := make(chan struct{}, workers)
+	proceed := make(chan struct{})
+	done := make(chan error, workers)
+	for worker := range workers {
+		go func() {
+			root := "hello.txt"
+			if worker%2 == 0 {
+				root = "."
+			}
+			done <- disk.WalkContext(ctx, root, func(entry storagecore.Entry) error {
+				if entry.Path != "hello.txt" || entry.IsDir {
+					return fmt.Errorf("unexpected entry: %+v", entry)
+				}
+				arrived <- struct{}{}
+				select {
+				case <-proceed:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+
+				key := fmt.Sprintf("parallel/file-%d", worker)
+				if err := disk.PutContext(ctx, key, []byte(key)); err != nil {
+					return err
+				}
+				got, err := disk.GetContext(ctx, key)
+				if err != nil {
+					return err
+				}
+				if string(got) != key {
+					return fmt.Errorf("read %q, want %q", got, key)
+				}
+				return nil
+			})
+		}()
+	}
+	for range workers {
+		select {
+		case <-arrived:
+		case err := <-done:
+			t.Fatalf("walk ended before every callback started: %v", err)
+		case <-ctx.Done():
+			t.Fatal("walk callbacks held session capacity")
+		}
+	}
+	close(proceed)
+	for range workers {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("concurrent reads and writes did not complete")
+		}
 	}
 }
 

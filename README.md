@@ -123,11 +123,14 @@ partial file at its destination. Enable `ftpstorage.Config.StagedWrites`
 to upload to a sibling temporary file and publish by rename. That mode requires
 rename permission and server support for replacing an existing file. FTP copies
 always stage uploads and require two concurrent sessions. If the server rejects
-a rename, the existing destination stays in place.
+a rename, the existing destination stays in place. When upgrading FTP and
+`storagecore`, use keyed literals for `ftpstorage.Config` and
+`storagecore.ResolvedConfig` so additional fields do not affect construction.
 
-Cancel active SFTP writes and allow them to finish cleanup before closing the
-disk when practical. Closing the disk also closes its connections. An interrupted
-staged write can leave a `.storage-tmp-` file if cleanup cannot reach the server.
+Each SFTP disk reuses up to eight connections and starts at most two concurrent
+SSH handshakes. Cancel active SFTP writes and allow them to finish cleanup before
+closing the disk when practical. An interrupted staged write can leave a
+`.storage-tmp-` file if cleanup cannot reach the server.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process

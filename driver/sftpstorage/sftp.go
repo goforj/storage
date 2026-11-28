@@ -616,11 +616,6 @@ func (d *driver) Walk(p string, fn func(storagecore.Entry) error) error {
 
 // WalkContext distinguishes a file root from a directory before recursive traversal.
 func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.Entry) error) error {
-	if d.sessions != nil {
-		return runSFTPCommand(ctx, d, func(session *driver) error {
-			return session.WalkContext(ctx, p, fn)
-		})
-	}
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
 		return err
@@ -641,14 +636,14 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 			return nil
 		}
 		if err != nil {
-			info, statErr := d.client.Stat(fp)
+			info, statErr := d.walkStat(ctx, fp)
 			if statErr == nil && !info.IsDir() {
 				return nil
 			}
 		}
 		return err
 	}
-	info, err := d.client.Stat(fp)
+	info, err := d.walkStat(ctx, fp)
 	if err != nil {
 		return wrapError(err)
 	}
@@ -814,9 +809,31 @@ func (d *driver) discardTemporary(ctx context.Context, name string, writer io.Cl
 	return joinCleanup(operationErr, cleanupErr)
 }
 
+// walkStat releases the session before a walk can invoke user code.
+func (d *driver) walkStat(ctx context.Context, name string) (os.FileInfo, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) (os.FileInfo, error) {
+			return session.walkStat(ctx, name)
+		})
+	}
+	info, err := d.client.Stat(name)
+	return info, wrapError(err)
+}
+
+// walkReadDir borrows only for directory I/O so callbacks can use the same disk.
+func (d *driver) walkReadDir(ctx context.Context, name string) ([]os.FileInfo, error) {
+	if d.sessions != nil {
+		return runSFTP(ctx, d, func(session *driver) ([]os.FileInfo, error) {
+			return session.walkReadDir(ctx, name)
+		})
+	}
+	info, err := d.client.ReadDir(name)
+	return info, wrapError(err)
+}
+
 // walkDir traverses remote entries depth-first in deterministic sibling order.
 func (d *driver) walkDir(ctx context.Context, dir string, fn func(storagecore.Entry) error) error {
-	infos, err := d.client.ReadDir(dir)
+	infos, err := d.walkReadDir(ctx, dir)
 	if err != nil {
 		return wrapError(err)
 	}
