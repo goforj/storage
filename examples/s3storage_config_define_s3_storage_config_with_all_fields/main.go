@@ -11,14 +11,14 @@ func main() {
 
 	// Example: define s3 storage config with all fields
 	cfg := s3storage.Config{
-		Bucket:          "uploads",
-		Endpoint:        "http://localhost:9000", // default: ""
+		Bucket:          "storage-demo",
+		Endpoint:        "http://localhost:19000", // default: ""
 		Region:          "us-east-1",
-		AccessKeyID:     "minioadmin", // default: ""
-		SecretAccessKey: "minioadmin", // default: ""
-		UsePathStyle:    true,         // default: false
-		UnsignedPayload: false,        // default: false
-		Prefix:          "assets",     // default: ""
+		AccessKeyID:     "storage-demo",          // default: ""
+		SecretAccessKey: "storage-demo-password", // default: ""
+		UsePathStyle:    true,                    // default: false
+		UnsignedPayload: false,                   // default: false
+		Prefix:          "assets",                // default: ""
 	}
 	_ = cfg
 }

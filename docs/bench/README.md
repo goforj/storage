@@ -3,10 +3,23 @@
 The [README charts](../../README.md#benchmarks) cover small file operations and
 an 8 MiB copy. They use local fixtures on one machine. The GCS emulator and FTP
 server run in the benchmark process, so their allocations are included.
-The S3, Rclone S3, Redis, and SFTP fixtures run in Docker. Dropbox has no
-benchmark fixture.
+The S3 and Rclone S3 fixtures use RustFS 1.0.6. They run in Docker alongside
+Redis and SFTP. Dropbox has no benchmark fixture.
 
-## Results on v0.9.0
+## 8 MiB S3 transfer on RustFS
+
+Measured with RustFS 1.0.6 and Go 1.27.0 on an Apple M4 Max with
+`GOMAXPROCS=4`. These are medians of six samples per operation.
+
+| Operation | Byte slice | Stream | Allocated per operation |
+| --- | ---: | ---: | ---: |
+| Download | 5.60 ms | 6.02 ms | 20.03 MiB → 31.4 KiB |
+| Upload | 47.98 ms | 47.21 ms | 74.5 KiB → 114.0 KiB |
+
+The README chart snapshot was refreshed for S3 and Rclone S3 on RustFS.
+The other fixtures retain their recorded v0.9.0 measurements.
+
+## Historical results on v0.9.0
 
 Go 1.27.0 on an Apple M4 Max, with `GOMAXPROCS=4`. The tables show medians
 of six samples per case. Allocated bytes per operation come from Go's benchmark
@@ -52,9 +65,10 @@ can upload from a file without first materializing its contents as a byte slice.
 
 Run from the repository root with Go 1.26+ and Docker. Use the same harness on
 both revisions, run them serially, and compare the Go output with `benchstat`.
-Copy comparisons alternated revisions in pairs of two samples. Keep the same
-`bench_test.go`, `render.go`, and MinIO Dockerfile in each worktree. Use a fixed
-iteration count for FTP to limit loopback connection churn.
+For the historical comparison, use the [benchmark harness from that run](https://github.com/goforj/storage/tree/31287947eb79a601652acf386f0ba2739c83f714/docs/bench)
+and its fixture in both worktrees. The copy comparison alternated revisions in
+pairs of two samples. Use a fixed iteration count for FTP to limit loopback
+connection churn.
 
 ```sh
 export GOMAXPROCS=4

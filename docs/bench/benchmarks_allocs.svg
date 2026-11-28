@@ -85,25 +85,24 @@
 <rect x="2136" y="448" width="24" height="342" rx="6" fill="#63C7E8"/>
 <text x="2043" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">gcs</text>
 <line x1="1920" y1="838" x2="2160" y2="838" stroke="#2A2333" stroke-width="1"/>
-<rect x="2214" y="642" width="24" height="148" rx="6" fill="#FF5E3A"/>
-<rect x="2248" y="648" width="24" height="142" rx="6" fill="#FFC24D"/>
-<rect x="2282" y="663" width="24" height="127" rx="6" fill="#7D6EE7"/>
-<rect x="2316" y="450" width="24" height="340" rx="6" fill="#B58AE8"/>
-<rect x="2350" y="461" width="24" height="329" rx="6" fill="#FFB454"/>
-<rect x="2384" y="400" width="24" height="390" rx="6" fill="#FF6B85"/>
-<rect x="2418" y="514" width="24" height="276" rx="6" fill="#63C7E8"/>
+<rect x="2214" y="648" width="24" height="142" rx="6" fill="#FF5E3A"/>
+<rect x="2248" y="653" width="24" height="137" rx="6" fill="#FFC24D"/>
+<rect x="2282" y="667" width="24" height="123" rx="6" fill="#7D6EE7"/>
+<rect x="2316" y="456" width="24" height="334" rx="6" fill="#B58AE8"/>
+<rect x="2350" y="474" width="24" height="316" rx="6" fill="#FFB454"/>
+<rect x="2384" y="414" width="24" height="376" rx="6" fill="#FF6B85"/>
+<rect x="2418" y="526" width="24" height="264" rx="6" fill="#63C7E8"/>
 <text x="2325" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">s3</text>
 <line x1="2202" y1="838" x2="2442" y2="838" stroke="#2A2333" stroke-width="1"/>
-<rect x="2496" y="489" width="24" height="301" rx="6" fill="#FF5E3A"/>
-<rect x="2530" y="503" width="24" height="287" rx="6" fill="#FFC24D"/>
-<rect x="2564" y="649" width="24" height="141" rx="6" fill="#7D6EE7"/>
-<rect x="2598" y="407" width="24" height="383" rx="6" fill="#B58AE8"/>
+<rect x="2496" y="499" width="24" height="291" rx="6" fill="#FF5E3A"/>
+<rect x="2530" y="512" width="24" height="278" rx="6" fill="#FFC24D"/>
+<rect x="2564" y="654" width="24" height="136" rx="6" fill="#7D6EE7"/>
+<rect x="2598" y="417" width="24" height="373" rx="6" fill="#B58AE8"/>
 <rect x="2632" y="334" width="24" height="456" rx="6" fill="#FFB454"/>
 <rect x="2632" y="270" width="24" height="10" rx="6" fill="#FFB454"/>
 <rect x="2666" y="334" width="24" height="456" rx="6" fill="#FF6B85"/>
-<rect x="2666" y="250" width="24" height="30" rx="6" fill="#FF6B85"/>
-<rect x="2700" y="334" width="24" height="456" rx="6" fill="#63C7E8"/>
-<rect x="2700" y="270" width="24" height="10" rx="6" fill="#63C7E8"/>
+<rect x="2666" y="251" width="24" height="29" rx="6" fill="#FF6B85"/>
+<rect x="2700" y="345" width="24" height="445" rx="6" fill="#63C7E8"/>
 <text x="2607" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">rclone_s3</text>
 <line x1="2484" y1="838" x2="2724" y2="838" stroke="#2A2333" stroke-width="1"/>
 <rect x="240" y="900" width="24" height="24" rx="5" fill="#FF5E3A"/>

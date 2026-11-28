@@ -275,16 +275,16 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 
 	if withDocker || include("rclone_s3") {
 		addForced("rclone_s3", func(ctx context.Context) (*benchmarkFixture, error) {
-			container, endpoint, err := startMinioContainer(ctx)
+			container, endpoint, err := startRustFSContainer(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
+			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "storage-test", "storage-test-password", "storage-bench"); err != nil {
 				_ = container.Terminate(ctx)
 				return nil, err
 			}
-			// Keep one process-wide config while each MinIO fixture gets a fresh endpoint.
-			remote := fmt.Sprintf(":s3,provider=Minio,endpoint=%q,region=us-east-1,access_key_id=minioadmin,secret_access_key=minioadmin,force_path_style=true:storage-bench", endpoint)
+			// Keep one process-wide config while each RustFS fixture gets a fresh endpoint.
+			remote := fmt.Sprintf(":s3,provider=Other,endpoint=%q,region=us-east-1,access_key_id=storage-test,secret_access_key=storage-test-password,force_path_style=true:storage-bench", endpoint)
 			return &benchmarkFixture{
 				newStore: func(context.Context) (storage.Storage, func(), error) {
 					store, err := storage.Build(rclonestorage.Config{
@@ -325,13 +325,13 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	return cases
 }
 
-// newS3BenchmarkFixture shares the MinIO setup between contract and streaming benchmarks.
+// newS3BenchmarkFixture shares the RustFS setup between contract and streaming benchmarks.
 func newS3BenchmarkFixture(ctx context.Context) (*benchmarkFixture, error) {
-	container, endpoint, err := startMinioContainer(ctx)
+	container, endpoint, err := startRustFSContainer(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
+	if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "storage-test", "storage-test-password", "storage-bench"); err != nil {
 		_ = container.Terminate(ctx)
 		return nil, err
 	}
@@ -341,8 +341,8 @@ func newS3BenchmarkFixture(ctx context.Context) (*benchmarkFixture, error) {
 				Bucket:          "storage-bench",
 				Region:          "us-east-1",
 				Endpoint:        endpoint,
-				AccessKeyID:     "minioadmin",
-				SecretAccessKey: "minioadmin",
+				AccessKeyID:     "storage-test",
+				SecretAccessKey: "storage-test-password",
 				UsePathStyle:    true,
 				Prefix:          "bench",
 			})
@@ -1221,20 +1221,18 @@ func (f fileInfo) Owner() string { return "user" }
 // Group returns stable synthetic group metadata for FTP listings.
 func (f fileInfo) Group() string { return "group" }
 
-// startMinioContainer launches the S3-compatible benchmark dependency and returns its endpoint.
-func startMinioContainer(ctx context.Context) (testcontainers.Container, string, error) {
+// startRustFSContainer launches the S3-compatible benchmark dependency and returns its endpoint.
+func startRustFSContainer(ctx context.Context) (testcontainers.Container, string, error) {
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
-			Dockerfile: "Dockerfile",
-			Repo:       "goforj-storage-minio-test",
-			Tag:        "2025-10-15",
-			KeepImage:  true,
+		Image: "rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+		Env: map[string]string{
+			"RUSTFS_ACCESS_KEY":     "storage-test",
+			"RUSTFS_SECRET_KEY":     "storage-test-password",
+			"RUSTFS_CONSOLE_ENABLE": "false",
 		},
-		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
-		Cmd:          []string{"server", "/data"},
-		WaitingFor:   wait.ForLog("API:").WithStartupTimeout(30 * time.Second),
+		Cmd:          []string{"/data"},
+		WaitingFor:   wait.ForHTTP("/health").WithPort("9000/tcp").WithStartupTimeout(30 * time.Second),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

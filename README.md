@@ -111,7 +111,7 @@ minimum Go version.
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Indexed directories | Empty only | Copy, then revision-checked delete | Unsupported | Redis container |
 | <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Server directories | Empty only | Server rename | Unsupported | Embedded FTP |
 | <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Server directories | Empty only | POSIX rename | Unsupported | SFTP container with host-key verification |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | MinIO and SDK fixtures |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | RustFS and SDK fixtures |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Prefixes and markers | Empty marker only | Copy, then generation-checked delete | Signed GET, 15 min on GCS | GCS emulator |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Provider folders | Unsupported | Provider move | Temporary file link | SDK fakes |
 | <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Remote-dependent | Empty only, remote-dependent | Copy, then content-checked delete | Remote-dependent | Local contract and fake S3 tests |
@@ -212,8 +212,8 @@ Use `storagetest.Fake(t)` for a fresh in-memory disk or
 
 ## Benchmarks
 
-Reading an 8 MiB object from MinIO with the S3 streaming API allocated about
-**33 KiB**, down from **20 MiB** with `Get`. See the
+Reading an 8 MiB object from RustFS with the S3 streaming API allocated about
+**31 KiB**, down from **20 MiB** with `Get`. See the
 [benchmark results](docs/bench/README.md) for copy timings, the local Rclone
 tradeoff, and how to reproduce the measurements.
 
@@ -234,19 +234,19 @@ check on every object.
 | sftp | 85.930 | 19702.5 | 6542.2 |
 | redis | 5.794 | 8211.6 | 241.0 |
 | gcs | 12.036 | 16791.0 | 1208.4 |
-| s3 | 22.627 | 81.6 | 975.7 |
-| rclone_s3 | 25.906 | 127.8 | 1635.2 |
+| s3 | 32.221 | 78.6 | 934.4 |
+| rclone_s3 | 67.041 | 126.9 | 1573.0 |
 
 <details>
 <summary>Latency, allocated bytes, allocations, and iteration charts</summary>
 
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=76ba1fb91b4d)
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=dba88acd5e3c)
 
-![Storage benchmark allocated bytes chart](docs/bench/benchmarks_bytes.svg?t=76ba1fb91b4d)
+![Storage benchmark allocated bytes chart](docs/bench/benchmarks_bytes.svg?t=dba88acd5e3c)
 
-![Storage benchmark allocation count chart](docs/bench/benchmarks_allocs.svg?t=76ba1fb91b4d)
+![Storage benchmark allocation count chart](docs/bench/benchmarks_allocs.svg?t=dba88acd5e3c)
 
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=76ba1fb91b4d)
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=dba88acd5e3c)
 
 </details>
 <!-- bench:embed:end -->
@@ -1071,14 +1071,14 @@ _Example: define s3 storage config with all fields_
 
 ```go
 cfg := s3storage.Config{
-	Bucket:          "uploads",
-	Endpoint:        "http://localhost:9000", // default: ""
+	Bucket:          "storage-demo",
+	Endpoint:        "http://localhost:19000", // default: ""
 	Region:          "us-east-1",
-	AccessKeyID:     "minioadmin", // default: ""
-	SecretAccessKey: "minioadmin", // default: ""
-	UsePathStyle:    true,         // default: false
-	UnsignedPayload: false,        // default: false
-	Prefix:          "assets",     // default: ""
+	AccessKeyID:     "storage-demo",           // default: ""
+	SecretAccessKey: "storage-demo-password",  // default: ""
+	UsePathStyle:    true,                     // default: false
+	UnsignedPayload: false,                    // default: false
+	Prefix:          "assets",                 // default: ""
 }
 ```
 

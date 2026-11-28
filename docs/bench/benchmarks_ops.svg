@@ -91,21 +91,21 @@
 <rect x="2136" y="789" width="24" height="1" rx="6" fill="#63C7E8"/>
 <text x="2043" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">gcs</text>
 <line x1="1920" y1="838" x2="2160" y2="838" stroke="#2A2333" stroke-width="1"/>
-<rect x="2214" y="783" width="24" height="7" rx="6" fill="#FF5E3A"/>
-<rect x="2248" y="725" width="24" height="65" rx="6" fill="#FFC24D"/>
-<rect x="2282" y="690" width="24" height="100" rx="6" fill="#7D6EE7"/>
-<rect x="2316" y="735" width="24" height="55" rx="6" fill="#B58AE8"/>
-<rect x="2350" y="747" width="24" height="43" rx="6" fill="#FFB454"/>
-<rect x="2384" y="782" width="24" height="8" rx="6" fill="#FF6B85"/>
-<rect x="2418" y="789" width="24" height="1" rx="6" fill="#63C7E8"/>
+<rect x="2214" y="785" width="24" height="5" rx="6" fill="#FF5E3A"/>
+<rect x="2248" y="675" width="24" height="115" rx="6" fill="#FFC24D"/>
+<rect x="2282" y="654" width="24" height="136" rx="6" fill="#7D6EE7"/>
+<rect x="2316" y="742" width="24" height="48" rx="6" fill="#B58AE8"/>
+<rect x="2350" y="774" width="24" height="16" rx="6" fill="#FFB454"/>
+<rect x="2384" y="789" width="24" height="1" rx="6" fill="#FF6B85"/>
+<rect x="2418" y="790" width="24" height="0" rx="6" fill="#63C7E8"/>
 <text x="2325" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">s3</text>
 <line x1="2202" y1="838" x2="2442" y2="838" stroke="#2A2333" stroke-width="1"/>
-<rect x="2496" y="784" width="24" height="6" rx="6" fill="#FF5E3A"/>
-<rect x="2530" y="750" width="24" height="40" rx="6" fill="#FFC24D"/>
-<rect x="2564" y="695" width="24" height="95" rx="6" fill="#7D6EE7"/>
-<rect x="2598" y="737" width="24" height="53" rx="6" fill="#B58AE8"/>
-<rect x="2632" y="763" width="24" height="27" rx="6" fill="#FFB454"/>
-<rect x="2666" y="785" width="24" height="5" rx="6" fill="#FF6B85"/>
+<rect x="2496" y="785" width="24" height="5" rx="6" fill="#FF5E3A"/>
+<rect x="2530" y="717" width="24" height="73" rx="6" fill="#FFC24D"/>
+<rect x="2564" y="658" width="24" height="132" rx="6" fill="#7D6EE7"/>
+<rect x="2598" y="740" width="24" height="50" rx="6" fill="#B58AE8"/>
+<rect x="2632" y="780" width="24" height="10" rx="6" fill="#FFB454"/>
+<rect x="2666" y="790" width="24" height="0" rx="6" fill="#FF6B85"/>
 <rect x="2700" y="790" width="24" height="0" rx="6" fill="#63C7E8"/>
 <text x="2607" y="820" fill="#FFFFFF" font-size="19" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="700">rclone_s3</text>
 <line x1="2484" y1="838" x2="2724" y2="838" stroke="#2A2333" stroke-width="1"/>

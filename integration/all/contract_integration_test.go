@@ -239,17 +239,17 @@ func integrationFixtures(t *testing.T) []storageFactory {
 			new: func(t *testing.T) (storage.Storage, func()) {
 				t.Helper()
 				ctx := context.Background()
-				container, endpoint := startMinioContainer(t, ctx)
-				if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-itest"); err != nil {
+				container, endpoint := startRustFSContainer(t, ctx)
+				if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "storage-test", "storage-test-password", "storage-itest"); err != nil {
 					shutdownContainer(t, container)
-					t.Fatalf("create minio bucket: %v", err)
+					t.Fatalf("create RustFS bucket: %v", err)
 				}
 				store, err := storage.Build(s3storage.Config{
 					Bucket:          "storage-itest",
 					Region:          "us-east-1",
 					Endpoint:        endpoint,
-					AccessKeyID:     "minioadmin",
-					SecretAccessKey: "minioadmin",
+					AccessKeyID:     "storage-test",
+					SecretAccessKey: "storage-test-password",
 					UsePathStyle:    true,
 					Prefix:          "itest",
 				})
@@ -339,40 +339,38 @@ func containsPath(paths []string, want string) bool {
 	return false
 }
 
-// startMinioContainer provides an isolated S3-compatible endpoint for the shared contract suite.
-func startMinioContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
+// startRustFSContainer provides an isolated S3-compatible endpoint for the shared contract suite.
+func startRustFSContainer(t *testing.T, ctx context.Context) (testcontainers.Container, string) {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
-			Dockerfile: "Dockerfile",
-			Repo:       "goforj-storage-minio-test",
-			Tag:        "2025-10-15",
-			KeepImage:  true,
+		Image: "rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+		Env: map[string]string{
+			"RUSTFS_ACCESS_KEY":     "storage-test",
+			"RUSTFS_SECRET_KEY":     "storage-test-password",
+			"RUSTFS_CONSOLE_ENABLE": "false",
 		},
-		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
-		Cmd:          []string{"server", "/data"},
-		WaitingFor:   wait.ForLog("API:").WithStartupTimeout(30 * time.Second),
+		Cmd:          []string{"/data"},
+		WaitingFor:   wait.ForHTTP("/health").WithPort("9000/tcp").WithStartupTimeout(30 * time.Second),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
 	if err != nil {
-		t.Fatalf("start minio container: %v", err)
+		t.Fatalf("start RustFS container: %v", err)
 	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
 		shutdownContainer(t, container)
-		t.Fatalf("minio host: %v", err)
+		t.Fatalf("RustFS host: %v", err)
 	}
 	port, err := container.MappedPort(ctx, "9000/tcp")
 	if err != nil {
 		shutdownContainer(t, container)
-		t.Fatalf("minio mapped port: %v", err)
+		t.Fatalf("RustFS mapped port: %v", err)
 	}
 	return container, "http://" + host + ":" + port.Port()
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/goforj/storage/storagecore"
 )
 
-// BenchmarkS3Objects compares the byte-slice and streaming APIs against the same MinIO bucket.
+// BenchmarkS3Objects compares the byte-slice and streaming APIs against the same RustFS bucket.
 func BenchmarkS3Objects(b *testing.B) {
 	if os.Getenv("BENCH_WITH_DOCKER") != "1" && !explicitlySelectedDriver("s3") {
 		b.Skip("set BENCH_DRIVER=s3 or BENCH_WITH_DOCKER=1")
