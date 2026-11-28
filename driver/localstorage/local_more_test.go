@@ -16,7 +16,7 @@ import (
 func TestLocalResolvedConfigAndPrefixValidation(t *testing.T) {
 	cfg := Config{Root: "/tmp/storage", Prefix: "assets"}
 	resolved := cfg.ResolvedConfig()
-	if resolved.Remote != "/tmp/storage" || resolved.Prefix != "assets" || resolved.Driver != "local" {
+	if resolved.Remote != "/tmp/storage" || resolved.Prefix != "assets" || resolved.Driver != "local" || resolved.LocalBufferedWrites {
 		t.Fatalf("ResolvedConfig = %+v", resolved)
 	}
 
@@ -334,7 +334,7 @@ func TestLocalFilesystemAndStreamFailures(t *testing.T) {
 		}
 		defer root.Close()
 		ctx, cancel := context.WithCancel(context.Background())
-		err = atomicWrite(ctx, root, "file", 0o644, func(file *os.File) error {
+		err = atomicWrite(ctx, root, "file", 0o644, false, func(file *os.File) error {
 			cancel()
 			return nil
 		})
@@ -384,16 +384,16 @@ func TestLocalConstructorAndAtomicEdges(t *testing.T) {
 	}
 	defer root.Close()
 	writeErr := errors.New("write")
-	if err := atomicWrite(context.Background(), root, "write-failure", 0o600, func(*os.File) error { return writeErr }); !errors.Is(err, writeErr) {
+	if err := atomicWrite(context.Background(), root, "write-failure", 0o600, false, func(*os.File) error { return writeErr }); !errors.Is(err, writeErr) {
 		t.Fatalf("atomicWrite callback error = %v", err)
 	}
-	if err := atomicWrite(context.Background(), root, "missing/file", 0o600, func(*os.File) error { return nil }); err == nil {
+	if err := atomicWrite(context.Background(), root, "missing/file", 0o600, false, func(*os.File) error { return nil }); err == nil {
 		t.Fatal("atomicWrite missing parent returned nil error")
 	}
 	if err := root.Mkdir("target", 0o755); err != nil {
 		t.Fatalf("Mkdir target: %v", err)
 	}
-	if err := atomicWrite(context.Background(), root, "target", 0o600, func(file *os.File) error {
+	if err := atomicWrite(context.Background(), root, "target", 0o600, false, func(file *os.File) error {
 		_, err := file.Write([]byte("x"))
 		return err
 	}); err == nil {
@@ -480,7 +480,7 @@ func TestLocalAtomicPostWriteEdges(t *testing.T) {
 	defer root.Close()
 
 	ctx := &stepCancelContext{Context: context.Background(), cancelAt: 2}
-	if err := atomicWrite(ctx, root, "canceled", 0o600, func(file *os.File) error {
+	if err := atomicWrite(ctx, root, "canceled", 0o600, false, func(file *os.File) error {
 		_, err := file.Write([]byte("data"))
 		return err
 	}); !errors.Is(err, context.Canceled) {
@@ -644,5 +644,105 @@ func TestLocalPutReplacesSingleCharacterName(t *testing.T) {
 	value, err := disk.Get("a")
 	if err != nil || string(value) != "new" {
 		t.Fatalf("Get a = %q, %v", value, err)
+	}
+}
+
+// TestLocalBufferedWrites verifies that Put and Copy publish complete replacements.
+func TestLocalBufferedWrites(t *testing.T) {
+	store, err := New(Config{Root: t.TempDir(), BufferedWrites: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := store.(*driver)
+	if !d.bufferedWrites {
+		t.Fatal("buffered write setting was lost during construction")
+	}
+	if err := d.Put("source", []byte("original")); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Put("source", []byte("updated")); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Put("target", []byte("previous")); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Copy("source", "target"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"source", "target"} {
+		got, err := d.Get(name)
+		if err != nil || string(got) != "updated" {
+			t.Fatalf("Get(%q) = %q, %v", name, got, err)
+		}
+	}
+}
+
+// TestLocalCanceledBufferedWrite leaves the old destination visible and removes staged data.
+func TestLocalCanceledBufferedWrite(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := root.WriteFile("target", []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &stepCancelContext{Context: context.Background(), cancelAt: 2}
+	var stagedRead []byte
+	err = atomicWrite(ctx, root, "target", 0o600, true, func(file *os.File) error {
+		if _, err := file.Write([]byte("updated")); err != nil {
+			return err
+		}
+		var err error
+		stagedRead, err = root.ReadFile("target")
+		return err
+	})
+	if string(stagedRead) != "original" {
+		t.Errorf("staging changed the destination: %q", stagedRead)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("atomicWrite error = %v", err)
+	}
+	got, err := root.ReadFile("target")
+	if err != nil || string(got) != "original" {
+		t.Fatalf("cancellation changed the destination: %q, %v", got, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("staged file cleanup left %v: %v", entries, err)
+	}
+}
+
+// TestLocalAtomicWriteFlushErrors verifies that finalization failures prevent publication.
+func TestLocalAtomicWriteFlushErrors(t *testing.T) {
+	for _, tc := range []struct {
+		op       string
+		buffered bool
+	}{
+		{op: "sync"},
+		{op: "close", buffered: true},
+	} {
+		t.Run(tc.op, func(t *testing.T) {
+			dir := t.TempDir()
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+
+			err = atomicWrite(context.Background(), root, "target", 0o600, tc.buffered, func(file *os.File) error {
+				return file.Close()
+			})
+			var pathErr *os.PathError
+			if !errors.As(err, &pathErr) || pathErr.Op != tc.op || !errors.Is(err, os.ErrClosed) {
+				t.Fatalf("atomicWrite error = %v, want %s on a closed file", err, tc.op)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("finalization failure left %v: %v", entries, err)
+			}
+		})
 	}
 }

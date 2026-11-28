@@ -11,8 +11,9 @@ func main() {
 
 	// Example: define local storage config with all fields
 	cfg := localstorage.Config{
-		Root:   "/tmp/storage-local",
-		Prefix: "sandbox", // default: ""
+		Root:           "/tmp/storage-local",
+		Prefix:         "sandbox", // default: ""
+		BufferedWrites: true,      // default: false
 	}
 	_ = cfg
 }
