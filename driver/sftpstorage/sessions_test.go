@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -134,4 +135,49 @@ func TestSFTPLeaseCancellationPreservesOperationError(t *testing.T) {
 	if _, err := sessions.acquire(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled acquire = %v", err)
 	}
+	if err := runSFTPCommand(ctx, &driver{sessions: sessions}, func(*driver) error {
+		t.Fatal("pre-canceled scope ran an operation")
+		return nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled operation = %v", err)
+	}
+}
+
+// TestSFTPShutdownReleasesHandshakeWaiters verifies shutdown wakes borrowers even when every slot stays occupied.
+func TestSFTPShutdownReleasesHandshakeWaiters(t *testing.T) {
+	sessions := newSFTPSessions(nil, func(context.Context) (sftpClient, error) {
+		t.Error("shutdown attempted a handshake")
+		return nil, fs.ErrClosed
+	})
+	for range cap(sessions.dialSlots) {
+		sessions.dialSlots <- struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	waitCtx := &sftpWaitContext{Context: ctx, waiting: make(chan struct{})}
+	got := make(chan error, 1)
+	go func() { _, err := sessions.acquire(waitCtx); got <- err }()
+	select {
+	case <-waitCtx.waiting:
+	case <-ctx.Done():
+		t.Fatal("borrower did not reach its queue")
+	}
+	if err := sessions.close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-got; !errors.Is(err, fs.ErrClosed) {
+		t.Fatalf("queued acquisition = %v", err)
+	}
+}
+
+type sftpWaitContext struct {
+	context.Context
+	waiting chan struct{}
+	once    sync.Once
+}
+
+// Done signals the test when a borrower evaluates its cancellation channel.
+func (c *sftpWaitContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+	return c.Context.Done()
 }

@@ -387,3 +387,55 @@ func TestFTPSetupCancellation(t *testing.T) {
 		t.Fatal("FTP greeting stayed blocked")
 	}
 }
+
+// TestFTPShutdownUnblocksSessionWaiter verifies callers waiting for a session see terminal shutdown.
+func TestFTPShutdownUnblocksSessionWaiter(t *testing.T) {
+	disk := &driver{}
+	disk.initGate()
+	disk.gate <- struct{}{}
+	leaseHeld := true
+	defer func() {
+		if leaseHeld {
+			<-disk.gate
+		}
+	}()
+	closed := make(chan error, 1)
+	go func() { closed <- disk.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := disk.withConn(ctx, func(ftpConn) error {
+		t.Fatal("shutdown allowed a queued operation to run")
+		return nil
+	}); !errors.Is(err, fs.ErrClosed) {
+		t.Fatalf("queued FTP request = %v", err)
+	}
+	<-disk.gate
+	leaseHeld = false
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("Close remained blocked")
+	}
+}
+
+// TestFTPAbortedTransportClosesLateSocket verifies a newly dialed socket cannot outlive the session.
+func TestFTPAbortedTransportClosesLateSocket(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	transport := &ftpTransport{}
+	transport.abort()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := transport.run(ctx, func() error {
+		_, err := transport.dial("tcp4", listener.Addr().String())
+		return err
+	}); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("dial on aborted transport = %v", err)
+	}
+}
