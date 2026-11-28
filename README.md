@@ -181,49 +181,45 @@ go get github.com/goforj/storage github.com/goforj/storage/driver/s3storage
 
 ## Usage
 
-Build one disk with `storage.Build`. Use `storage.BuildContext` to pass a setup
-context, or call the driver's `New(cfg)` for a direct driver handle. Use
-`storage.New` when several named disks share a manager. Call `Manager.Close()`
-during shutdown. For a single disk, close it when it implements `io.Closer`.
+<a id="manager-and-named-disks"></a>
 
-Bind request cancellation with `disk.WithContext(ctx)`. Code using a direct
-driver constructor can access the `*Context` methods through
-`storagecore.ContextStorage`. Streaming methods take their context explicitly.
+| When you need | Use |
+| --- | --- |
+| One disk | [`storage.Build(cfg)`](#build) |
+| Several named disks | [`storage.New(cfg)`](#new) and [`manager.Disk(name)`](#manager-disk). See the [backup demo](examples/backup/main.go). |
+| Cancellation or a deadline for disk operations | [`disk.WithContext(ctx)`](#storage-withcontext) |
 
-### Streaming objects
-
-Use [`storage.Objects(disk)`](#objects) with the S3 driver. For a disk built with a
-direct driver constructor, use `storagecore.Objects(disk)`.
-
-- `OpenObjectContext` opens a reader you must close. You can pin the read to an object version or ETag.
-- `PutObjectContext` uploads from a reader with an exact byte count and optional metadata. The caller owns the reader.
-- `WalkObjectsContext` visits objects one provider page at a time.
-
-Pass a context to each call. Keys are relative to the disk prefix and preserve
-dot segments and repeated slashes.
+At shutdown, call [`manager.Close()`](#manager-close). Close standalone disks that implement `io.Closer`.
 
 <details>
-<summary>S3 upload and driver compatibility</summary>
+<summary>Setup context and direct driver handles</summary>
 
-Unsupported drivers return `storage.ErrUnsupported`. Check the
-[capability matrix](#capability-matrix) for driver support.
-
-Provide a seekable reader when the SDK needs to rewind an upload for retries.
-For non-seekable bodies, HTTPS retains the SDK's streaming checksums. Over plain
-HTTP, non-empty uploads with non-seekable bodies require explicit
-`s3storage.Config.UnsignedPayload` opt-in. This also skips optional SDK checksum
-precomputation for those uploads.
-
-Cancellation stops subsequent reads, including SDK prehashing. A reader
-blocked inside its own `Read` must honor cancellation or be unblocked by its owner.
+Use [`storage.BuildContext(ctx, cfg)`](#buildcontext) to pass a context during
+disk setup. If you call a driver's `New(cfg)` directly, use
+`storagecore.ContextStorage` for its context-aware operations.
 
 </details>
 
-### Manager and named disks
+### Streaming objects
 
-Use [`storage.New`](#new) to configure several disks and
-[`manager.Disk(name)`](#manager-disk) to hand one to an application component.
-The [backup example](examples/backup/main.go) shows the setup and shutdown.
+Get the S3 streaming API with [`storage.Objects(disk)`](#objects). Pass a context
+to each call.
+
+- **Download** with `OpenObjectContext`. Close the returned reader.
+- **Upload** with `PutObjectContext`. Pass a reader and its exact byte count.
+- **List** with `WalkObjectsContext`. It visits objects one page at a time.
+
+<details>
+<summary>S3 streaming details</summary>
+
+- **Keys** are relative to the disk prefix and preserve dot segments and repeated slashes.
+- **Reads** can be pinned to an object version or ETag.
+- **Uploads** accept optional metadata. The caller owns the reader. Use a seekable reader so the SDK can retry.
+- **Checksums** are supported for non-seekable uploads over HTTPS. Over plain HTTP, non-empty uploads with non-seekable readers require `s3storage.Config.UnsignedPayload`, which also skips optional SDK checksum precomputation.
+- **Cancellation** stops subsequent reads, including SDK prehashing. A reader blocked in `Read` must honor cancellation or be unblocked by its owner.
+- **Driver support** is listed in the [capability matrix](#capability-matrix). Unsupported drivers return `storage.ErrUnsupported`. For a direct driver handle, call `storagecore.Objects(disk)`.
+
+</details>
 
 ### Rclone
 
