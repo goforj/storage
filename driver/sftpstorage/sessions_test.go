@@ -445,3 +445,61 @@ func (c *sftpCountedClient) Close() error {
 	c.onClose()
 	return nil
 }
+
+// TestSFTPReadReportsSessionSetupFailure verifies that a failed lease surfaces its setup error.
+func TestSFTPReadReportsSessionSetupFailure(t *testing.T) {
+	setupErr := errors.New("SSH authentication refused")
+	dials := 0
+	sessions := newSFTPSessions(nil, func(context.Context) (sftpClient, error) {
+		dials++
+		return nil, setupErr
+	})
+	disk := &driver{sessions: sessions}
+	t.Cleanup(func() { _ = disk.Close() })
+
+	got, err := disk.Get("file")
+	if got != nil || !errors.Is(err, setupErr) || dials != 1 {
+		t.Fatalf("Get after failed setup = %q, %v after %d dial attempts", got, err, dials)
+	}
+}
+
+// TestSFTPTemporaryCleanupDeadlineClosesTransport verifies a silent peer cannot strand cleanup.
+func TestSFTPTemporaryCleanupDeadlineClosesTransport(t *testing.T) {
+	client := &sftpStalledRemoval{closed: make(chan struct{})}
+	sessions := newSFTPSessions(client, func(context.Context) (sftpClient, error) {
+		t.Error("cleanup dialed instead of using the available session")
+		return nil, net.ErrClosed
+	})
+	t.Cleanup(func() { _ = sessions.close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- sessions.removeTemporary(ctx, ".storage-tmp-test") }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("cleanup = %v, want connection closed by its deadline", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cleanup remained blocked after its deadline")
+	}
+}
+
+type sftpStalledRemoval struct {
+	fakeSFTPClient
+	closed chan struct{}
+	once   sync.Once
+}
+
+// Remove simulates a server that leaves the cleanup request unanswered.
+func (c *sftpStalledRemoval) Remove(string) error {
+	<-c.closed
+	return net.ErrClosed
+}
+
+// Close wakes the blocked removal when the cleanup deadline expires.
+func (c *sftpStalledRemoval) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}

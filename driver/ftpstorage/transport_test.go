@@ -439,3 +439,42 @@ func TestFTPAbortedTransportClosesLateSocket(t *testing.T) {
 		t.Fatalf("dial on aborted transport = %v", err)
 	}
 }
+
+// TestFTPSessionRejectsWorkOnceClosing verifies that acquiring the gate cannot bypass shutdown.
+func TestFTPSessionRejectsWorkOnceClosing(t *testing.T) {
+	disk := &driver{
+		dialFn: func() (ftpConn, error) {
+			t.Fatal("closing disk attempted to dial")
+			return nil, fs.ErrClosed
+		},
+	}
+	// Close marks the disk closed before canceling its lifetime and taking the gate.
+	disk.closed.Store(true)
+	t.Cleanup(func() { _ = disk.Close() })
+
+	err := disk.withConn(context.Background(), func(ftpConn) error {
+		t.Fatal("closing disk attempted to execute a command")
+		return nil
+	})
+	if !errors.Is(err, fs.ErrClosed) {
+		t.Fatalf("command during shutdown = %v", err)
+	}
+}
+
+// TestFTPPreCanceledSessionWork verifies cancellation before dialing or sending a command.
+func TestFTPPreCanceledSessionWork(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	disk := &driver{conn: &fakeFTPConn{}}
+
+	if conn, err := disk.ensureConnLocked(ctx); conn != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled acquisition = %v, %v", conn, err)
+	}
+	err := invokeFTP(ctx, disk.conn, func(ftpConn) error {
+		t.Fatal("canceled request attempted to execute a command")
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled command = %v", err)
+	}
+}
