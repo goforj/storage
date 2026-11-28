@@ -115,6 +115,7 @@ type ResolvedConfig struct {
 	FTPPort               int
 	FTPUser               string
 	FTPPassword           string
+	FTPStagedWrites       bool
 	FTPTLS                bool
 	FTPInsecureSkipVerify bool
 

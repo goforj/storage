@@ -1,0 +1,12 @@
+name: storage-backup-demo
+
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    command: ["/data"]
+    ports:
+      - "127.0.0.1:19000:9000"
+    environment:
+      RUSTFS_ACCESS_KEY: storage-demo
+      RUSTFS_SECRET_KEY: storage-demo-password
+      RUSTFS_CONSOLE_ENABLE: "false"

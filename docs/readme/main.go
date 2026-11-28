@@ -43,6 +43,9 @@ func run() error {
 		return err
 	}
 
+	if err := validateAPI(funcs); err != nil {
+		return err
+	}
 	api := renderAPI(funcs)
 
 	readmePath := filepath.Join(root, "README.md")
@@ -385,6 +388,24 @@ func selectPackage(pkgs map[string]*ast.Package) (string, error) {
 		}
 	}
 	return candidates[0].name, nil
+}
+
+// validateAPI keeps the generated reference organized around runnable examples.
+func validateAPI(funcs []*FuncDoc) error {
+	var issues []string
+	for _, fn := range funcs {
+		if fn.Group == "" || strings.EqualFold(fn.Group, "Other") {
+			issues = append(issues, fn.DisplayName+" needs a topic group")
+		}
+		if len(fn.Examples) == 0 {
+			issues = append(issues, fn.DisplayName+" needs an example")
+		}
+	}
+	if len(issues) == 0 {
+		return nil
+	}
+	sort.Strings(issues)
+	return fmt.Errorf("incomplete API documentation:\n%s", strings.Join(issues, "\n"))
 }
 
 // renderAPI emits a stable grouped index and reference from parsed declarations.

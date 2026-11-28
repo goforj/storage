@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  One storage API for local disks, object stores, and remote filesystems.
+  One Go API for local files, S3, SFTP, and more.
 </p>
 
 <p align="center">
@@ -14,6 +14,10 @@
   <a href="https://codecov.io/gh/goforj/storage"><img src="https://codecov.io/gh/goforj/storage/graph/badge.svg?token=BPR5IIC5F9"/></a>
   <img src="https://img.shields.io/github/v/tag/goforj/storage?label=version&sort=semver&filter=%21driver%2A" alt="Latest tag">
 </p>
+
+Give backups, uploads, and assets their own named disks. Each disk picks its
+driver through a typed Go config. Your application uses the same calls to copy,
+walk, and restore files.
 
 ## Quickstart
 
@@ -62,290 +66,22 @@ func main() {
 }
 ```
 
-### Use S3 with the same operations
-
-Add the S3 driver with `go get github.com/goforj/storage/driver/s3storage`.
-Replace the local driver import with `github.com/goforj/storage/driver/s3storage`
-and replace the construction call with this configuration for an existing
-bucket. The AWS SDK reads credentials from its standard credential chain.
-To create a bucket explicitly, use [`s3storage.PrepareBucketContext`](#s3storage-preparebucketcontext).
-
-```go
-disk, err := storage.Build(s3storage.Config{
-    Bucket: "my-existing-bucket",
-    Region: "us-east-1",
-    Prefix: "example",
-})
-```
-
-The same calls write and read `example/notes/hello.txt` in that bucket. Use
-`storage.New` when you need a manager for multiple named disks.
-
 ## Driver Matrix
 
-See the [capability matrix](#capability-matrix) for copy behavior, streaming support, and driver fixtures.
-
-| Driver | Kind | Suggested use |
-| ---: | --- | --- |
-| <img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"> | Local filesystem | Good default for local development and tests. |
-| <img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"> | In-memory | Best zero-dependency backend for tests and ephemeral workflows. |
-| <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Distributed memory | Good for temporary distributed blob storage with explicit size and durability tradeoffs. |
-| <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Remote filesystem | Embedded integration fixture in the shared matrix. |
-| <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Remote filesystem | Container-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Object storage | MinIO-backed integration coverage in the shared matrix. |
-| <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Object storage | Emulator-backed integration coverage via fake-gcs-server. |
-| <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Object storage | Returns temporary links; external integration strategy still open. |
-| <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Breadth driver | Local contract fixture and fake S3 tests. Capabilities depend on the remote. See the [rclone storage systems overview](https://rclone.org/overview/). |
-
-## Install
-
-Root module:
-
-```bash
-go get github.com/goforj/storage
-```
-
-Then add the driver modules you need, for example:
-
-```bash
-go get github.com/goforj/storage/driver/localstorage
-go get github.com/goforj/storage/driver/memorystorage
-go get github.com/goforj/storage/driver/redisstorage
-go get github.com/goforj/storage/driver/ftpstorage
-go get github.com/goforj/storage/driver/sftpstorage
-go get github.com/goforj/storage/driver/s3storage
-go get github.com/goforj/storage/driver/gcsstorage
-go get github.com/goforj/storage/driver/dropboxstorage
-go get github.com/goforj/storage/driver/rclonestorage
-```
-
-## Go compatibility
-
-| Modules | Minimum Go version |
-| --- | --- |
-| Root, storagecore, FTP, memory, and S3 | 1.24.4 |
-| Dropbox and local storage | 1.25.0 |
-| GCS, Rclone, Redis, SFTP, storagetest, examples, integration, and benchmarks | 1.26.0 |
-
-## Usage
-
-Build one disk with `storage.Build`. Use `storage.BuildContext` to pass a setup
-context, or call the driver's `New(cfg)` for a direct driver handle. Use
-`storage.New` when several named disks share a manager. Call `Manager.Close()`
-during shutdown. For a single disk, close it when it implements `io.Closer`.
-
-Bind request cancellation with `disk.WithContext(ctx)`. Code using a direct
-driver constructor can access the `*Context` methods through
-`storagecore.ContextStorage`. Streaming methods take their context explicitly.
-
-### Streaming objects
-
-Use [`storage.Objects(disk)`](#objects) with the S3 driver. For a disk built with a
-direct driver constructor, use `storagecore.Objects(disk)`.
-
-- `OpenObjectContext` opens a reader you must close. You can pin the read to an object version or ETag.
-- `PutObjectContext` uploads from a reader with an exact byte count and optional metadata. The caller owns the reader.
-- `WalkObjectsContext` visits objects one provider page at a time.
-
-Pass a context to each call. Keys are relative to the disk prefix and preserve
-dot segments and repeated slashes.
-
-<details>
-<summary>S3 upload and driver compatibility</summary>
-
-Unsupported drivers return `storage.ErrUnsupported`. Check the
-[capability matrix](#capability-matrix) for driver support.
-
-Provide a seekable reader when the SDK needs to rewind an upload for retries.
-For non-seekable bodies, HTTPS retains the SDK's streaming checksums. Over plain
-HTTP, non-empty uploads with non-seekable bodies require explicit
-`s3storage.Config.UnsignedPayload` opt-in. This also skips optional SDK checksum
-precomputation for those uploads.
-
-Cancellation stops subsequent reads, including SDK prehashing. A reader
-blocked inside its own `Read` must honor cancellation or be unblocked by its owner.
-
-</details>
-
-### Manager and named disks
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/localstorage"
-    "github.com/goforj/storage/driver/s3storage"
-)
-
-func main() {
-    // Build a manager with multiple named disks.
-    mgr, err := storage.New(storage.Config{
-        Default: "assets",
-        Disks: map[storage.DiskName]storage.DriverConfig{
-            "assets": localstorage.Config{
-                Root: "/tmp/storage",
-                Prefix: "assets",
-            },
-            "uploads": s3storage.Config{
-                Bucket:          "app-uploads",
-                Region:          "us-east-1",
-                Endpoint:        "http://localhost:9000",
-                AccessKeyID:     "minioadmin",
-                SecretAccessKey: "minioadmin",
-                UsePathStyle:    true,
-                Prefix:          "uploads",
-            },
-        },
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    defer mgr.Close()
-
-    // Resolve a disk by name.
-    disk, err := mgr.Disk("assets")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file into the disk.
-    if err := disk.Put("hello.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // Read the file back.
-    data, err := disk.Get("hello.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = data // []byte("hello")
-}
-```
-
-### Rclone
-
-Use `rclonestorage` when you want to access rclone-backed remotes through the `storage` interface.
-
-All Rclone disks in a process share one configuration. Define multiple named
-remotes in the same config file or inline config and select each by name.
-
-Rclone 1.76 blocks HTTPS-to-HTTP redirects by default. If a remote relies on
-such a redirect, configure its endpoint and any proxies to keep requests on HTTPS.
-
-```go
-package main
-
-import (
-    "log"
-
-    "github.com/goforj/storage/driver/rclonestorage"
-)
-
-const rcloneConfig = `
-[localdisk]
-type = local
-`
-
-func main() {
-    // Build an rclone-backed disk from inline rclone config.
-    disk, err := rclonestorage.New(rclonestorage.Config{
-        Remote:           "localdisk:/tmp/storage",
-        Prefix:           "sandbox",
-        RcloneConfigData: rcloneConfig,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Put a file through rclone.
-    if err := disk.Put("rclone.txt", []byte("hello")); err != nil {
-        log.Fatal(err)
-    }
-
-    // List files from the disk root.
-    entries, err := disk.List("")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    _ = entries // rclone.txt
-}
-```
-
-See [`examples`](./examples) for runnable examples.
-
-### Testing with fakes
-
-```go
-package main
-
-import (
-    "testing"
-
-    "github.com/goforj/storage"
-    "github.com/goforj/storage/driver/memorystorage"
-    "github.com/goforj/storage/storagetest"
-)
-
-func TestUpload(t *testing.T) {
-    // Create one fake disk.
-    disk := storagetest.Fake(t)
-    _ = disk.Put("photo.jpg", []byte("ok"))
-
-    // Or create a fake manager with named in-memory disks.
-    mgr := storagetest.FakeManager(t, "photos", map[storage.DiskName]memorystorage.Config{
-        "photos":  {Prefix: "photos"},
-        "avatars": {Prefix: "avatars"},
-    })
-
-    photos, _ := mgr.Disk("photos")
-    _ = photos.Put("one.jpg", []byte("ok"))
-}
-```
-
-## Benchmarks
-
-<!-- bench:embed:start -->
-
-Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.
-
-Run the renderer with:
-
-```bash
-cd docs/bench
-go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v
-```
-
-Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.
-
-Notes:
-
-- `gcs` uses fake-gcs-server.
-- `ftp` is included by default and now reuses a logged-in control connection per storage instance during the benchmark run.
-- `redis`, `s3`, and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.
-- `rclone_local` measures rclone overhead on top of a local filesystem remote.
-
-### Latency (ns/op)
-
-![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=2df0336b200f)
-
-### Iterations (N)
-
-![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=2df0336b200f)
-
-### Allocated Bytes (B/op)
-
-![Storage benchmark bytes chart](docs/bench/benchmarks_bytes.svg?t=2df0336b200f)
-
-### Allocations (allocs/op)
-
-![Storage benchmark allocs chart](docs/bench/benchmarks_allocs.svg?t=2df0336b200f)
-<!-- bench:embed:end -->
+Install the driver modules you use. Each driver has its own dependencies and
+minimum Go version.
+
+| Driver | Use it for |
+| ---: | --- |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/localstorage"><img src="https://img.shields.io/badge/local-4C8EDA?logo=files&logoColor=white" alt="local"></a> | Files on a local or mounted filesystem |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/memorystorage"><img src="https://img.shields.io/badge/memory-667085?logo=buffer&logoColor=white" alt="memory"></a> | In-process storage and application tests |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/redisstorage"><img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"></a> | Small blobs shared across processes |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/ftpstorage"><img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"></a> | Existing FTP servers |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/sftpstorage"><img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"></a> | File transfers over SSH |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/s3storage"><img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"></a> | Amazon S3 and compatible stores such as RustFS |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/gcsstorage"><img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"></a> | Google Cloud Storage buckets |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/dropboxstorage"><img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"></a> | Dropbox files and temporary access links |
+| <a href="https://pkg.go.dev/github.com/goforj/storage/driver/rclonestorage"><img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"></a> | Any [Rclone remote](https://rclone.org/overview/), subject to its capabilities |
 
 ## Capability Matrix
 
@@ -363,7 +99,10 @@ Notes:
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Byte slices | Buffered download and upload | Provider move |
 | <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Byte slices | Provider-native or streamed | Copy, then delete |
 
-### Directories and access
+<a id="directories-and-access"></a>
+
+<details>
+<summary>Directory operations, access URLs, and driver verification</summary>
 
 | Driver | Directory model | Directory delete | Directory move | Access URL | Verification |
 | ---: | --- | --- | --- | --- | --- |
@@ -372,16 +111,28 @@ Notes:
 | <img src="https://img.shields.io/badge/redis-CB3837?logo=redis&logoColor=white" alt="redis"> | Indexed directories | Empty only | Copy, then revision-checked delete | Unsupported | Redis container |
 | <img src="https://img.shields.io/badge/ftp-FF8C00?logo=filezilla&logoColor=white" alt="ftp"> | Server directories | Empty only | Server rename | Unsupported | Embedded FTP |
 | <img src="https://img.shields.io/badge/sftp-1F6FEB?logo=gnu-bash&logoColor=white" alt="sftp"> | Server directories | Empty only | POSIX rename | Unsupported | SFTP container with host-key verification |
-| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | MinIO and SDK fixtures |
+| <img src="https://img.shields.io/badge/s3-569A31?logo=files&logoColor=white" alt="s3"> | Prefixes and markers | Empty marker only | Copy, then ETag-checked delete | Signed GET, 15 min | RustFS and SDK fixtures |
 | <img src="https://img.shields.io/badge/gcs-4285F4?logo=googlecloud&logoColor=white" alt="gcs"> | Prefixes and markers | Empty marker only | Copy, then generation-checked delete | Signed GET, 15 min on GCS | GCS emulator |
 | <img src="https://img.shields.io/badge/dropbox-0061FF?logo=dropbox&logoColor=white" alt="dropbox"> | Provider folders | Unsupported | Provider move | Temporary file link | SDK fakes |
 | <img src="https://img.shields.io/badge/rclone-5A45FF?logo=rclone&logoColor=white" alt="rclone"> | Remote-dependent | Empty only, remote-dependent | Copy, then content-checked delete | Remote-dependent | Local contract and fake S3 tests |
 
 All drivers provide `Stat`, `Exists`, `List`, `ListPage`, and `Walk` for logical paths.
 
-FTP copies require two concurrent sessions and permission to upload and rename a
-sibling temporary file. If an FTP server rejects rename over an existing file,
-copy to a new path. A rejected rename leaves the existing destination in place.
+FTP uploads write directly by default, so an interrupted upload can leave a
+partial file at its destination. Enable `ftpstorage.Config.StagedWrites`
+to upload to a sibling temporary file and publish by rename. That mode requires
+rename permission and server support for replacing an existing file. FTP copies
+always stage uploads and require two concurrent sessions. If the server rejects
+a rename, the existing destination stays in place. When upgrading FTP and
+`storagecore`, use keyed literals for `ftpstorage.Config` and
+`storagecore.ResolvedConfig` so additional fields do not affect construction.
+
+Each SFTP disk reuses up to eight connections and starts at most two concurrent
+SSH handshakes. Buffered SFTP reads retry once on a fresh connection
+after a connection drops, while the operation context is still active. Cancel
+active writes and allow cleanup before closing the disk when practical. An
+interrupted staged write can leave a `.storage-tmp-` file if cleanup cannot
+reach the server.
 
 Offset-based `ListPage` generally fetches the complete listing before selecting
 a window. Each call reads the current listing. Use `WalkObjectsContext` to process
@@ -397,6 +148,119 @@ entries for reconciliation.
 S3 copy uses the provider's single-request `CopyObject` operation. Its limits
 depend on the provider. Amazon S3 allows up to 5 GB per object for a single
 [CopyObject request](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
+
+</details>
+
+## Install
+
+Add the root module and the driver you plan to use. This example adds S3.
+
+```sh
+go get github.com/goforj/storage github.com/goforj/storage/driver/s3storage
+```
+
+## Go compatibility
+
+| Modules | Minimum Go version |
+| --- | --- |
+| Root, storagecore, FTP, memory, and S3 | 1.24.4 |
+| Dropbox and local storage | 1.25.0 |
+| GCS, Rclone, Redis, SFTP, storagetest, examples, integration, and benchmarks | 1.26.0 |
+
+## Usage
+
+<a id="manager-and-named-disks"></a>
+
+| When you need | Use |
+| --- | --- |
+| One disk | [`storage.Build(cfg)`](#build) |
+| Several named disks | [`storage.New(cfg)`](#new) and [`manager.Disk(name)`](#manager-disk). See the [backup example](examples/backup/README.md). |
+| Cancellation or a deadline for disk operations | [`disk.WithContext(ctx)`](#storage-withcontext) |
+
+At shutdown, call [`manager.Close()`](#manager-close). Close standalone disks that implement `io.Closer`.
+
+<details>
+<summary>Setup context and direct driver handles</summary>
+
+Use [`storage.BuildContext(ctx, cfg)`](#buildcontext) to pass a context during
+disk setup. If you call a driver's `New(cfg)` directly, use
+`storagecore.ContextStorage` for its context-aware operations.
+
+</details>
+
+### Streaming objects
+
+Get the S3 streaming API with [`storage.Objects(disk)`](#objects). Pass a context
+to each call.
+
+- **Download** with `OpenObjectContext`. Close the returned reader.
+- **Upload** with `PutObjectContext`. Pass a reader and its exact byte count.
+- **List** with `WalkObjectsContext`. It visits objects one page at a time.
+
+<details>
+<summary>S3 streaming details</summary>
+
+- **Keys** are relative to the disk prefix and preserve dot segments and repeated slashes.
+- **Reads** can be pinned to an object version or ETag.
+- **Uploads** accept optional metadata. The caller owns the reader. Use a seekable reader so the SDK can retry.
+- **Checksums** are supported for non-seekable uploads over HTTPS. Over plain HTTP, non-empty uploads with non-seekable readers require `s3storage.Config.UnsignedPayload`, which also skips optional SDK checksum precomputation.
+- **Cancellation** stops subsequent reads, including SDK prehashing. A reader blocked in `Read` must honor cancellation or be unblocked by its owner.
+- **Driver support** is listed in the [capability matrix](#capability-matrix). Unsupported drivers return `storage.ErrUnsupported`. For a direct driver handle, call `storagecore.Objects(disk)`.
+
+</details>
+
+### Rclone
+
+Use [`rclonestorage.New`](#rclonestorage-new) to open an Rclone remote. All
+Rclone disks in a process share one config. Define your remotes together and
+select each by name. Rclone 1.76 blocks HTTPS-to-HTTP redirects by default.
+
+### Testing with fakes
+
+Use `storagetest.Fake(t)` for a fresh in-memory disk or
+`storagetest.FakeManager` to exercise named disks. Inject the same
+`storage.Storage` interface your application uses.
+
+## Benchmarks
+
+Reading an 8 MiB object from RustFS with the S3 streaming API allocated about
+**31 KiB**, down from **20 MiB** with `Get`. See the
+[benchmark results](docs/bench/README.md) for copy timings, the local Rclone
+tradeoff, and how to reproduce the measurements.
+
+The [100 GB transfer run](examples/transfer/README.md#recorded-run) verified
+100 GB in each direction per fixture across eight fixtures, with a SHA-256
+check on every object.
+
+<!-- bench:embed:start -->
+
+**8 MiB copy on local benchmark fixtures**
+
+| Fixture | ms/op | KiB allocated/op | Allocations/op |
+| --- | ---: | ---: | ---: |
+| local | 8.851 | 35.9 | 89.1 |
+| memory | 0.289 | 8192.6 | 11.0 |
+| rclone_local | 11.668 | 75.5 | 146.4 |
+| ftp | 2.770 | 100.1 | 422.1 |
+| sftp | 85.930 | 19702.5 | 6542.2 |
+| redis | 5.794 | 8211.6 | 241.0 |
+| gcs | 12.036 | 16791.0 | 1208.4 |
+| s3 | 32.221 | 78.6 | 934.4 |
+| rclone_s3 | 67.041 | 126.9 | 1573.0 |
+
+<details>
+<summary>Latency, allocated bytes, allocations, and iteration charts</summary>
+
+![Storage benchmark latency chart](docs/bench/benchmarks_ns.svg?t=dba88acd5e3c)
+
+![Storage benchmark allocated bytes chart](docs/bench/benchmarks_bytes.svg?t=dba88acd5e3c)
+
+![Storage benchmark allocation count chart](docs/bench/benchmarks_allocs.svg?t=dba88acd5e3c)
+
+![Storage benchmark iteration chart](docs/bench/benchmarks_ops.svg?t=dba88acd5e3c)
+
+</details>
+<!-- bench:embed:end -->
 
 ## Migration notes
 
@@ -421,14 +285,14 @@ The API section below is autogenerated; do not edit between the markers.
 | Group | Functions |
 |------:|-----------|
 | **Config** | [rclonestorage.LocalRemote](#rclonestorage-localremote) · [rclonestorage.MustRenderLocal](#rclonestorage-mustrenderlocal) · [rclonestorage.MustRenderS3](#rclonestorage-mustrenders3) · [rclonestorage.RenderLocal](#rclonestorage-renderlocal) · [rclonestorage.RenderS3](#rclonestorage-renders3) · [rclonestorage.S3Remote](#rclonestorage-s3remote) |
-| **Construction** | [Build](#build) · [DriverConfig](#driverconfig) · [DriverFactory](#driverfactory) · [ResolvedConfig](#resolvedconfig) |
+| **Construction** | [Build](#build) · [DriverConfig](#driverconfig) · [DriverFactory](#driverfactory) · [ResolvedConfig](#resolvedconfig) · [s3storage.PrepareBucketContext](#s3storage-preparebucketcontext) |
 | **Context** | [BuildContext](#buildcontext) · [CountFilesContext](#countfilescontext) |
-| **Core** | [CountFiles](#countfiles) · [DiskName](#diskname) · [Entry](#entry) · [ListPageResult](#listpageresult) · [PagedStorage](#pagedstorage) · [PagedStorage.ListPage](#pagedstorage-listpage) · [Storage](#storage) · [Storage.Copy](#storage-copy) · [Storage.Delete](#storage-delete) · [Storage.Exists](#storage-exists) · [Storage.Get](#storage-get) · [Storage.List](#storage-list) · [Storage.MakeDir](#storage-makedir) · [Storage.Move](#storage-move) · [Storage.Put](#storage-put) · [Storage.Stat](#storage-stat) · [Storage.URL](#storage-url) · [Storage.Walk](#storage-walk) · [Storage.WithContext](#storage-withcontext) |
-| **Driver Config** | [dropboxstorage.Config](#dropboxstorage-config) · [ftpstorage.Config](#ftpstorage-config) · [gcsstorage.Config](#gcsstorage-config) · [localstorage.Config](#localstorage-config) · [memorystorage.Config](#memorystorage-config) · [rclonestorage.Config](#rclonestorage-config) · [redisstorage.Config](#redisstorage-config) · [s3storage.Config](#s3storage-config) · [sftpstorage.Config](#sftpstorage-config) |
+| **Core** | [CountFiles](#countfiles) · [DiskName](#diskname) · [Entry](#entry) · [ListPageResult](#listpageresult) · [PagedStorage](#pagedstorage) · [PagedStorage.ListPage](#pagedstorage-listpage) · [PaginateEntries](#paginateentries) · [Storage](#storage) · [Storage.Copy](#storage-copy) · [Storage.Delete](#storage-delete) · [Storage.Exists](#storage-exists) · [Storage.Get](#storage-get) · [Storage.List](#storage-list) · [Storage.MakeDir](#storage-makedir) · [Storage.Move](#storage-move) · [Storage.Put](#storage-put) · [Storage.Stat](#storage-stat) · [Storage.URL](#storage-url) · [Storage.Walk](#storage-walk) · [Storage.WithContext](#storage-withcontext) |
+| **Driver Config** | [Config.DriverName](#config-drivername) · [Config.ResolvedConfig](#config-resolvedconfig) · [dropboxstorage.Config](#dropboxstorage-config) · [ftpstorage.Config](#ftpstorage-config) · [gcsstorage.Config](#gcsstorage-config) · [localstorage.Config](#localstorage-config) · [memorystorage.Config](#memorystorage-config) · [rclonestorage.Config](#rclonestorage-config) · [redisstorage.Config](#redisstorage-config) · [s3storage.Config](#s3storage-config) · [sftpstorage.Config](#sftpstorage-config) |
 | **Driver Constructors** | [dropboxstorage.New](#dropboxstorage-new) · [ftpstorage.New](#ftpstorage-new) · [gcsstorage.New](#gcsstorage-new) · [localstorage.New](#localstorage-new) · [memorystorage.New](#memorystorage-new) · [rclonestorage.New](#rclonestorage-new) · [redisstorage.New](#redisstorage-new) · [s3storage.New](#s3storage-new) · [sftpstorage.New](#sftpstorage-new) |
-| **Manager** | [Config](#config) · [Manager](#manager) · [Manager.Default](#manager-default) · [Manager.Disk](#manager-disk) · [New](#new) · [RegisterDriver](#registerdriver) |
-| **Other** | [Config.DriverName](#config-drivername) · [Config.ResolvedConfig](#config-resolvedconfig) · [Manager.Close](#manager-close) · [Objects](#objects) · [PaginateEntries](#paginateentries) · [s3storage.PrepareBucketContext](#s3storage-preparebucketcontext) |
+| **Manager** | [Config](#config) · [Manager](#manager) · [Manager.Close](#manager-close) · [Manager.Default](#manager-default) · [Manager.Disk](#manager-disk) · [New](#new) · [RegisterDriver](#registerdriver) |
 | **Paths** | [JoinPrefix](#joinprefix) · [NormalizePath](#normalizepath) |
+| **Streaming** | [Objects](#objects) |
 
 
 ## Config
@@ -607,6 +471,31 @@ factory := storage.DriverFactory(func(ctx context.Context, cfg storage.ResolvedC
 _, _ = factory(context.Background(), storage.ResolvedConfig{Driver: "memory"})
 ```
 
+### <a id="s3storage-preparebucketcontext"></a>s3storage.PrepareBucketContext
+
+PrepareBucketContext creates a missing bucket using the same configuration and credentials as the driver.
+Existing buckets are unchanged. Permission failures never trigger a creation attempt.
+
+```go
+// Start the backup demo's RustFS container before running this example.
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+
+cfg := s3storage.Config{
+	Bucket:          "storage-demo",
+	Region:          "us-east-1",
+	Endpoint:        "http://127.0.0.1:19000",
+	UsePathStyle:    true,
+	AccessKeyID:     "storage-demo",
+	SecretAccessKey: "storage-demo-password",
+}
+if err := s3storage.PrepareBucketContext(ctx, cfg); err != nil {
+	panic(err)
+}
+fmt.Println("bucket ready")
+// Output: bucket ready
+```
+
 ## Context
 
 ### <a id="buildcontext"></a>BuildContext
@@ -614,10 +503,31 @@ _, _ = factory(context.Background(), storage.ResolvedConfig{Driver: "memory"})
 BuildContext constructs a single storage backend from a typed driver config
 using the caller-provided context.
 
+```go
+ctx, cancel := context.WithCancel(context.Background())
+cancel()
+_, err := storage.BuildContext(ctx, memorystorage.Config{})
+fmt.Println(errors.Is(err, context.Canceled))
+// Output: true
+```
+
 ### <a id="countfilescontext"></a>CountFilesContext
 
 CountFilesContext returns the recursive count of non-directory entries under
 path using the caller-provided context.
+
+```go
+disk, _ := storage.Build(memorystorage.Config{})
+_ = disk.Put("docs/readme.txt", []byte("hello"))
+ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+defer cancel()
+total, err := storage.CountFilesContext(ctx, disk, "docs")
+if err != nil {
+	panic(err)
+}
+fmt.Println(total)
+// Output: 1
+```
 
 ## Core
 
@@ -673,15 +583,62 @@ fmt.Println(entry.Path, entry.IsDir)
 
 ListPageResult describes a paginated one-level directory listing.
 
+```go
+page := storage.ListPageResult{
+	Entries: []storage.Entry{{Path: "notes.txt"}},
+	Offset:  0,
+	Limit:   1,
+	HasMore: true,
+}
+if page.HasMore {
+	fmt.Println("Next offset:", page.Offset+len(page.Entries))
+	// Output: Next offset: 1
+}
+```
+
 ### <a id="pagedstorage"></a>PagedStorage
 
 PagedStorage exposes paginated one-level listing when a backend can support it.
 Use Storage for the common path and type-assert to PagedStorage when you need
 backend-driven pagination.
 
+```go
+disk, _ := storage.Build(memorystorage.Config{})
+_, ok := disk.(storage.PagedStorage)
+fmt.Println("Pagination available:", ok)
+// Output: Pagination available: true
+```
+
 ### <a id="pagedstorage-listpage"></a>PagedStorage.ListPage
 
 ListPage returns one page of immediate children under path.
+
+```go
+disk, _ := storage.Build(memorystorage.Config{})
+_ = disk.Put("docs/a.txt", []byte("a"))
+_ = disk.Put("docs/b.txt", []byte("b"))
+paged, ok := disk.(storage.PagedStorage)
+if !ok {
+	panic("disk does not support pagination")
+}
+page, err := paged.ListPage("docs", 0, 1)
+if err != nil {
+	panic(err)
+}
+fmt.Println(page.Entries[0].Path, page.HasMore)
+// Output: docs/a.txt true
+```
+
+### <a id="paginateentries"></a>PaginateEntries
+
+PaginateEntries returns a clamped page without mutating the caller's entry slice.
+
+```go
+entries := []storage.Entry{{Path: "a.txt"}, {Path: "b.txt"}, {Path: "c.txt"}}
+page := storage.PaginateEntries(entries, 1, 1)
+fmt.Println(page.Entries[0].Path, page.HasMore)
+// Output: b.txt true
+```
 
 ### <a id="storage"></a>Storage
 
@@ -927,6 +884,27 @@ fmt.Println(string(data))
 
 ## Driver Config
 
+### <a id="config-drivername"></a>Config.DriverName
+
+DriverName returns the registry name for local storage.
+
+```go
+cfg := localstorage.Config{Root: "./data"}
+fmt.Println(cfg.DriverName())
+// Output: local
+```
+
+### <a id="config-resolvedconfig"></a>Config.ResolvedConfig
+
+ResolvedConfig translates Config into the shared driver boundary.
+
+```go
+cfg := localstorage.Config{Root: "./data", Prefix: "uploads"}
+resolved := cfg.ResolvedConfig()
+fmt.Println(resolved.Driver, resolved.Remote, resolved.Prefix)
+// Output: local ./data uploads
+```
+
 ### <a id="dropboxstorage-config"></a>dropboxstorage.Config
 
 Config defines a Dropbox-backed storage disk.
@@ -970,6 +948,7 @@ cfg := ftpstorage.Config{
 	Port:               21,        // default: 21
 	User:               "demo",    // default: ""
 	Password:           "secret",  // default: ""
+	StagedWrites:       false,     // default: false
 	TLS:                false,     // default: false
 	InsecureSkipVerify: false,     // default: false
 	Prefix:             "uploads", // default: ""
@@ -1104,14 +1083,14 @@ _Example: define s3 storage config with all fields_
 
 ```go
 cfg := s3storage.Config{
-	Bucket:          "uploads",
-	Endpoint:        "http://localhost:9000", // default: ""
+	Bucket:          "storage-demo",
+	Endpoint:        "http://localhost:19000", // default: ""
 	Region:          "us-east-1",
-	AccessKeyID:     "minioadmin", // default: ""
-	SecretAccessKey: "minioadmin", // default: ""
-	UsePathStyle:    true,         // default: false
-	UnsignedPayload: false,        // default: false
-	Prefix:          "assets",     // default: ""
+	AccessKeyID:     "storage-demo",           // default: ""
+	SecretAccessKey: "storage-demo-password",  // default: ""
+	UsePathStyle:    true,                     // default: false
+	UnsignedPayload: false,                    // default: false
+	Prefix:          "assets",                 // default: ""
 }
 ```
 
@@ -1288,6 +1267,27 @@ mgr, _ := storage.New(storage.Config{
 })
 ```
 
+### <a id="manager-close"></a>Manager.Close
+
+Close releases all initialized disks once in reverse deterministic construction order.
+
+```go
+manager, err := storage.New(storage.Config{
+	Default: "scratch",
+	Disks: map[storage.DiskName]storage.DriverConfig{
+		"scratch": memorystorage.Config{},
+	},
+})
+if err != nil {
+	panic(err)
+}
+if err := manager.Close(); err != nil {
+	panic(err)
+}
+fmt.Println("storage closed")
+// Output: storage closed
+```
+
 ### <a id="manager-default"></a>Manager.Default
 
 Default returns the default disk or panics if misconfigured.
@@ -1347,35 +1347,6 @@ storage.RegisterDriver("memory", func(ctx context.Context, cfg storage.ResolvedC
 })
 ```
 
-## Other
-
-### <a id="config-drivername"></a>Config.DriverName
-
-DriverName returns the registry name for local storage.
-
-### <a id="config-resolvedconfig"></a>Config.ResolvedConfig
-
-ResolvedConfig translates Config into the shared driver boundary.
-
-### <a id="manager-close"></a>Manager.Close
-
-Close releases all initialized disks once in reverse deterministic construction order.
-
-### <a id="objects"></a>Objects
-
-Objects returns a driver's optional streaming object capability without changing Storage.
-Every operation takes its own context; a handle's WithContext binding does not replace it.
-Unsupported drivers return ErrUnsupported rather than buffering a stream as a fallback.
-
-### <a id="paginateentries"></a>PaginateEntries
-
-PaginateEntries returns a clamped page without mutating the caller's entry slice.
-
-### <a id="s3storage-preparebucketcontext"></a>s3storage.PrepareBucketContext
-
-PrepareBucketContext creates a missing bucket using the same configuration and credentials as the driver.
-Existing buckets are unchanged. Permission failures never trigger a creation attempt.
-
 ## Paths
 
 ### <a id="joinprefix"></a>JoinPrefix
@@ -1398,6 +1369,42 @@ The empty string and root-like inputs normalize to the logical root.
 p, _ := storage.NormalizePath(" /avatars//user-1.png ")
 fmt.Println(p)
 // Output: avatars/user-1.png
+```
+
+## Streaming
+
+### <a id="objects"></a>Objects
+
+Objects returns a driver's streaming object capability. Each streaming call
+takes its own context. Unsupported drivers return ErrUnsupported.
+
+```go
+// Run the RustFS backup demo first to create the bucket.
+ctx := context.Background()
+disk, err := storage.Build(s3storage.Config{
+	Bucket:          "storage-demo",
+	Region:          "us-east-1",
+	Endpoint:        "http://127.0.0.1:19000",
+	UsePathStyle:    true,
+	AccessKeyID:     "storage-demo",
+	SecretAccessKey: "storage-demo-password",
+})
+if err != nil {
+	panic(err)
+}
+objects, err := storage.Objects(disk)
+if err != nil {
+	panic(err)
+}
+body := strings.NewReader("hello from storage")
+info, err := objects.PutObjectContext(ctx, "stream.txt", body, storagecore.PutObjectOptions{
+	Size: body.Size(),
+})
+if err != nil {
+	panic(err)
+}
+fmt.Println(info.Key, info.Size)
+// Output: stream.txt 18
 ```
 <!-- api:embed:end -->
 

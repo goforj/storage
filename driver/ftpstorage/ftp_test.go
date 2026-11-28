@@ -4,6 +4,7 @@ package ftpstorage
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/goftp/server"
+
+	"github.com/goforj/storage/storagecore"
 )
 
 type memFactory struct {
@@ -139,6 +142,8 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		Port:     pickPort(),
 		Hostname: "127.0.0.1",
 		Auth:     &server.SimpleAuth{Name: "anonymous", Password: "anonymous"},
+		// Keep passive listeners outside the macOS ephemeral client port range.
+		PassivePorts: "20000-40000",
 	}
 	s := server.NewServer(opts)
 
@@ -152,7 +157,7 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 	// small delay to ensure server is listening
 	time.Sleep(200 * time.Millisecond)
 
-	fs, err := New(Config{
+	disk, err := New(Config{
 		Host:     "127.0.0.1",
 		Port:     opts.Port,
 		User:     "anonymous",
@@ -162,10 +167,15 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if err := fs.Put("hello.txt", []byte("world")); err != nil {
+	t.Cleanup(func() { _ = disk.(io.Closer).Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	fs := disk.(storagecore.ContextStorage)
+
+	if err := fs.PutContext(ctx, "hello.txt", []byte("world")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	got, err := fs.Get("hello.txt")
+	got, err := fs.GetContext(ctx, "hello.txt")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -174,13 +184,13 @@ func TestFTPWithEmbeddedServer(t *testing.T) {
 	}
 
 	payload := bytes.Repeat([]byte("streamed content\n"), 8192)
-	if err := fs.Put("source.txt", payload); err != nil {
+	if err := fs.PutContext(ctx, "source.txt", payload); err != nil {
 		t.Fatal(err)
 	}
-	if err := fs.Copy("source.txt", "hello.txt"); err != nil {
+	if err := fs.CopyContext(ctx, "source.txt", "hello.txt"); err != nil {
 		t.Fatal(err)
 	}
-	copied, err := fs.Get("hello.txt")
+	copied, err := fs.GetContext(ctx, "hello.txt")
 	if err != nil || !bytes.Equal(copied, payload) {
 		t.Fatalf("copied %d bytes, error = %v", len(copied), err)
 	}

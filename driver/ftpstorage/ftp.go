@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,18 +33,23 @@ func init() {
 }
 
 type driver struct {
-	mu            sync.Mutex
+	once          sync.Once
+	gate          chan struct{}
+	lifetime      context.Context
+	stop          context.CancelFunc
 	conn          ftpConn
 	addr          string
 	user          string
 	pass          string
 	prefix        string
+	stagedWrites  bool
 	tls           bool
 	insecure      bool
 	serverName    string
 	minTLSVersion uint16
 	dialFn        func() (ftpConn, error)
-	closed        bool
+	closed        atomic.Bool
+	closeOnce     sync.Once
 	closeErr      error
 }
 
@@ -61,7 +67,8 @@ type ftpConn interface {
 }
 
 type realFTPConn struct {
-	conn *ftp.ServerConn
+	conn      *ftp.ServerConn
+	transport *ftpTransport
 }
 
 // Config defines an FTP-backed storage disk.
@@ -83,16 +90,20 @@ type realFTPConn struct {
 //		Port:               21,        // default: 21
 //		User:               "demo",    // default: ""
 //		Password:           "secret",  // default: ""
+//		StagedWrites:       false,     // default: false
 //		TLS:                false,     // default: false
 //		InsecureSkipVerify: false,     // default: false
 //		Prefix:             "uploads", // default: ""
 //	}
 //	_ = cfg
 type Config struct {
-	Host               string
-	Port               int
-	User               string
-	Password           string
+	Host     string
+	Port     int
+	User     string
+	Password string
+	// StagedWrites uploads to a sibling file and publishes it by rename.
+	// It requires rename permission and server support for replacing existing files.
+	StagedWrites       bool
 	TLS                bool
 	InsecureSkipVerify bool
 	Prefix             string
@@ -109,6 +120,7 @@ func (c Config) ResolvedConfig() storagecore.ResolvedConfig {
 		FTPPort:               c.Port,
 		FTPUser:               c.User,
 		FTPPassword:           c.Password,
+		FTPStagedWrites:       c.StagedWrites,
 		FTPTLS:                c.TLS,
 		FTPInsecureSkipVerify: c.InsecureSkipVerify,
 		Prefix:                c.Prefix,
@@ -168,6 +180,7 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 		user:          user,
 		pass:          pass,
 		prefix:        prefix,
+		stagedWrites:  cfg.FTPStagedWrites,
 		tls:           cfg.FTPTLS,
 		insecure:      cfg.FTPInsecureSkipVerify,
 		serverName:    serverName,
@@ -176,84 +189,98 @@ func newFromDiskConfig(ctx context.Context, cfg storagecore.ResolvedConfig) (sto
 	}, nil
 }
 
-// dial opens an FTP control connection with the configured timeout and optional explicit TLS.
-func (d *driver) dial() (ftpConn, error) {
+// dial opens a control socket and keeps ownership of passive data sockets.
+func (d *driver) dial(ctx context.Context) (ftpConn, error) {
 	if d.dialFn != nil {
 		return d.dialFn()
 	}
-	opts := []ftp.DialOption{
-		ftp.DialWithTimeout(10 * time.Second),
-		ftp.DialWithDisabledEPSV(true),
-	}
+	transport := &ftpTransport{}
+	opts := []ftp.DialOption{ftp.DialWithDisabledEPSV(true), ftp.DialWithDialFunc(transport.dial)}
 	if d.tls {
-		opts = append(opts, ftp.DialWithExplicitTLS(&tls.Config{
+		transport.tls = &tls.Config{
 			MinVersion:         d.minTLSVersion,
 			ServerName:         d.serverName,
 			InsecureSkipVerify: d.insecure,
-		}))
+		}
+		opts = append(opts, ftp.DialWithExplicitTLS(transport.tls))
 	}
-	conn, err := ftp.Dial(d.addr, opts...)
+	var conn *ftp.ServerConn
+	err := transport.run(ctx, func() (err error) {
+		conn, err = ftp.Dial(d.addr, opts...)
+		return err
+	})
 	if err != nil {
+		transport.abort()
 		return nil, err
 	}
-	return realFTPConn{conn: conn}, nil
+	return realFTPConn{conn: conn, transport: transport}, nil
 }
 
-// withConn serializes one FTP command and discards the cached connection after any failure.
-func (d *driver) withConn(fn func(ftpConn) error) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+// initGate prepares a context-aware session lease, including for test drivers.
+func (d *driver) initGate() {
+	d.once.Do(func() {
+		d.gate = make(chan struct{}, 1)
+		d.lifetime, d.stop = context.WithCancel(context.Background())
+	})
+}
 
-	if _, err := d.ensureConnLocked(); err != nil {
+// withConn executes a command once, so uncertain mutations are never replayed.
+func (d *driver) withConn(ctx context.Context, fn func(ftpConn) error) error {
+	return d.runSession(ctx, func(_ context.Context, conn ftpConn) error { return fn(conn) }, false)
+}
+
+// withConnRetry can retry a read after discarding a broken cached connection.
+func (d *driver) withConnRetry(ctx context.Context, fn func(ftpConn) error) error {
+	return d.runSession(ctx, func(_ context.Context, conn ftpConn) error { return fn(conn) }, true)
+}
+
+// runSession allows waiting callers to leave independently and owns the cached connection until completion.
+func (d *driver) runSession(ctx context.Context, fn func(context.Context, ftpConn) error, retry bool) error {
+	d.initGate()
+	select {
+	case d.gate <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.lifetime.Done():
+		return fs.ErrClosed
+	}
+	defer func() { <-d.gate }()
+	if err := d.closedError(); err != nil {
 		return err
 	}
-	if err := d.runConnLocked(fn); err != nil {
-		return joinCleanup(err, d.closeConnLocked())
+	operation, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(d.lifetime, cancel)
+	defer stop()
+
+	attempt := func() error {
+		conn, err := d.ensureConnLocked(operation)
+		if err != nil {
+			return err
+		}
+		return invokeFTP(operation, conn, func(conn ftpConn) error { return fn(operation, conn) })
+	}
+	err := attempt()
+	var closeErr error
+	if err != nil && retry && operation.Err() == nil && shouldReconnectFTP(err) {
+		closeErr = d.closeConnLocked()
+		err = attempt()
+	}
+	if err != nil || operation.Err() != nil {
+		return joinCleanup(err, joinCleanup(closeErr, d.closeConnLocked()))
 	}
 	return nil
 }
 
-// withConnRetry retries a transient transport failure once on a freshly authenticated connection.
-func (d *driver) withConnRetry(fn func(ftpConn) error) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if _, err := d.ensureConnLocked(); err != nil {
-		return err
-	}
-	if err := d.runConnLocked(fn); err != nil {
-		if !shouldReconnectFTP(err) {
-			return joinCleanup(err, d.closeConnLocked())
-		}
-		closeErr := d.closeConnLocked()
-		if _, retryErr := d.ensureConnLocked(); retryErr != nil {
-			return joinCleanup(retryErr, closeErr)
-		}
-		if retryErr := d.runConnLocked(fn); retryErr != nil {
-			return joinCleanup(retryErr, joinCleanup(closeErr, d.closeConnLocked()))
-		}
-		return nil
-	}
-	return nil
-}
-
-// runConnLocked invokes fn only while the caller holds the connection mutex.
-func (d *driver) runConnLocked(fn func(ftpConn) error) error {
-	if d.conn == nil {
-		return fmt.Errorf("storage: ftp connection unavailable")
-	}
-	return fn(d.conn)
-}
-
-// ensureConnLocked lazily dials and authenticates unless the driver is terminally closed.
-func (d *driver) ensureConnLocked() (ftpConn, error) {
-	if d.closed {
-		return nil, fmt.Errorf("storage: ftp: %w", fs.ErrClosed)
+// ensureConnLocked lazily dials and authenticates while the caller owns the session lease.
+func (d *driver) ensureConnLocked(ctx context.Context) (ftpConn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if d.conn != nil {
 		return d.conn, nil
 	}
-	conn, err := d.connect()
+	conn, err := d.connect(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -261,16 +288,21 @@ func (d *driver) ensureConnLocked() (ftpConn, error) {
 	return conn, nil
 }
 
-// connect authenticates a session that can be cached or dedicated to an active transfer.
-func (d *driver) connect() (ftpConn, error) {
-	conn, err := d.dial()
+// connect authenticates a session that belongs to the current request or dedicated transfer.
+func (d *driver) connect(ctx context.Context) (ftpConn, error) {
+	setup, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, err := d.dial(setup)
 	if err != nil {
 		return nil, err
 	}
 	if d.user != "" || d.pass != "" {
-		if err := conn.Login(d.user, d.pass); err != nil {
+		if err := invokeFTP(setup, conn, func(conn ftpConn) error { return conn.Login(d.user, d.pass) }); err != nil {
 			return nil, joinCleanup(err, conn.Quit())
 		}
+	}
+	if err := setup.Err(); err != nil {
+		return nil, joinCleanup(err, conn.Quit())
 	}
 	return conn, nil
 }
@@ -285,15 +317,16 @@ func (d *driver) closeConnLocked() error {
 	return err
 }
 
-// Close prevents future operations and closes the cached FTP connection once.
+// Close cancels active transport I/O before taking the lease and releasing the session.
 func (d *driver) Close() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.closed {
-		return d.closeErr
-	}
-	d.closed = true
-	d.closeErr = d.closeConnLocked()
+	d.initGate()
+	d.closeOnce.Do(func() {
+		d.closed.Store(true)
+		d.stop()
+		d.gate <- struct{}{}
+		defer func() { <-d.gate }()
+		d.closeErr = d.closeConnLocked()
+	})
 	return d.closeErr
 }
 
@@ -319,7 +352,7 @@ func (d *driver) GetContext(ctx context.Context, p string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: logical root cannot be read as an object", storagecore.ErrForbidden)
 	}
 	var data []byte
-	err = d.withConnRetry(func(c ftpConn) error {
+	err = d.withConnRetry(ctx, func(c ftpConn) error {
 		r, err := c.Retr(fp)
 		if err != nil {
 			return err
@@ -345,7 +378,8 @@ func (d *driver) MakeDir(p string) error {
 	return d.MakeDirContext(context.Background(), p)
 }
 
-// PutContext creates missing parents and streams an object while honoring cancellation.
+// PutContext creates missing parents and uploads the file.
+// With StagedWrites enabled, it publishes a fully uploaded sibling file by rename.
 func (d *driver) PutContext(ctx context.Context, p string, contents []byte) error {
 	ctx = normalizeContext(ctx)
 	if err := d.closedError(); err != nil {
@@ -361,7 +395,7 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 	if d.stripPrefix(fp) == "" {
 		return fmt.Errorf("%w: logical root cannot be used as an object", storagecore.ErrForbidden)
 	}
-	return wrapError(d.withConn(func(c ftpConn) error {
+	return wrapError(d.runSession(ctx, func(ctx context.Context, c ftpConn) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -371,8 +405,12 @@ func (d *driver) PutContext(ctx context.Context, p string, contents []byte) erro
 				return err
 			}
 		}
-		return c.Stor(fp, &contextReader{ctx: ctx, reader: bytes.NewReader(contents)})
-	}))
+		body := bytes.NewReader(contents)
+		if d.stagedWrites {
+			return d.publishUpload(ctx, c, fp, body, nil)
+		}
+		return c.Stor(fp, &contextReader{ctx: ctx, reader: body})
+	}, false))
 }
 
 // MakeDirContext recursively creates a directory and treats the logical root as existing.
@@ -391,7 +429,7 @@ func (d *driver) MakeDirContext(ctx context.Context, p string) error {
 	if d.stripPrefix(fp) == "" {
 		return nil
 	}
-	return wrapError(d.withConn(func(c ftpConn) error {
+	return wrapError(d.withConn(ctx, func(c ftpConn) error {
 		return ensureDirs(c, fp)
 	}))
 }
@@ -437,7 +475,7 @@ func (d *driver) DeleteContext(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
-	return wrapError(d.withConn(func(c ftpConn) error {
+	return wrapError(d.withConn(ctx, func(c ftpConn) error {
 		if entry.IsDir {
 			return c.RemoveDir(fp)
 		}
@@ -467,7 +505,7 @@ func (d *driver) StatContext(ctx context.Context, p string) (storagecore.Entry, 
 		return storagecore.Entry{Path: "", IsDir: true}, nil
 	}
 	var entry storagecore.Entry
-	err = d.withConnRetry(func(c ftpConn) error {
+	err = d.withConnRetry(ctx, func(c ftpConn) error {
 		parent := path.Dir(fp)
 		if parent == "." {
 			parent = ""
@@ -518,7 +556,7 @@ func (d *driver) ExistsContext(ctx context.Context, p string) (bool, error) {
 	if d.stripPrefix(fp) == "" {
 		return false, nil
 	}
-	err = d.withConnRetry(func(c ftpConn) error {
+	err = d.withConnRetry(ctx, func(c ftpConn) error {
 		_, err := c.FileSize(fp)
 		return err
 	})
@@ -556,7 +594,7 @@ func (d *driver) ListContext(ctx context.Context, p string) ([]storagecore.Entry
 		return nil, err
 	}
 	var entries []storagecore.Entry
-	err = d.withConnRetry(func(c ftpConn) error {
+	err = d.withConnRetry(ctx, func(c ftpConn) error {
 		l, err := c.List(fp)
 		if err != nil {
 			return err
@@ -631,7 +669,7 @@ func (d *driver) WalkContext(ctx context.Context, p string, fn func(storagecore.
 		return err
 	}
 	var snapshot []storagecore.Entry
-	err = d.withConnRetry(func(c ftpConn) error {
+	err = d.withConnRetry(ctx, func(c ftpConn) error {
 		entries, err := d.walkSnapshot(ctx, c, fp)
 		if err == nil {
 			snapshot = entries
@@ -696,7 +734,7 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 	}
 	source := storagecore.JoinPrefix(d.prefix, srcPath)
 	if srcPath == dstPath {
-		return wrapError(d.withConnRetry(func(c ftpConn) error {
+		return wrapError(d.withConnRetry(ctx, func(c ftpConn) error {
 			reader, err := c.Retr(source)
 			if err != nil {
 				return err
@@ -706,9 +744,9 @@ func (d *driver) CopyContext(ctx context.Context, src, dst string) error {
 		}))
 	}
 	destination := storagecore.JoinPrefix(d.prefix, dstPath)
-	return wrapError(d.withConn(func(upload ftpConn) error {
+	return wrapError(d.runSession(ctx, func(ctx context.Context, upload ftpConn) error {
 		return d.copyOnSession(ctx, upload, source, destination)
-	}))
+	}, false))
 }
 
 // copyOnSession stages the upload so a failed transfer cannot truncate an existing destination.
@@ -722,33 +760,72 @@ func (d *driver) copyOnSession(ctx context.Context, upload ftpConn, source, dest
 			return err
 		}
 	}
-	download, err := d.connect()
+	download, err := d.connect(ctx)
 	if err != nil {
 		return err
 	}
-	reader, err := download.Retr(source)
-	if err != nil {
-		return joinCleanup(err, download.Quit())
+	downloadClosed := false
+	closeDownload := func() error {
+		if downloadClosed {
+			return nil
+		}
+		downloadClosed = true
+		return download.Quit()
 	}
+	err = invokeFTP(ctx, download, func(download ftpConn) error {
+		reader, err := download.Retr(source)
+		if err != nil {
+			return err
+		}
+		return d.publishUpload(ctx, upload, destination, reader, func() error {
+			return joinCleanup(reader.Close(), closeDownload())
+		})
+	})
+	return joinCleanup(err, closeDownload())
+}
 
-	temporary := path.Join(dir, ".storage-tmp-"+rand.Text())
-	err = upload.Stor(temporary, &contextReader{ctx: ctx, reader: reader})
-	err = joinCleanup(err, reader.Close())
-	err = joinCleanup(err, download.Quit())
+// publishUpload stages bytes and finishes the source before publishing an overwrite.
+func (d *driver) publishUpload(ctx context.Context, conn ftpConn, destination string, body io.Reader, finish func() error) error {
+	temporary := path.Join(path.Dir(destination), ".storage-tmp-"+rand.Text())
+	err := conn.Stor(temporary, &contextReader{ctx: ctx, reader: body})
+	if finish != nil {
+		err = joinCleanup(err, finish())
+	}
 	if err == nil {
 		err = ctx.Err()
 	}
 	if err == nil {
-		err = upload.Rename(temporary, destination)
+		err = conn.Rename(temporary, destination)
 	}
 	if err != nil {
-		cleanupErr := wrapError(upload.Delete(temporary))
-		if errors.Is(cleanupErr, storagecore.ErrNotFound) {
-			cleanupErr = nil
-		}
-		return joinCleanup(err, cleanupErr)
+		return joinCleanup(err, d.removeUpload(ctx, conn, temporary))
 	}
 	return nil
+}
+
+// removeUpload retries staged-file cleanup through a fresh connection after transport loss.
+func (d *driver) removeUpload(ctx context.Context, conn ftpConn, name string) error {
+	removeErr := wrapError(conn.Delete(name))
+	_, real := conn.(realFTPConn)
+	if real && removeErr != nil && !errors.Is(removeErr, storagecore.ErrNotFound) {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		defer cancel()
+		fresh, err := d.connect(cleanup)
+		if err != nil {
+			return joinCleanup(removeErr, err)
+		}
+		removeErr = wrapError(invokeFTP(cleanup, fresh, func(fresh ftpConn) error { return fresh.Delete(name) }))
+		return joinCleanup(ignoreMissingFTP(removeErr), fresh.Quit())
+	}
+	return ignoreMissingFTP(removeErr)
+}
+
+// ignoreMissingFTP treats an already removed stage as successful cleanup.
+func ignoreMissingFTP(err error) error {
+	if errors.Is(err, storagecore.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 // Move relocates a path using a background context.
@@ -784,7 +861,7 @@ func (d *driver) MoveContext(ctx context.Context, src, dst string) error {
 	}
 	srcPath := storagecore.JoinPrefix(d.prefix, srcLogical)
 	dstPath := storagecore.JoinPrefix(d.prefix, dstLogical)
-	return wrapError(d.withConn(func(c ftpConn) error {
+	return wrapError(d.withConn(ctx, func(c ftpConn) error {
 		if err := ensureDirs(c, path.Dir(dstPath)); err != nil {
 			return err
 		}
@@ -903,7 +980,9 @@ func wrapError(err error) error {
 		strings.Contains(msg, "not a directory") {
 		return fmt.Errorf("%w: %w", storagecore.ErrForbidden, err)
 	}
-	if strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") || strings.Contains(msg, "can't check for file existence") || strings.Contains(msg, "550") {
+	var reply *textproto.Error
+	missingReply := errors.As(err, &reply) && reply.Code == ftp.StatusFileUnavailable
+	if missingReply || strings.Contains(msg, "not found") || strings.Contains(msg, "not available") || strings.Contains(msg, "no such file") || strings.Contains(msg, "can't check for file existence") || strings.HasPrefix(msg, "550 ") {
 		return fmt.Errorf("%w: %w", storagecore.ErrNotFound, err)
 	}
 	return err
@@ -931,9 +1010,7 @@ func joinCleanup(primary, cleanup error) error {
 
 // closedError rejects work after Close while synchronizing access to terminal state.
 func (d *driver) closedError() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.closed {
+	if d.closed.Load() {
 		return fmt.Errorf("storage: ftp: %w", fs.ErrClosed)
 	}
 	return nil
@@ -1019,6 +1096,14 @@ func (c realFTPConn) Login(user, password string) error {
 
 // Quit closes the wrapped goftp connection cleanly.
 func (c realFTPConn) Quit() error {
+	c.transport.mu.Lock()
+	aborted, socket := c.transport.aborted, c.transport.control
+	c.transport.mu.Unlock()
+	defer c.transport.abort()
+	if aborted {
+		return nil
+	}
+	_ = socket.SetWriteDeadline(time.Now().Add(time.Second))
 	return c.conn.Quit()
 }
 

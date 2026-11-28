@@ -71,7 +71,7 @@ Current fixture model:
 - `redis`: Redis via testcontainers
 - `gcs`: fake-gcs-server
 - `ftp`: embedded Go FTP server
-- `s3`: MinIO via testcontainers
+- `s3`: RustFS via testcontainers
 - `sftp`: atmoz/sftp via testcontainers, with the container host key loaded into `known_hosts`
 - `rclone_local`: in-memory rendered rclone local remote over a temp directory
 

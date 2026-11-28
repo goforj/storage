@@ -101,6 +101,24 @@ func New(cfg Config) (*Manager, error) {
 }
 
 // Close releases all initialized disks once in reverse deterministic construction order.
+// @group Manager
+//
+// Example: close a manager after use
+//
+//	manager, err := storage.New(storage.Config{
+//		Default: "scratch",
+//		Disks: map[storage.DiskName]storage.DriverConfig{
+//			"scratch": memorystorage.Config{},
+//		},
+//	})
+//	if err != nil {
+//		panic(err)
+//	}
+//	if err := manager.Close(); err != nil {
+//		panic(err)
+//	}
+//	fmt.Println("storage closed")
+//	// Output: storage closed
 func (m *Manager) Close() error {
 	if m == nil {
 		return nil

@@ -133,8 +133,8 @@ type fakeDropbox struct {
 	metaErrSeq    []error
 }
 
-// Download records its argument and returns the configured body, payload, or failure.
-func (f *fakeDropbox) Download(arg *files.DownloadArg) (*files.FileMetadata, io.ReadCloser, error) {
+// DownloadContext records its argument and returns the configured body, payload, or failure.
+func (f *fakeDropbox) DownloadContext(_ context.Context, arg *files.DownloadArg) (*files.FileMetadata, io.ReadCloser, error) {
 	f.downloadArgs = append(f.downloadArgs, arg)
 	if f.downloadHook != nil {
 		f.downloadHook()
@@ -151,8 +151,8 @@ func (f *fakeDropbox) Download(arg *files.DownloadArg) (*files.FileMetadata, io.
 	return &files.FileMetadata{}, io.NopCloser(strings.NewReader(f.getData)), nil
 }
 
-// Upload captures request metadata and bytes before running any completion hook.
-func (f *fakeDropbox) Upload(arg *files.UploadArg, content io.Reader) (*files.FileMetadata, error) {
+// UploadContext captures request metadata and bytes before running any completion hook.
+func (f *fakeDropbox) UploadContext(_ context.Context, arg *files.UploadArg, content io.Reader) (*files.FileMetadata, error) {
 	f.uploadArgs = append(f.uploadArgs, arg)
 	if f.putErr != nil {
 		return nil, f.putErr
@@ -168,8 +168,8 @@ func (f *fakeDropbox) Upload(arg *files.UploadArg, content io.Reader) (*files.Fi
 	return &files.FileMetadata{}, nil
 }
 
-// DeleteV2 records deletion requests and delegates path-sensitive fixture behavior.
-func (f *fakeDropbox) DeleteV2(arg *files.DeleteArg) (*files.DeleteResult, error) {
+// DeleteV2Context records deletion requests and delegates path-sensitive fixture behavior.
+func (f *fakeDropbox) DeleteV2Context(_ context.Context, arg *files.DeleteArg) (*files.DeleteResult, error) {
 	f.deleteArgs = append(f.deleteArgs, arg)
 	if f.deleteHook != nil {
 		return nil, f.deleteHook(arg)
@@ -177,8 +177,8 @@ func (f *fakeDropbox) DeleteV2(arg *files.DeleteArg) (*files.DeleteResult, error
 	return nil, f.delErr
 }
 
-// CreateFolderV2 records folder creation and updates fixture metadata on success.
-func (f *fakeDropbox) CreateFolderV2(arg *files.CreateFolderArg) (*files.CreateFolderResult, error) {
+// CreateFolderV2Context records folder creation and updates fixture metadata on success.
+func (f *fakeDropbox) CreateFolderV2Context(_ context.Context, arg *files.CreateFolderArg) (*files.CreateFolderResult, error) {
 	f.createArgs = append(f.createArgs, arg)
 	if f.createHook != nil {
 		f.createHook()
@@ -192,8 +192,8 @@ func (f *fakeDropbox) CreateFolderV2(arg *files.CreateFolderArg) (*files.CreateF
 	return &files.CreateFolderResult{}, nil
 }
 
-// MoveV2 records relocation arguments and returns the configured failure.
-func (f *fakeDropbox) MoveV2(arg *files.RelocationArg) (*files.RelocationResult, error) {
+// MoveV2Context records relocation arguments and returns the configured failure.
+func (f *fakeDropbox) MoveV2Context(_ context.Context, arg *files.RelocationArg) (*files.RelocationResult, error) {
 	f.moveArgs = append(f.moveArgs, arg)
 	if f.moveHook != nil {
 		f.moveHook()
@@ -204,8 +204,8 @@ func (f *fakeDropbox) MoveV2(arg *files.RelocationArg) (*files.RelocationResult,
 	return &files.RelocationResult{}, nil
 }
 
-// GetMetadata resolves path-specific fixture metadata and failures before shared defaults.
-func (f *fakeDropbox) GetMetadata(arg *files.GetMetadataArg) (files.IsMetadata, error) {
+// GetMetadataContext resolves path-specific fixture metadata and failures before shared defaults.
+func (f *fakeDropbox) GetMetadataContext(_ context.Context, arg *files.GetMetadataArg) (files.IsMetadata, error) {
 	f.metadataArgs = append(f.metadataArgs, arg)
 	if f.metaHook != nil {
 		f.metaHook()
@@ -238,8 +238,8 @@ func (f *fakeDropbox) GetMetadata(arg *files.GetMetadataArg) (files.IsMetadata, 
 	return f.metaOut, nil
 }
 
-// ListFolder records the initial query and returns its configured page.
-func (f *fakeDropbox) ListFolder(arg *files.ListFolderArg) (*files.ListFolderResult, error) {
+// ListFolderContext records the initial query and returns its configured page.
+func (f *fakeDropbox) ListFolderContext(_ context.Context, arg *files.ListFolderArg) (*files.ListFolderResult, error) {
 	f.listArgs = append(f.listArgs, arg)
 	if f.listHook != nil {
 		f.listHook()
@@ -253,8 +253,8 @@ func (f *fakeDropbox) ListFolder(arg *files.ListFolderArg) (*files.ListFolderRes
 	return &files.ListFolderResult{}, nil
 }
 
-// ListFolderContinue records cursors and consumes configured pages iteratively.
-func (f *fakeDropbox) ListFolderContinue(arg *files.ListFolderContinueArg) (*files.ListFolderResult, error) {
+// ListFolderContinueContext records cursors and consumes configured pages iteratively.
+func (f *fakeDropbox) ListFolderContinueContext(_ context.Context, arg *files.ListFolderContinueArg) (*files.ListFolderResult, error) {
 	f.continueArgs = append(f.continueArgs, arg)
 	if f.continueHook != nil {
 		f.continueHook()
@@ -273,8 +273,8 @@ func (f *fakeDropbox) ListFolderContinue(arg *files.ListFolderContinueArg) (*fil
 	return &files.ListFolderResult{}, nil
 }
 
-// GetTemporaryLink returns the configured public link or signing failure.
-func (f *fakeDropbox) GetTemporaryLink(arg *files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error) {
+// GetTemporaryLinkContext returns the configured public link or signing failure.
+func (f *fakeDropbox) GetTemporaryLinkContext(_ context.Context, arg *files.GetTemporaryLinkArg) (*files.GetTemporaryLinkResult, error) {
 	if f.linkHook != nil {
 		f.linkHook()
 	}

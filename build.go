@@ -23,6 +23,14 @@ func Build(cfg DriverConfig) (Storage, error) {
 // BuildContext constructs a single storage backend from a typed driver config
 // using the caller-provided context.
 // @group Context
+//
+// Example: honor a canceled setup context
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	cancel()
+//	_, err := storage.BuildContext(ctx, memorystorage.Config{})
+//	fmt.Println(errors.Is(err, context.Canceled))
+//	// Output: true
 func BuildContext(ctx context.Context, cfg DriverConfig) (Storage, error) {
 	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {

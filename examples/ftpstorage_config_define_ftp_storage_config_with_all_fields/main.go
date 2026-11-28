@@ -15,6 +15,7 @@ func main() {
 		Port:               21,        // default: 21
 		User:               "demo",    // default: ""
 		Password:           "secret",  // default: ""
+		StagedWrites:       false,     // default: false
 		TLS:                false,     // default: false
 		InsecureSkipVerify: false,     // default: false
 		Prefix:             "uploads", // default: ""

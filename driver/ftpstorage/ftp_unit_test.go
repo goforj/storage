@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/textproto"
@@ -77,6 +78,14 @@ func TestFTPWrapError(t *testing.T) {
 	if err := wrapError(&textproto.Error{Code: 550, Msg: "Directory not empty"}); !errors.Is(err, storagecore.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden for non-empty directory, got %v", err)
 	}
+	if err := wrapError(fmt.Errorf("read: %w", &textproto.Error{Code: 550, Msg: "missing"})); !errors.Is(err, storagecore.ErrNotFound) {
+		t.Fatalf("expected wrapped 550 reply to identify a missing object, got %v", err)
+	}
+	disconnected := &net.OpError{Op: "read", Net: "tcp", Addr: &net.TCPAddr{Port: 55001}, Err: net.ErrClosed}
+	if err := wrapError(disconnected); err != disconnected {
+		t.Fatalf("transport error with port 55001 mapped to %v", err)
+	}
+
 	if err := wrapError(nil); err != nil {
 		t.Fatalf("wrapError(nil) = %v", err)
 	}
@@ -830,12 +839,11 @@ func TestFTPPureHelperEdges(t *testing.T) {
 	}
 
 	d := &driver{}
-	if err := d.runConnLocked(func(ftpConn) error { return nil }); err == nil {
-		t.Fatal("runConnLocked without connection returned nil error")
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
-	d.closed = true
-	if _, err := d.ensureConnLocked(); !errors.Is(err, os.ErrClosed) {
-		t.Fatalf("ensureConnLocked closed error = %v", err)
+	if err := d.withConn(context.Background(), func(ftpConn) error { return nil }); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("withConn closed error = %v", err)
 	}
 	if isDirectoryExistsError(nil) {
 		t.Fatal("isDirectoryExistsError(nil) = true")

@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,9 +35,12 @@ import (
 )
 
 const (
-	benchStart = "<!-- bench:embed:start -->"
-	benchEnd   = "<!-- bench:embed:end -->"
-	benchRows  = "benchmarks_rows.json"
+	transferSize      = 8 << 20
+	ftpRenderMaxOps   = 80
+	benchRcloneConfig = "[localdisk]\ntype = local\n"
+	benchStart        = "<!-- bench:embed:start -->"
+	benchEnd          = "<!-- bench:embed:end -->"
+	benchRows         = "benchmarks_rows.json"
 )
 
 type benchRow struct {
@@ -66,8 +68,6 @@ type benchmarkFixture struct {
 	newStore func(context.Context) (storage.Storage, func(), error)
 	cleanup  func()
 }
-
-var uniqueID uint64
 
 // RenderBenchmarks collects or loads benchmark rows, writes charts, and refreshes the README embed.
 func RenderBenchmarks() {
@@ -107,7 +107,7 @@ func RenderBenchmarks() {
 	if err != nil {
 		panic(err)
 	}
-	updated, err := injectBenchSection(string(data), renderReadmeSection(cacheBuster))
+	updated, err := injectBenchSection(string(data), renderReadmeSection(cacheBuster, rows))
 	if err != nil {
 		panic(err)
 	}
@@ -130,7 +130,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		}
 		cases = append(cases, benchmarkCase{
 			name:     name,
-			required: os.Getenv("BENCH_DRIVER") == name,
+			required: explicitlySelectedDriver(name),
 			setup:    factory,
 		})
 	}
@@ -138,7 +138,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	addForced := func(name string, factory func(context.Context) (*benchmarkFixture, error)) {
 		cases = append(cases, benchmarkCase{
 			name:     name,
-			required: os.Getenv("BENCH_DRIVER") == name,
+			required: explicitlySelectedDriver(name),
 			setup:    factory,
 		})
 	}
@@ -151,7 +151,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		return &benchmarkFixture{
 			newStore: func(context.Context) (storage.Storage, func(), error) {
 				store, err := storage.Build(localstorage.Config{Root: root, Prefix: "bench"})
-				return store, func() {}, err
+				return store, benchmarkStoreCleanup(store), err
 			},
 			cleanup: func() { _ = os.RemoveAll(root) },
 		}, nil
@@ -161,7 +161,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		return &benchmarkFixture{
 			newStore: func(context.Context) (storage.Storage, func(), error) {
 				store, err := storage.Build(memorystorage.Config{Prefix: "bench"})
-				return store, func() {}, err
+				return store, benchmarkStoreCleanup(store), err
 			},
 			cleanup: func() {},
 		}, nil
@@ -192,7 +192,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 					Endpoint: server.URL(),
 					Prefix:   "bench",
 				})
-				return store, func() {}, err
+				return store, benchmarkStoreCleanup(store), err
 			},
 			cleanup: func() { server.Stop() },
 		}, nil
@@ -223,7 +223,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 					Password: "ftppass",
 					Prefix:   "bench",
 				})
-				return store, func() {}, err
+				return store, benchmarkStoreCleanup(store), err
 			},
 			cleanup: func() {
 				_ = srv.Shutdown()
@@ -237,19 +237,14 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 		if err != nil {
 			return nil, err
 		}
-		conf, err := rclonestorage.RenderLocal(rclonestorage.LocalRemote{Name: "localdisk"})
-		if err != nil {
-			_ = os.RemoveAll(root)
-			return nil, err
-		}
 		return &benchmarkFixture{
 			newStore: func(context.Context) (storage.Storage, func(), error) {
 				store, err := storage.Build(rclonestorage.Config{
 					Remote:           "localdisk:" + root,
 					Prefix:           "bench",
-					RcloneConfigData: conf,
+					RcloneConfigData: benchRcloneConfig,
 				})
-				return store, func() {}, err
+				return store, benchmarkStoreCleanup(store), err
 			},
 			cleanup: func() { _ = os.RemoveAll(root) },
 		}, nil
@@ -267,12 +262,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 						Addr:   net.JoinHostPort(host, strconv.Itoa(port)),
 						Prefix: "bench",
 					})
-					cleanup := func() {
-						if closer, ok := store.(interface{ Close() error }); ok {
-							_ = closer.Close()
-						}
-					}
-					return store, cleanup, err
+					return store, benchmarkStoreCleanup(store), err
 				},
 				cleanup: func() { _ = container.Terminate(context.Background()) },
 			}, nil
@@ -280,64 +270,29 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	}
 
 	if withDocker || include("s3") {
-		addForced("s3", func(ctx context.Context) (*benchmarkFixture, error) {
-			container, endpoint, err := startMinioContainer(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
-				_ = container.Terminate(ctx)
-				return nil, err
-			}
-			return &benchmarkFixture{
-				newStore: func(context.Context) (storage.Storage, func(), error) {
-					store, err := storage.Build(s3storage.Config{
-						Bucket:          "storage-bench",
-						Region:          "us-east-1",
-						Endpoint:        endpoint,
-						AccessKeyID:     "minioadmin",
-						SecretAccessKey: "minioadmin",
-						UsePathStyle:    true,
-						Prefix:          "bench",
-					})
-					return store, func() {}, err
-				},
-				cleanup: func() { _ = container.Terminate(context.Background()) },
-			}, nil
-		})
+		addForced("s3", newS3BenchmarkFixture)
 	}
 
 	if withDocker || include("rclone_s3") {
 		addForced("rclone_s3", func(ctx context.Context) (*benchmarkFixture, error) {
-			container, endpoint, err := startMinioContainer(ctx)
+			container, endpoint, err := startRustFSContainer(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "minioadmin", "minioadmin", "storage-bench"); err != nil {
+			if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "storage-test", "storage-test-password", "storage-bench"); err != nil {
 				_ = container.Terminate(ctx)
 				return nil, err
 			}
-			conf, err := rclonestorage.RenderS3(rclonestorage.S3Remote{
-				Name:            "benchs3",
-				Provider:        "Minio",
-				Endpoint:        endpoint,
-				Region:          "us-east-1",
-				AccessKeyID:     "minioadmin",
-				SecretAccessKey: "minioadmin",
-				PathStyle:       true,
-			})
-			if err != nil {
-				_ = container.Terminate(ctx)
-				return nil, err
-			}
+			// Keep one process-wide config while each RustFS fixture gets a fresh endpoint.
+			remote := fmt.Sprintf(":s3,provider=Other,endpoint=%q,region=us-east-1,access_key_id=storage-test,secret_access_key=storage-test-password,force_path_style=true:storage-bench", endpoint)
 			return &benchmarkFixture{
 				newStore: func(context.Context) (storage.Storage, func(), error) {
 					store, err := storage.Build(rclonestorage.Config{
-						Remote:           "benchs3:storage-bench",
+						Remote:           remote,
 						Prefix:           "bench",
-						RcloneConfigData: conf,
+						RcloneConfigData: benchRcloneConfig,
 					})
-					return store, func() {}, err
+					return store, benchmarkStoreCleanup(store), err
 				},
 				cleanup: func() { _ = container.Terminate(context.Background()) },
 			}, nil
@@ -360,7 +315,7 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 						InsecureIgnoreHostKey: true,
 						Prefix:                "upload/bench",
 					})
-					return store, func() {}, err
+					return store, benchmarkStoreCleanup(store), err
 				},
 				cleanup: func() { _ = container.Terminate(context.Background()) },
 			}, nil
@@ -368,6 +323,42 @@ func benchmarkCases(ctx context.Context) []benchmarkCase {
 	}
 
 	return cases
+}
+
+// newS3BenchmarkFixture shares the RustFS setup between contract and streaming benchmarks.
+func newS3BenchmarkFixture(ctx context.Context) (*benchmarkFixture, error) {
+	container, endpoint, err := startRustFSContainer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := storagetest.EnsureS3Bucket(ctx, endpoint, "us-east-1", "storage-test", "storage-test-password", "storage-bench"); err != nil {
+		_ = container.Terminate(ctx)
+		return nil, err
+	}
+	return &benchmarkFixture{
+		newStore: func(context.Context) (storage.Storage, func(), error) {
+			store, err := storage.Build(s3storage.Config{
+				Bucket:          "storage-bench",
+				Region:          "us-east-1",
+				Endpoint:        endpoint,
+				AccessKeyID:     "storage-test",
+				SecretAccessKey: "storage-test-password",
+				UsePathStyle:    true,
+				Prefix:          "bench",
+			})
+			return store, benchmarkStoreCleanup(store), err
+		},
+		cleanup: func() { _ = container.Terminate(context.Background()) },
+	}, nil
+}
+
+// benchmarkStoreCleanup releases driver-owned connections and workers before the next fixture.
+func benchmarkStoreCleanup(store storage.Storage) func() {
+	return func() {
+		if closer, ok := store.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
 }
 
 // benchmarkStoreOps registers the shared operation set with setup outside each timed loop.
@@ -382,7 +373,7 @@ func benchmarkStoreOps(b *testing.B, store storage.Storage) {
 				}
 			}
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if err := op.run(context.Background(), store); err != nil {
 					b.Fatal(err)
 				}
@@ -416,7 +407,7 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 			fmt.Printf("benchrender: driver %s: %s setup\n", bc.name, op.name)
 			store, cleanup, err := fixture.newStore(ctx)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
+				reportBenchmarkFailure(bc, op, err)
 				break
 			}
 			if op.setup != nil {
@@ -424,7 +415,7 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 					if cleanup != nil {
 						cleanup()
 					}
-					fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
+					reportBenchmarkFailure(bc, op, err)
 					continue
 				}
 			}
@@ -434,7 +425,7 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 				cleanup()
 			}
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
+				reportBenchmarkFailure(bc, op, err)
 				continue
 			}
 			results[op.name] = append(results[op.name], benchRow{
@@ -452,12 +443,12 @@ func runBenchmarks(ctx context.Context) map[string][]benchRow {
 	return results
 }
 
-// benchOp adapts a shared storage benchmark to Go's calibrated benchmark result metrics.
-func benchOp(ctx context.Context, store storage.Storage, run func(*testing.B, context.Context, storage.Storage)) (float64, float64, float64, int64) {
-	res := testing.Benchmark(func(b *testing.B) {
-		run(b, ctx, store)
-	})
-	return float64(res.NsPerOp()), float64(res.AllocedBytesPerOp()), float64(res.AllocsPerOp()), int64(res.N)
+// reportBenchmarkFailure keeps explicitly requested charts from silently losing rows.
+func reportBenchmarkFailure(bc benchmarkCase, op benchmarkOp, err error) {
+	if bc.required {
+		panic(fmt.Errorf("%s/%s benchmark failed: %w", bc.name, op.name, err))
+	}
+	fmt.Fprintln(os.Stderr, "benchrender: skip", bc.name, op.name+":", err)
 }
 
 // renderOp samples an operation for a bounded driver-specific window to keep rendering predictable.
@@ -473,7 +464,8 @@ func renderOp(ctx context.Context, driver string, store storage.Storage, op benc
 	start := time.Now()
 	deadline := start.Add(duration)
 	var ops int64
-	for time.Now().Before(deadline) {
+	// The embedded FTP fixture opens a new TCP data connection for every transfer.
+	for time.Now().Before(deadline) && (driver != "ftp" || ops < ftpRenderMaxOps) {
 		if err := runRenderOpWithTimeout(ctx, store, op.run, opTimeout); err != nil {
 			return 0, 0, 0, 0, fmt.Errorf("render op %s/%s failed: %w", driver, op.name, err)
 		}
@@ -519,8 +511,7 @@ func benchmarkOps() []benchmarkOp {
 		{
 			name: "put_small",
 			run: func(ctx context.Context, store storage.Storage) error {
-				path := nextBenchPath("put")
-				return putContext(store, ctx, path, []byte("hello"))
+				return putContext(store, ctx, "writes/put.txt", []byte("hello"))
 			},
 		},
 		{
@@ -603,9 +594,18 @@ func benchmarkOps() []benchmarkOp {
 			},
 		},
 		{
+			name: "copy_8mib",
+			setup: func(ctx context.Context, store storage.Storage) error {
+				return putContext(store, ctx, "copy/source", make([]byte, transferSize))
+			},
+			run: func(ctx context.Context, store storage.Storage) error {
+				return store.WithContext(ctx).Copy("copy/source", "copy/destination")
+			},
+		},
+		{
 			name: "delete",
 			run: func(ctx context.Context, store storage.Storage) error {
-				path := nextBenchPath("delete")
+				const path = "writes/delete.txt"
 				if err := putContext(store, ctx, path, []byte("hello")); err != nil {
 					return err
 				}
@@ -645,12 +645,6 @@ func deleteContext(store storage.Storage, ctx context.Context, path string) erro
 	return store.WithContext(ctx).Delete(path)
 }
 
-// nextBenchPath returns a process-unique object path so write benchmarks never overwrite prior samples.
-func nextBenchPath(prefix string) string {
-	n := atomic.AddUint64(&uniqueID, 1)
-	return fmt.Sprintf("%s/item-%d.txt", prefix, n)
-}
-
 // selectedBenchDrivers applies BENCH_DRIVER while keeping the default suite local and Docker-free.
 func selectedBenchDrivers() func(string) bool {
 	want := strings.TrimSpace(strings.ToLower(os.Getenv("BENCH_DRIVER")))
@@ -672,6 +666,12 @@ func selectedBenchDrivers() func(string) bool {
 		}
 	}
 	return func(name string) bool { return selected[strings.ToLower(name)] }
+}
+
+// explicitlySelectedDriver distinguishes named fixtures from the default selection.
+func explicitlySelectedDriver(name string) bool {
+	want := strings.TrimSpace(strings.ToLower(os.Getenv("BENCH_DRIVER")))
+	return want != "" && want != "all" && selectedBenchDrivers()(name)
 }
 
 // renderDurationForDriver balances stable samples against the relative cost of each backend.
@@ -740,32 +740,46 @@ func dashboardCacheBuster(root string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil))[:12], nil
 }
 
-// renderReadmeSection describes the benchmark protocol and links cache-busted chart assets.
-func renderReadmeSection(cacheBuster string) string {
+// renderReadmeSection summarizes the copy measurements above the full charts.
+func renderReadmeSection(cacheBuster string, rows map[string][]benchRow) string {
 	chartPath := func(name string) string {
 		return fmt.Sprintf("docs/bench/%s?t=%s", name, cacheBuster)
 	}
-	return strings.TrimSpace("" +
-		"Benchmarks are rendered from `docs/bench` and compare the shared storage contract across representative backends.\n\n" +
-		"Run the renderer with:\n\n" +
-		"```bash\n" +
-		"cd docs/bench\n" +
-		"go test -tags benchrender . -run TestRenderBenchmarks -count=1 -v\n" +
-		"```\n\n" +
-		"Each chart sample uses a fixed measurement window per driver, so the ops chart remains meaningful without unbounded benchmark calibration.\n\n" +
-		"Notes:\n\n" +
-		"- `gcs` uses fake-gcs-server.\n" +
-		"- `ftp` is included by default and now reuses a logged-in control connection per storage instance during the benchmark run.\n" +
-		"- `redis`, `s3`, and `sftp` use testcontainers; include them with `BENCH_WITH_DOCKER=1` or by explicitly setting `BENCH_DRIVER`.\n" +
-		"- `rclone_local` measures rclone overhead on top of a local filesystem remote.\n\n" +
-		"### Latency (ns/op)\n\n" +
-		fmt.Sprintf("![Storage benchmark latency chart](%s)\n\n", chartPath("benchmarks_ns.svg")) +
-		"### Iterations (N)\n\n" +
-		fmt.Sprintf("![Storage benchmark iteration chart](%s)\n\n", chartPath("benchmarks_ops.svg")) +
-		"### Allocated Bytes (B/op)\n\n" +
-		fmt.Sprintf("![Storage benchmark bytes chart](%s)\n\n", chartPath("benchmarks_bytes.svg")) +
-		"### Allocations (allocs/op)\n\n" +
-		fmt.Sprintf("![Storage benchmark allocs chart](%s)", chartPath("benchmarks_allocs.svg")))
+	var lines []string
+	if copies := rows["copy_8mib"]; len(copies) > 0 {
+		lines = append(lines,
+			"**8 MiB copy on local benchmark fixtures**",
+			"",
+			"| Fixture | ms/op | KiB allocated/op | Allocations/op |",
+			"| --- | ---: | ---: | ---: |",
+		)
+		byDriver := make(map[string]benchRow, len(copies))
+		for _, row := range copies {
+			byDriver[row.Driver] = row
+		}
+		for _, driver := range orderedDrivers(rows) {
+			if row, ok := byDriver[driver]; ok {
+				lines = append(lines, fmt.Sprintf("| %s | %.3f | %.1f | %.1f |",
+					driver, row.NsOp/1e6, row.BytesOp/1024, row.AllocsOp))
+			}
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines,
+		"<details>",
+		"<summary>Latency, allocated bytes, allocations, and iteration charts</summary>",
+		"",
+		fmt.Sprintf("![Storage benchmark latency chart](%s)", chartPath("benchmarks_ns.svg")),
+		"",
+		fmt.Sprintf("![Storage benchmark allocated bytes chart](%s)", chartPath("benchmarks_bytes.svg")),
+		"",
+		fmt.Sprintf("![Storage benchmark allocation count chart](%s)", chartPath("benchmarks_allocs.svg")),
+		"",
+		fmt.Sprintf("![Storage benchmark iteration chart](%s)", chartPath("benchmarks_ops.svg")),
+		"",
+		"</details>",
+	)
+	return strings.Join(lines, "\n")
 }
 
 // injectBenchSection replaces only content delimited by the README benchmark markers.
@@ -812,6 +826,7 @@ func renderSVG(title string, rows map[string][]benchRow, value func(benchRow) fl
 		"list":      "#B58AE8",
 		"walk":      "#FFB454",
 		"delete":    "#FF6B85",
+		"copy_8mib": "#63C7E8",
 	}
 
 	maxVal := 0.0
@@ -1016,7 +1031,7 @@ func orderedDrivers(rows map[string][]benchRow) []string {
 
 // orderedOps filters the canonical operation order to metrics present in the row set.
 func orderedOps(rows map[string][]benchRow) []string {
-	order := []string{"put_small", "get_small", "exists", "list", "walk", "delete"}
+	order := []string{"put_small", "get_small", "exists", "list", "walk", "delete", "copy_8mib"}
 	var ops []string
 	for _, op := range order {
 		if len(rows[op]) > 0 {
@@ -1073,6 +1088,8 @@ func startEmbeddedFTPServer(host string, port int, root string) (*server.Server,
 		Hostname: host,
 		Auth:     &server.SimpleAuth{Name: "ftpuser", Password: "ftppass"},
 		Logger:   &server.DiscardLogger{},
+		// Keep passive listeners out of the macOS ephemeral client port range.
+		PassivePorts: "20000-40000",
 	}
 	srv := server.NewServer(opts)
 	go func() {
@@ -1204,20 +1221,18 @@ func (f fileInfo) Owner() string { return "user" }
 // Group returns stable synthetic group metadata for FTP listings.
 func (f fileInfo) Group() string { return "group" }
 
-// startMinioContainer launches the S3-compatible benchmark dependency and returns its endpoint.
-func startMinioContainer(ctx context.Context) (testcontainers.Container, string, error) {
+// startRustFSContainer launches the S3-compatible benchmark dependency and returns its endpoint.
+func startRustFSContainer(ctx context.Context) (testcontainers.Container, string, error) {
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    filepath.Join("..", "..", ".github", "fixtures", "minio"),
-			Dockerfile: "Dockerfile",
-			Repo:       "goforj-storage-minio-test",
-			Tag:        "2025-10-15",
-			KeepImage:  true,
+		Image: "rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+		Env: map[string]string{
+			"RUSTFS_ACCESS_KEY":     "storage-test",
+			"RUSTFS_SECRET_KEY":     "storage-test-password",
+			"RUSTFS_CONSOLE_ENABLE": "false",
 		},
-		Env:          map[string]string{"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
 		ExposedPorts: []string{"9000/tcp"},
-		Cmd:          []string{"server", "/data"},
-		WaitingFor:   wait.ForLog("API:").WithStartupTimeout(30 * time.Second),
+		Cmd:          []string{"/data"},
+		WaitingFor:   wait.ForHTTP("/health").WithPort("9000/tcp").WithStartupTimeout(30 * time.Second),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
