@@ -242,6 +242,20 @@ tradeoff, and how to reproduce the measurements.
 
 <!-- bench:embed:start -->
 
+**8 MiB copy on local benchmark fixtures**
+
+| Fixture | ms/op | KiB allocated/op | Allocations/op |
+| --- | ---: | ---: | ---: |
+| `local` | 8.851 | 35.9 | 89.1 |
+| `memory` | 0.289 | 8192.6 | 11.0 |
+| `rclone_local` | 11.668 | 75.5 | 146.4 |
+| `ftp` | 2.770 | 100.1 | 422.1 |
+| `sftp` | 85.930 | 19702.5 | 6542.2 |
+| `redis` | 5.794 | 8211.6 | 241.0 |
+| `gcs` | 12.036 | 16791.0 | 1208.4 |
+| `s3` | 22.627 | 81.6 | 975.7 |
+| `rclone_s3` | 25.906 | 127.8 | 1635.2 |
+
 <details>
 <summary>Latency, allocated bytes, allocations, and iteration charts</summary>
 

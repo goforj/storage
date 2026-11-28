@@ -127,3 +127,24 @@ func TestRenderFTPIterationLimit(t *testing.T) {
 		t.Fatalf("FTP samples = %d, error = %v, want %d samples", count, err, ftpRenderMaxOps)
 	}
 }
+
+// TestRenderReadmeSection checks the copy summary uses the chart data and fixture order.
+func TestRenderReadmeSection(t *testing.T) {
+	rows := map[string][]benchRow{
+		"copy_8mib": {
+			{Driver: "s3", NsOp: 1500000, BytesOp: 2048, AllocsOp: 3.5},
+			{Driver: "local", NsOp: 250000, BytesOp: 1024, AllocsOp: 2},
+		},
+		"put_small": {{Driver: "memory"}},
+	}
+	section := renderReadmeSection("test", rows)
+	want := "| `local` | 0.250 | 1.0 | 2.0 |\n| `s3` | 1.500 | 2.0 | 3.5 |\n\n<details>"
+	if !strings.Contains(section, want) || strings.Contains(section, "`memory`") {
+		t.Fatalf("unexpected copy summary:\n%s", section)
+	}
+
+	section = renderReadmeSection("test", nil)
+	if strings.Contains(section, "8 MiB copy") || !strings.Contains(section, "benchmarks_ns.svg?t=test") {
+		t.Fatalf("unexpected chart-only section:\n%s", section)
+	}
+}

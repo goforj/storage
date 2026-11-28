@@ -107,7 +107,7 @@ func RenderBenchmarks() {
 	if err != nil {
 		panic(err)
 	}
-	updated, err := injectBenchSection(string(data), renderReadmeSection(cacheBuster))
+	updated, err := injectBenchSection(string(data), renderReadmeSection(cacheBuster, rows))
 	if err != nil {
 		panic(err)
 	}
@@ -740,12 +740,32 @@ func dashboardCacheBuster(root string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil))[:12], nil
 }
 
-// renderReadmeSection embeds cache-busted charts in a collapsible section.
-func renderReadmeSection(cacheBuster string) string {
+// renderReadmeSection summarizes the copy measurements above the full charts.
+func renderReadmeSection(cacheBuster string, rows map[string][]benchRow) string {
 	chartPath := func(name string) string {
 		return fmt.Sprintf("docs/bench/%s?t=%s", name, cacheBuster)
 	}
-	return strings.Join([]string{
+	var lines []string
+	if copies := rows["copy_8mib"]; len(copies) > 0 {
+		lines = append(lines,
+			"**8 MiB copy on local benchmark fixtures**",
+			"",
+			"| Fixture | ms/op | KiB allocated/op | Allocations/op |",
+			"| --- | ---: | ---: | ---: |",
+		)
+		byDriver := make(map[string]benchRow, len(copies))
+		for _, row := range copies {
+			byDriver[row.Driver] = row
+		}
+		for _, driver := range orderedDrivers(rows) {
+			if row, ok := byDriver[driver]; ok {
+				lines = append(lines, fmt.Sprintf("| `%s` | %.3f | %.1f | %.1f |",
+					driver, row.NsOp/1e6, row.BytesOp/1024, row.AllocsOp))
+			}
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines,
 		"<details>",
 		"<summary>Latency, allocated bytes, allocations, and iteration charts</summary>",
 		"",
@@ -758,7 +778,8 @@ func renderReadmeSection(cacheBuster string) string {
 		fmt.Sprintf("![Storage benchmark iteration chart](%s)", chartPath("benchmarks_ops.svg")),
 		"",
 		"</details>",
-	}, "\n")
+	)
+	return strings.Join(lines, "\n")
 }
 
 // injectBenchSection replaces only content delimited by the README benchmark markers.
